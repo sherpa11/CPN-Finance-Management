@@ -5,6 +5,7 @@
   "scripts": {
     "install:all": "cd backend && npm install && cd ../frontend && npm install",
     "seed": "cd backend && npm run seed",
+    "clear-demo": "cd backend && npm run clear-demo",
     "test": "cd backend && npm test",
     "build:frontend": "cd frontend && npm run build",
     "start:backend": "cd backend && npm start",

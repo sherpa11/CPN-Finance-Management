@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node src/server.js",
     "seed": "node src/scripts/seed.js",
+    "clear-demo": "node src/scripts/clearDemoData.js",
     "test:calc": "jest tests/calculationEngine.test.js",
     "test:api": "node tests/runApiTests.js",
     "test": "jest tests/calculationEngine.test.js && node tests/runApiTests.js"
