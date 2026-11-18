@@ -1,0 +1,127 @@
+const { DateTime } = require('luxon');
+const Loan = require('../models/Loan');
+const { toRupees } = require('../services/calculationEngine');
+const CONSTANTS = require('../config/constants');
+
+const TIMEZONE = CONSTANTS.DEFAULT_TIMEZONE;
+
+const getDuesList = async (req, res, next) => {
+  try {
+    const {
+      filter = 'ALL',
+      search,
+      sortBy = 'dueDate',
+      sortOrder = 'asc',
+      vattiType,
+      customStartDate,
+      customEndDate,
+      page = 1,
+      limit = 50,
+    } = req.query;
+
+    const today = DateTime.now().setZone(TIMEZONE).startOf('day');
+    const query = {
+      status: { $in: [CONSTANTS.LOAN_STATUS.ACTIVE, CONSTANTS.LOAN_STATUS.OVERDUE] },
+    };
+
+    if (vattiType && vattiType !== 'ALL') {
+      query.vattiType = vattiType;
+    }
+
+    if (filter === 'TODAY') {
+      const startOfDay = today.toJSDate();
+      const endOfDay = today.endOf('day').toJSDate();
+      query.dueDate = { $gte: startOfDay, $lte: endOfDay };
+    } else if (filter === 'TOMORROW') {
+      const tomorrow = today.plus({ days: 1 });
+      query.dueDate = { $gte: tomorrow.toJSDate(), $lte: tomorrow.endOf('day').toJSDate() };
+    } else if (filter === 'NEXT_7_DAYS') {
+      const start = today.toJSDate();
+      const end = today.plus({ days: 7 }).endOf('day').toJSDate();
+      query.dueDate = { $gte: start, $lte: end };
+    } else if (filter === 'OVERDUE') {
+      query.dueDate = { $lt: today.toJSDate() };
+      query.status = { $ne: CONSTANTS.LOAN_STATUS.SETTLED };
+    } else if (filter === 'COMPLETED') {
+      query.status = CONSTANTS.LOAN_STATUS.SETTLED;
+    } else if (filter === 'CUSTOM' && (customStartDate || customEndDate)) {
+      query.dueDate = {};
+      if (customStartDate) query.dueDate.$gte = new Date(customStartDate);
+      if (customEndDate) {
+        const end = new Date(customEndDate);
+        end.setHours(23, 59, 59, 999);
+        query.dueDate.$lte = end;
+      }
+    }
+
+    if (search && search.trim()) {
+      const searchRegex = new RegExp(search.trim(), 'i');
+      query.$or = [
+        { customerName: searchRegex },
+        { customerMobile: searchRegex },
+        { customerCode: searchRegex },
+        { loanId: searchRegex },
+      ];
+    }
+
+    // Sorting
+    const sort = {};
+    const orderDirection = sortOrder === 'desc' ? -1 : 1;
+    if (sortBy === 'outstandingAmount') {
+      sort.outstandingPrincipalPaise = orderDirection;
+    } else if (sortBy === 'customerName') {
+      sort.customerName = orderDirection;
+    } else if (sortBy === 'vattiType') {
+      sort.vattiType = orderDirection;
+    } else {
+      sort.dueDate = orderDirection;
+    }
+
+    const total = await Loan.countDocuments(query);
+    const loans = await Loan.find(query)
+      .populate('customerId')
+      .sort(sort)
+      .skip((page - 1) * limit)
+      .limit(Number(limit));
+
+    const formatted = loans.map((l) => {
+      const dueKolkata = DateTime.fromJSDate(l.dueDate, { zone: TIMEZONE }).startOf('day');
+      const diffDays = Math.round(dueKolkata.diff(today, 'days').days);
+
+      return {
+        id: l._id,
+        loanId: l.loanId,
+        customerId: l.customerId?._id,
+        customerCode: l.customerCode,
+        customerName: l.customerName,
+        customerMobile: l.customerMobile,
+        vattiType: l.vattiType,
+        principalRupees: toRupees(l.principalPaise),
+        interestRatePercent: l.interestRatePercent,
+        accruedInterestRupees: toRupees(l.accruedInterestPaise),
+        outstandingPrincipalRupees: toRupees(l.outstandingPrincipalPaise),
+        outstandingInterestRupees: toRupees(l.outstandingInterestPaise),
+        totalOutstandingRupees: toRupees(l.outstandingPrincipalPaise + l.outstandingInterestPaise),
+        startDate: l.startDate,
+        dueDate: l.dueDate,
+        daysRemainingOrOverdue: diffDays,
+        dueStatus: diffDays < 0 ? 'OVERDUE' : diffDays === 0 ? 'DUE_TODAY' : 'UPCOMING',
+        status: l.status,
+      };
+    });
+
+    res.json({
+      success: true,
+      total,
+      page: Number(page),
+      totalPages: Math.ceil(total / limit),
+      dues: formatted,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+module.exports = {
+  getDuesList,
+};

@@ -1,0 +1,16 @@
+{
+  "name": "cpn-raja-vatti-system",
+  "version": "1.0.0",
+  "description": "CPN Raja Vatti Business Management System - Production Ready Financial Portal",
+  "scripts": {
+    "install:all": "cd backend && npm install && cd ../frontend && npm install",
+    "seed": "cd backend && npm run seed",
+    "test": "cd backend && npm test",
+    "build:frontend": "cd frontend && npm run build",
+    "start:backend": "cd backend && npm start",
+    "start": "cd backend && npm start"
+  },
+  "author": "CPN Raja Vatti Business Management System",
+  "license": "UNLICENSED",
+  "private": true
+}
