@@ -59,7 +59,7 @@ graph TD
 ### Module 1: Monthly & Daily Finance
 - **Monthly Finance:** Simple interest calculated strictly on eligible completed calendar months: $\text{Interest} = \frac{\text{Principal} \times \text{Rate} \times \text{Months}}{100}$.
 - **Daily Finance:** Daily interest calculated on active calendar days in `Asia/Kolkata` timezone: $\text{Interest} = \frac{\text{Principal} \times \text{Rate} \times \text{Days}}{100}$.
-- **Meater Finance:** Formula awaiting owner confirmation; produces explicit pending notice without inventing calculations.
+- **Daily Collection Finance:** Fully replaces legacy Meater finance module; comprehensive 70/100-day daily collection with upfront deduction or extended days repayment schemes.
 
 ### Module 2: Daily Collection (Scheme A – முன் வட்டி)
 - Upfront interest deduction at inception (e.g. ₹10,000 on ₹1,00,000 gross loan).

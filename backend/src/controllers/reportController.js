@@ -139,13 +139,15 @@ const getMonthlyReport = async (req, res, next) => {
     const outstandingInterestPaise = activeLoans.reduce((sum, l) => sum + l.outstandingInterestPaise, 0);
     const totalAccruedInterestPaise = activeLoans.reduce((sum, l) => sum + (l.accruedInterestPaise || 0), 0);
 
-    // Finance Type Breakdown
-    const vattiTypes = ['MONTHLY', 'DAILY', 'MEATER'];
+    // Finance Type Breakdown (Monthly, Daily, Daily Collection)
+    const vattiTypes = ['MONTHLY', 'DAILY', 'DAILY_COLLECTION'];
     const vattiBreakdown = vattiTypes.map((type) => {
-      const typeLoans = loans.filter((l) => l.vattiType === type);
-      const typeCollections = collections.filter((c) => c.loanCode && c.loanCode.includes(type.slice(0, 1))); // or mapped
+      const typeLoans = loans.filter((l) => {
+        const normalized = (l.vattiType === 'MEATER' || l.vattiType === 'DAILY_COLLECTION') ? 'DAILY_COLLECTION' : l.vattiType;
+        return normalized === type;
+      });
       return {
-        financeType: type,
+        financeType: type === 'DAILY_COLLECTION' ? 'DAILY COLLECTION' : type,
         vattiType: type,
         loansCount: typeLoans.length,
         principalLentRupees: toRupees(typeLoans.reduce((sum, l) => sum + l.principalPaise, 0)),
@@ -277,11 +279,15 @@ const getCustomerReport = async (req, res, next) => {
  */
 const getCategoryReport = async (req, res, next) => {
   try {
-    const categories = ['MONTHLY', 'DAILY', 'MEATER'];
+    const categories = ['MONTHLY', 'DAILY', 'DAILY_COLLECTION'];
     const results = [];
 
     for (const cat of categories) {
-      const allLoans = await Loan.find({ vattiType: cat }).lean();
+      const query = cat === 'DAILY_COLLECTION'
+        ? { vattiType: { $in: ['DAILY_COLLECTION', 'MEATER'] } }
+        : { vattiType: cat };
+
+      const allLoans = await Loan.find(query).lean();
       const activeLoans = allLoans.filter((l) => [CONSTANTS.LOAN_STATUS.ACTIVE, CONSTANTS.LOAN_STATUS.OVERDUE].includes(l.status));
       const settledLoans = allLoans.filter((l) => l.status === CONSTANTS.LOAN_STATUS.SETTLED);
 
@@ -292,7 +298,7 @@ const getCategoryReport = async (req, res, next) => {
       const outstandingInterestPaise = activeLoans.reduce((s, l) => s + l.outstandingInterestPaise, 0);
 
       results.push({
-        financeType: cat,
+        financeType: cat === 'DAILY_COLLECTION' ? 'DAILY COLLECTION' : cat,
         vattiType: cat,
         totalLoans: allLoans.length,
         activeLoans: activeLoans.length,
@@ -303,7 +309,8 @@ const getCategoryReport = async (req, res, next) => {
         outstandingPrincipalRupees: toRupees(outstandingPrincipalPaise),
         outstandingInterestRupees: toRupees(outstandingInterestPaise),
         totalOutstandingRupees: toRupees(outstandingPrincipalPaise + outstandingInterestPaise),
-        isPendingOwnerConfirmation: cat === 'MEATER',
+        isPendingOwnerConfirmation: false,
+        calculationStatus: 'Active Formula',
       });
     }
 

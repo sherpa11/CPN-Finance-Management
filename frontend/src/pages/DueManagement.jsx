@@ -152,7 +152,7 @@ export default function DueManagement({ onNavigate, onOpenCollection }) {
           <option value="ALL">All Finance Types</option>
           <option value="MONTHLY">Monthly Finance</option>
           <option value="DAILY">Daily Finance</option>
-          <option value="MEATER">Meater Finance</option>
+          <option value="DAILY_COLLECTION">Daily Collection</option>
         </select>
 
         <select

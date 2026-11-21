@@ -49,14 +49,10 @@ export function getFinanceBadge(type) {
         bg: 'bg-amber-50 text-amber-700 border-amber-200',
       };
     case 'DAILY_COLLECTION':
+    case 'MEATER':
       return {
         label: 'Daily Collection',
         bg: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-      };
-    case 'MEATER':
-      return {
-        label: 'Meater Finance',
-        bg: 'bg-purple-50 text-purple-700 border-purple-200',
       };
     default:
       return {
@@ -64,6 +60,14 @@ export function getFinanceBadge(type) {
         bg: 'bg-slate-50 text-slate-700 border-slate-200',
       };
   }
+}
+
+export function formatFinanceType(type) {
+  if (!type) return '';
+  if (type === 'MEATER' || type === 'DAILY_COLLECTION') return 'DAILY COLLECTION';
+  if (type === 'MONTHLY') return 'MONTHLY';
+  if (type === 'DAILY') return 'DAILY';
+  return type;
 }
 
 export const getVattiBadge = getFinanceBadge;

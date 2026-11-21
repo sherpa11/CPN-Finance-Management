@@ -181,11 +181,23 @@ const getDashboardData = async (req, res, next) => {
       });
     }
 
-    // Category Distribution
-    const categoryDistribution = ['MONTHLY', 'DAILY', 'MEATER'].map((type) => {
-      const found = categoryCounts.find((c) => c._id === type);
+    // Category Distribution (Monthly, Daily, Daily Collection)
+    const categoryDistribution = ['MONTHLY', 'DAILY', 'DAILY_COLLECTION'].map((type) => {
+      let found;
+      if (type === 'DAILY_COLLECTION') {
+        const dc = categoryCounts.find((c) => c._id === 'DAILY_COLLECTION');
+        const meater = categoryCounts.find((c) => c._id === 'MEATER');
+        found = {
+          count: (dc?.count || 0) + (meater?.count || 0),
+          activeCount: (dc?.activeCount || 0) + (meater?.activeCount || 0),
+          totalPrincipalPaise: (dc?.totalPrincipalPaise || 0) + (meater?.totalPrincipalPaise || 0),
+          outstandingPrincipalPaise: (dc?.outstandingPrincipalPaise || 0) + (meater?.outstandingPrincipalPaise || 0),
+        };
+      } else {
+        found = categoryCounts.find((c) => c._id === type);
+      }
       return {
-        financeType: type,
+        financeType: type === 'DAILY_COLLECTION' ? 'DAILY COLLECTION' : type,
         vattiType: type,
         totalLoans: found ? found.count : 0,
         activeLoans: found ? found.activeCount : 0,
@@ -197,12 +209,13 @@ const getDashboardData = async (req, res, next) => {
     const formatLoanItem = (l) => {
       const dueKolkata = DateTime.fromJSDate(new Date(l.dueDate), { zone: TIMEZONE }).startOf('day');
       const diffDays = Math.round(dueKolkata.diff(today, 'days').days);
+      const displayType = (l.vattiType === 'MEATER' || l.vattiType === 'DAILY_COLLECTION') ? 'DAILY COLLECTION' : l.vattiType;
       return {
         id: l._id,
         loanId: l.loanId,
         customerName: l.customerName,
         customerMobile: l.customerMobile,
-        financeType: l.vattiType,
+        financeType: displayType,
         vattiType: l.vattiType,
         principalRupees: toRupees(l.principalPaise),
         outstandingPrincipalRupees: toRupees(l.outstandingPrincipalPaise),

@@ -255,7 +255,13 @@ const listLoans = async (req, res, next) => {
     const query = {};
 
     if (customerId) query.customerId = customerId;
-    if (vattiType && vattiType !== 'ALL') query.vattiType = vattiType;
+    if (vattiType && vattiType !== 'ALL') {
+      if (vattiType === 'DAILY_COLLECTION' || vattiType === 'MEATER') {
+        query.vattiType = { $in: ['DAILY_COLLECTION', 'MEATER'] };
+      } else {
+        query.vattiType = vattiType;
+      }
+    }
     if (status && status !== 'ALL') query.status = status;
 
     if (search && search.trim()) {

@@ -77,7 +77,7 @@ export default function ReceiptModal({ receipt, onClose }) {
             <div className="flex justify-between pt-2 border-t border-slate-100">
               <span className="text-slate-500">Loan Account:</span>
               <span className="font-mono font-bold text-blue-700">
-                {receipt.loanCode} ({receipt.vattiType === 'MONTHLY' ? 'Monthly Finance' : receipt.vattiType === 'DAILY' ? 'Daily Finance' : receipt.vattiType === 'MEATER' ? 'Meater Finance' : (receipt.vattiType || '')})
+                {receipt.loanCode} ({receipt.vattiType === 'MONTHLY' ? 'Monthly Finance' : receipt.vattiType === 'DAILY' ? 'Daily Finance' : (receipt.vattiType === 'DAILY_COLLECTION' || receipt.vattiType === 'MEATER') ? 'Daily Collection' : (receipt.vattiType || '')})
               </span>
             </div>
           </div>

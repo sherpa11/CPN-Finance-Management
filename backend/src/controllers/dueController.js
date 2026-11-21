@@ -26,7 +26,11 @@ const getDuesList = async (req, res, next) => {
     };
 
     if (vattiType && vattiType !== 'ALL') {
-      query.vattiType = vattiType;
+      if (vattiType === 'DAILY_COLLECTION' || vattiType === 'MEATER') {
+        query.vattiType = { $in: ['DAILY_COLLECTION', 'MEATER'] };
+      } else {
+        query.vattiType = vattiType;
+      }
     }
 
     if (filter === 'TODAY') {
@@ -97,8 +101,8 @@ const getDuesList = async (req, res, next) => {
         customerCode: l.customerCode,
         customerName: l.customerName,
         customerMobile: l.customerMobile,
-        financeType: l.vattiType,
-        vattiType: l.vattiType,
+        financeType: (l.vattiType === 'MEATER' || l.vattiType === 'DAILY_COLLECTION') ? 'DAILY COLLECTION' : l.vattiType,
+        vattiType: (l.vattiType === 'MEATER' || l.vattiType === 'DAILY_COLLECTION') ? 'DAILY_COLLECTION' : l.vattiType,
         principalRupees: toRupees(l.principalPaise),
         interestRatePercent: l.interestRatePercent,
         accruedInterestRupees: toRupees(l.accruedInterestPaise),

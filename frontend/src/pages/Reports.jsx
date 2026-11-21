@@ -13,6 +13,14 @@ import {
 import { formatINR, formatDate } from '../utils/formatters';
 import api from '../api';
 
+function formatCategoryName(name) {
+  if (!name) return '';
+  if (name === 'MEATER' || name === 'DAILY_COLLECTION' || name === 'Daily Collection' || name === 'DAILY COLLECTION') {
+    return 'DAILY COLLECTION';
+  }
+  return name;
+}
+
 export default function Reports() {
   const [activeReportTab, setActiveReportTab] = useState('daily');
   const [dailyDate, setDailyDate] = useState(new Date().toISOString().split('T')[0]);
@@ -90,7 +98,12 @@ export default function Reports() {
     } else if (activeReportTab === 'customer' && customerData) {
       exportToCSV(customerData, `CPN_Customer_Financial_Report_${new Date().toISOString().split('T')[0]}`);
     } else if (activeReportTab === 'category' && categoryData) {
-      exportToCSV(categoryData, `CPN_Finance_Category_Report`);
+      const sanitized = categoryData.map((c) => ({
+        ...c,
+        financeType: formatCategoryName(c.financeType || c.vattiType),
+        vattiType: formatCategoryName(c.vattiType || c.financeType),
+      }));
+      exportToCSV(sanitized, `CPN_Finance_Category_Report`);
     } else if (activeReportTab === 'daily-collection-reports' && dcReportData?.data) {
       const rows = Array.isArray(dcReportData.data) ? dcReportData.data : [dcReportData.data];
       exportToCSV(rows, `CPN_Daily_Collection_${dcReportType}`);
@@ -389,7 +402,7 @@ export default function Reports() {
                     <tbody className="divide-y divide-slate-100 font-mono">
                       {(monthlyData.financeBreakdown || monthlyData.vattiBreakdown).map((vb) => (
                         <tr key={vb.vattiType || vb.financeType}>
-                          <td className="py-2 px-3 font-bold text-slate-900">{vb.financeType || vb.vattiType}</td>
+                          <td className="py-2 px-3 font-bold text-slate-900">{formatCategoryName(vb.financeType || vb.vattiType)}</td>
                           <td className="py-2 px-3 font-sans">{vb.loansCount} loans</td>
                           <td className="py-2 px-3 text-right font-bold text-slate-900">
                             {formatINR(vb.principalLentRupees)}
@@ -493,7 +506,7 @@ export default function Reports() {
                 <tbody className="divide-y divide-slate-100 font-mono">
                   {categoryData.map((cat) => (
                     <tr key={cat.vattiType || cat.financeType} className="hover:bg-slate-50">
-                      <td className="py-2.5 px-3 font-bold text-slate-900">{cat.financeType || cat.vattiType}</td>
+                      <td className="py-2.5 px-3 font-bold text-slate-900">{formatCategoryName(cat.financeType || cat.vattiType)}</td>
                       <td className="py-2.5 px-2 text-center font-sans font-bold">{cat.activeLoans}</td>
                       <td className="py-2.5 px-3 text-right font-medium text-slate-800">
                         {formatINR(cat.totalPrincipalLentRupees)}

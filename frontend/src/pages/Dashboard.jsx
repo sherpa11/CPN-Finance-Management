@@ -246,7 +246,7 @@ export default function Dashboard({ onNavigate, onOpenCollection }) {
         <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between">
           <div>
             <h3 className="text-sm font-bold text-slate-900 mb-1">Finance Category Distribution</h3>
-            <p className="text-xs text-slate-500 mb-4">Active loans by Monthly, Daily & Meater</p>
+            <p className="text-xs text-slate-500 mb-4">Active loans by Monthly, Daily & Daily Collection</p>
             {categoryDistribution.reduce((s, c) => s + c.totalPrincipalRupees, 0) === 0 ? (
               <div className="h-44 flex flex-col items-center justify-center text-slate-400 text-xs text-center px-4 border border-dashed border-slate-200 rounded-lg">
                 <Wallet className="w-7 h-7 mb-2 opacity-30 text-slate-400" />
