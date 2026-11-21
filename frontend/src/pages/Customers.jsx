@@ -13,6 +13,11 @@ import {
   CheckCircle,
   X,
   UserPlus,
+  Trash2,
+  AlertTriangle,
+  ShieldAlert,
+  Archive,
+  CheckCircle2,
 } from 'lucide-react';
 import { formatINR, formatDate, getFinanceBadge } from '../utils/formatters';
 import CustomerStatementModal from '../components/CustomerStatementModal';
@@ -32,6 +37,15 @@ export default function Customers({ onNavigate, onSelectCustomerForLoan }) {
   const [selectedStatementCustomer, setSelectedStatementCustomer] = useState(null);
   const [viewCustomerDetail, setViewCustomerDetail] = useState(null);
 
+  // Delete / Archive Modal State
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [deleteTargetCustomer, setDeleteTargetCustomer] = useState(null);
+  const [deleteChecking, setDeleteChecking] = useState(false);
+  const [deleteEligibility, setDeleteEligibility] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+  const [notification, setNotification] = useState(null); // { type: 'success' | 'error', message: string }
+
   // Form State
   const [formName, setFormName] = useState('');
   const [formMobile, setFormMobile] = useState('');
@@ -49,6 +63,14 @@ export default function Customers({ onNavigate, onSelectCustomerForLoan }) {
     }, 300);
     return () => clearTimeout(timer);
   }, [search]);
+
+  // Auto-dismiss notification after 6 seconds
+  useEffect(() => {
+    if (notification) {
+      const timer = setTimeout(() => setNotification(null), 6000);
+      return () => clearTimeout(timer);
+    }
+  }, [notification]);
 
   const fetchCustomers = async (searchTerm = debouncedSearch, status = statusFilter, signal) => {
     setLoading(true);
@@ -163,8 +185,106 @@ export default function Customers({ onNavigate, onSelectCustomerForLoan }) {
     }
   };
 
+  const handleOpenDeleteModal = async (cust) => {
+    setDeleteTargetCustomer(cust);
+    setIsDeleteModalOpen(true);
+    setDeleteError('');
+    setDeleteEligibility(null);
+    setDeleteChecking(true);
+
+    try {
+      const res = await api.get(`/customers/${cust._id}/delete-check`);
+      if (res.data.success) {
+        setDeleteEligibility(res.data);
+      }
+    } catch (err) {
+      setDeleteError(err.response?.data?.message || 'Failed to verify customer financial records.');
+    } finally {
+      setDeleteChecking(false);
+    }
+  };
+
+  const handleConfirmPermanentDelete = async () => {
+    if (!deleteTargetCustomer) return;
+    setDeleting(true);
+    setDeleteError('');
+
+    try {
+      const res = await api.delete(`/customers/${deleteTargetCustomer._id}`);
+      if (res.data.success) {
+        setIsDeleteModalOpen(false);
+        setNotification({
+          type: 'success',
+          message: res.data.message || `Customer ${deleteTargetCustomer.name} (${deleteTargetCustomer.customerId}) was permanently deleted.`,
+        });
+        fetchCustomers();
+      }
+    } catch (err) {
+      if (err.response?.data?.hasFinancialRecords) {
+        setDeleteEligibility({
+          eligibleForPermanentDelete: false,
+          hasFinancialRecords: true,
+          dependencies: err.response.data.dependencies,
+        });
+        setDeleteError(err.response.data.message);
+      } else {
+        setDeleteError(err.response?.data?.message || err.message || 'Failed to delete customer.');
+      }
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const handleConfirmDeactivate = async () => {
+    if (!deleteTargetCustomer) return;
+    setDeleting(true);
+    setDeleteError('');
+
+    try {
+      const res = await api.delete(`/customers/${deleteTargetCustomer._id}?action=deactivate`);
+      if (res.data.success) {
+        setIsDeleteModalOpen(false);
+        setNotification({
+          type: 'success',
+          message: res.data.message || `Customer ${deleteTargetCustomer.name} (${deleteTargetCustomer.customerId}) has been archived and marked INACTIVE.`,
+        });
+        fetchCustomers();
+      }
+    } catch (err) {
+      setDeleteError(err.response?.data?.message || err.message || 'Failed to archive customer.');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
+      {/* Toast Notification Banner */}
+      {notification && (
+        <div
+          className={`flex items-center justify-between p-3.5 rounded-xl border text-xs font-medium shadow-sm transition-all ${
+            notification.type === 'success'
+              ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+              : 'bg-rose-50 border-rose-200 text-rose-800'
+          }`}
+        >
+          <div className="flex items-center space-x-2">
+            {notification.type === 'success' ? (
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            ) : (
+              <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+            )}
+            <span>{notification.message}</span>
+          </div>
+          <button
+            onClick={() => setNotification(null)}
+            className="text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
       {/* Header and Controls */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
         <div>
@@ -300,6 +420,13 @@ export default function Customers({ onNavigate, onSelectCustomerForLoan }) {
                           className="px-2 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded text-[10px] transition-colors"
                         >
                           + Finance
+                        </button>
+                        <button
+                          onClick={() => handleOpenDeleteModal(c)}
+                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors cursor-pointer"
+                          title="Delete Customer"
+                        >
+                          <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
                     </td>
@@ -568,6 +695,215 @@ export default function Customers({ onNavigate, onSelectCustomerForLoan }) {
                 View Full Statement
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete / Archive Confirmation Modal */}
+      {isDeleteModalOpen && deleteTargetCustomer && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 overflow-y-auto">
+          <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full p-6 border border-slate-200">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+              <div className="flex items-center space-x-2">
+                {deleteChecking ? (
+                  <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">
+                    <Clock className="w-5 h-5 animate-spin" />
+                  </div>
+                ) : deleteEligibility?.hasFinancialRecords ? (
+                  <div className="p-2 bg-amber-50 text-amber-600 rounded-lg">
+                    <ShieldAlert className="w-5 h-5" />
+                  </div>
+                ) : (
+                  <div className="p-2 bg-rose-50 text-rose-600 rounded-lg">
+                    <AlertTriangle className="w-5 h-5" />
+                  </div>
+                )}
+                <div>
+                  <h3 className="font-bold text-sm text-slate-900">
+                    {deleteChecking
+                      ? 'Checking Customer Records...'
+                      : deleteEligibility?.hasFinancialRecords
+                      ? 'Financial Records Detected'
+                      : 'Confirm Customer Deletion'}
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    {deleteEligibility?.hasFinancialRecords
+                      ? 'Financial audit integrity protection'
+                      : 'Permanent deletion safety verification'}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsDeleteModalOpen(false)}
+                disabled={deleting}
+                className="text-slate-400 hover:text-slate-600 p-1 disabled:opacity-50 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Target Customer Info Card */}
+            <div className="p-3.5 bg-slate-50 rounded-lg border border-slate-200 mb-4 text-xs">
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="font-bold text-slate-900 text-sm">{deleteTargetCustomer.name}</span>
+                  <div className="flex items-center space-x-2 mt-0.5">
+                    <span className="font-mono text-blue-700 font-semibold text-[11px]">{deleteTargetCustomer.customerId}</span>
+                    <span className="text-slate-300">•</span>
+                    <span className="text-slate-600 font-mono text-[11px]">{deleteTargetCustomer.mobileNumber}</span>
+                  </div>
+                </div>
+                <span
+                  className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                    deleteTargetCustomer.status === 'ACTIVE'
+                      ? 'bg-emerald-100 text-emerald-800'
+                      : 'bg-slate-200 text-slate-700'
+                  }`}
+                >
+                  {deleteTargetCustomer.status || 'ACTIVE'}
+                </span>
+              </div>
+            </div>
+
+            {/* Error Message */}
+            {deleteError && (
+              <div className="mb-4 p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-lg flex items-start space-x-2">
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>{deleteError}</span>
+              </div>
+            )}
+
+            {/* Checking State */}
+            {deleteChecking && (
+              <div className="py-8 text-center text-xs text-slate-500 space-y-2">
+                <div className="inline-block animate-spin w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full" />
+                <p className="font-medium text-slate-700">Inspecting associated financial ledger accounts...</p>
+                <p className="text-[11px] text-slate-400">
+                  Checking active loans, collections, transaction history, and daily finance accounts.
+                </p>
+              </div>
+            )}
+
+            {/* If Customer Has Financial Records */}
+            {!deleteChecking && deleteEligibility?.hasFinancialRecords && (
+              <div className="space-y-4">
+                <div className="p-3.5 bg-amber-50/80 border border-amber-200 rounded-lg text-xs space-y-2">
+                  <div className="flex items-center space-x-2 text-amber-900 font-bold">
+                    <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0" />
+                    <span>Permanent Deletion Strictly Prohibited</span>
+                  </div>
+                  <p className="text-amber-800 leading-relaxed text-[11.5px]">
+                    This customer has active or historical financial records. To preserve accounting balances, ledger calculations, and audit history, this customer <strong>cannot be permanently deleted</strong>.
+                  </p>
+                </div>
+
+                {/* Dependency breakdown */}
+                <div className="bg-slate-50 p-3 rounded-lg border border-slate-200">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-2">
+                    Associated Financial Records ({deleteEligibility.dependencies?.totalRecords || 0} Total)
+                  </p>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="flex items-center justify-between p-2 bg-white rounded border border-slate-100">
+                      <span className="text-slate-600">Finance Accounts:</span>
+                      <span className="font-mono font-bold text-slate-900">
+                        {deleteEligibility.dependencies?.loansCount || 0}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between p-2 bg-white rounded border border-slate-100">
+                      <span className="text-slate-600">Collections / Receipts:</span>
+                      <span className="font-mono font-bold text-slate-900">
+                        {deleteEligibility.dependencies?.collectionsCount || 0}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between p-2 bg-white rounded border border-slate-100">
+                      <span className="text-slate-600">Ledger Transactions:</span>
+                      <span className="font-mono font-bold text-slate-900">
+                        {deleteEligibility.dependencies?.transactionsCount || 0}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between p-2 bg-white rounded border border-slate-100">
+                      <span className="text-slate-600">Daily Accounts / Payments:</span>
+                      <span className="font-mono font-bold text-slate-900">
+                        {(deleteEligibility.dependencies?.dailyAccountsCount || 0) + (deleteEligibility.dependencies?.dailyPaymentsCount || 0)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-3 bg-blue-50/60 border border-blue-200 rounded-lg text-xs space-y-1">
+                  <p className="font-bold text-blue-900">Recommended Safe Action: Deactivate & Archive</p>
+                  <p className="text-blue-800 text-[11px] leading-relaxed">
+                    Deactivating this customer marks their account as <strong>INACTIVE</strong>. All historical statements, payment receipts, and balance reports remain fully accessible and protected.
+                  </p>
+                </div>
+
+                <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-2 pt-3 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setIsDeleteModalOpen(false)}
+                    disabled={deleting}
+                    className="px-4 py-2 border border-slate-300 rounded-lg text-slate-700 text-xs font-semibold hover:bg-slate-50 transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleConfirmDeactivate}
+                    disabled={deleting}
+                    className="flex items-center justify-center space-x-1.5 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold transition-colors shadow-xs cursor-pointer disabled:opacity-50"
+                  >
+                    <Archive className="w-4 h-4" />
+                    <span>{deleting ? 'Archiving...' : 'Deactivate & Archive Customer'}</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* If Customer Has No Financial Records (Safe to permanently delete) */}
+            {!deleteChecking && deleteEligibility?.eligibleForPermanentDelete && (
+              <div className="space-y-4">
+                <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-lg text-xs space-y-2">
+                  <div className="flex items-center space-x-2 text-rose-900 font-bold">
+                    <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                    <span>Warning: This action is permanent and cannot be undone</span>
+                  </div>
+                  <p className="text-rose-800 leading-relaxed text-[11.5px]">
+                    This customer has <strong>0 financial records</strong> and no active loans. Confirming will permanently remove this customer profile from the system.
+                  </p>
+                </div>
+
+                <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 text-[11.5px] text-slate-600 space-y-1">
+                  <div className="flex items-center space-x-1.5 text-emerald-700 font-semibold">
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>Financial Safety Check Passed</span>
+                  </div>
+                  <p className="text-slate-500">
+                    No active loan balances, payments, or ledger transactions will be affected.
+                  </p>
+                </div>
+
+                <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-2 pt-3 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setIsDeleteModalOpen(false)}
+                    disabled={deleting}
+                    className="px-4 py-2 border border-slate-300 rounded-lg text-slate-700 text-xs font-semibold hover:bg-slate-50 transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleConfirmPermanentDelete}
+                    disabled={deleting}
+                    className="flex items-center justify-center space-x-1.5 px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold transition-colors shadow-xs cursor-pointer disabled:opacity-50"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    <span>{deleting ? 'Deleting...' : 'Yes, Delete Customer Permanently'}</span>
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

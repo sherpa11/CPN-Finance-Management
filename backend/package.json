@@ -16,7 +16,8 @@
     "test:dc": "node tests/dailyCollectionApiTests.js",
     "test:chit": "node tests/chitFundApiTests.js",
     "test:audit": "node tests/systemAuditTests.js",
-    "test": "jest tests/calculationEngine.test.js && node tests/runApiTests.js && node tests/moiSeerApiTests.js && node tests/dailyCollectionApiTests.js && node tests/chitFundApiTests.js && node tests/systemAuditTests.js"
+    "test:delete": "node tests/customerDeleteTests.js",
+    "test": "jest tests/calculationEngine.test.js && node tests/runApiTests.js && node tests/moiSeerApiTests.js && node tests/dailyCollectionApiTests.js && node tests/chitFundApiTests.js && node tests/systemAuditTests.js && node tests/customerDeleteTests.js"
   },
   "keywords": [],
   "author": "",
