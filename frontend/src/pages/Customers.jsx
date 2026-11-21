@@ -12,6 +12,7 @@ import {
   Clock,
   CheckCircle,
   X,
+  UserPlus,
 } from 'lucide-react';
 import { formatINR, formatDate, getFinanceBadge } from '../utils/formatters';
 import CustomerStatementModal from '../components/CustomerStatementModal';
@@ -49,25 +50,39 @@ export default function Customers({ onNavigate, onSelectCustomerForLoan }) {
     return () => clearTimeout(timer);
   }, [search]);
 
-  const fetchCustomers = async (searchTerm = debouncedSearch, status = statusFilter) => {
+  const fetchCustomers = async (searchTerm = debouncedSearch, status = statusFilter, signal) => {
     setLoading(true);
     try {
       const res = await api.get('/customers', {
         params: { search: searchTerm, status },
+        signal,
       });
-      if (res.data.success) {
+      if (res?.data?.success && Array.isArray(res.data.customers)) {
         setCustomers(res.data.customers);
-        setTotal(res.data.total);
+        setTotal(res.data.total ?? res.data.customers.length);
+      } else if (res?.data?.customers && Array.isArray(res.data.customers)) {
+        setCustomers(res.data.customers);
+        setTotal(res.data.total ?? res.data.customers.length);
+      } else {
+        setCustomers([]);
+        setTotal(0);
       }
     } catch (err) {
+      if (err.name === 'CanceledError' || err.code === 'ERR_CANCELED') {
+        return;
+      }
       console.error('Failed to load customers', err);
+      setCustomers([]);
+      setTotal(0);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchCustomers(debouncedSearch, statusFilter);
+    const controller = new AbortController();
+    fetchCustomers(debouncedSearch, statusFilter, controller.signal);
+    return () => controller.abort();
   }, [debouncedSearch, statusFilter]);
 
   const openAddModal = () => {
@@ -199,7 +214,7 @@ export default function Customers({ onNavigate, onSelectCustomerForLoan }) {
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         {loading ? (
           <div className="p-8 text-center text-xs text-slate-500">Loading customers...</div>
-        ) : customers.length === 0 ? (
+        ) : !customers || customers.length === 0 ? (
           <div className="p-12 text-center text-xs text-slate-500">
             <Users className="w-10 h-10 mx-auto mb-3 text-slate-300" />
             <p className="text-sm font-bold text-slate-700">No customers registered yet</p>
@@ -230,7 +245,7 @@ export default function Customers({ onNavigate, onSelectCustomerForLoan }) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {customers.map((c) => (
+                {(customers || []).map((c) => (
                   <tr key={c._id} className="hover:bg-slate-50 transition-colors">
                     <td className="py-3 px-4 font-mono font-bold text-blue-700">{c.customerId}</td>
                     <td className="py-3 px-4">

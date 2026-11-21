@@ -22,6 +22,17 @@ const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
 
+// Disable ETag generation to prevent 304 caching on dynamic financial data
+app.set('etag', false);
+
+// Financial API routes must always serve fresh transactional data
+app.use('/api', (req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  next();
+});
+
 // Security middleware
 app.use(helmet());
 

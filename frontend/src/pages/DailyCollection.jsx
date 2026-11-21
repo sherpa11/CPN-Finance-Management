@@ -7,6 +7,7 @@ import {
   AlertCircle,
   Clock,
   Calendar,
+  CalendarDays,
   DollarSign,
   User,
   Phone,
@@ -20,6 +21,7 @@ import {
   Check,
   CreditCard,
   AlertTriangle,
+  Coins,
 } from 'lucide-react';
 import { formatINR, formatDate, formatDateTime, getStatusBadge } from '../utils/formatters';
 import api from '../api';
@@ -449,7 +451,7 @@ export default function DailyCollection({ onNavigate }) {
                       Loading Daily Collection accounts...
                     </td>
                   </tr>
-                ) : accounts.length === 0 ? (
+                ) : !accounts || accounts.length === 0 ? (
                   <tr>
                     <td colSpan="10" className="py-12 text-center text-slate-400">
                       <CalendarDays className="w-10 h-10 mx-auto mb-2 opacity-30 text-slate-400" />
@@ -460,7 +462,7 @@ export default function DailyCollection({ onNavigate }) {
                     </td>
                   </tr>
                 ) : (
-                  accounts.map((acc) => {
+                  (accounts || []).map((acc) => {
                     const statusBadge = getStatusBadge(acc.status);
                     return (
                       <tr key={acc._id} className="hover:bg-slate-50/80 transition-all font-mono">

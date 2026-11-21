@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Navbar from './components/Navbar';
 import Sidebar from './components/Sidebar';
+import ErrorBoundary from './components/ErrorBoundary';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Customers from './pages/Customers';
@@ -104,62 +105,68 @@ function AppContent() {
 
         {/* Main Content Workspace */}
         <main className="flex-1 p-3 sm:p-5 lg:p-8 overflow-y-auto max-w-7xl mx-auto w-full min-w-0">
-          {currentTab === 'dashboard' && (
-            <Dashboard
-              onNavigate={navigateTo}
-              onOpenCollection={handleOpenCollectionWithLoan}
-            />
-          )}
+          <ErrorBoundary
+            key={currentTab}
+            title={`Error in ${currentTab.replace('-', ' ')}`}
+            onNavigateHome={() => navigateTo('dashboard')}
+          >
+            {currentTab === 'dashboard' && (
+              <Dashboard
+                onNavigate={navigateTo}
+                onOpenCollection={handleOpenCollectionWithLoan}
+              />
+            )}
 
-          {currentTab === 'customers' && (
-            <Customers
-              onNavigate={navigateTo}
-              onSelectCustomerForLoan={handleSelectCustomerForLoan}
-            />
-          )}
+            {currentTab === 'customers' && (
+              <Customers
+                onNavigate={navigateTo}
+                onSelectCustomerForLoan={handleSelectCustomerForLoan}
+              />
+            )}
 
-          {(currentTab === 'new-finance' || currentTab === 'new-vatti') && (
-            <NewVatti
-              preselectedCustomer={preselectedCustomerForLoan}
-              onNavigate={navigateTo}
-            />
-          )}
+            {(currentTab === 'new-finance' || currentTab === 'new-vatti') && (
+              <NewVatti
+                preselectedCustomer={preselectedCustomerForLoan}
+                onNavigate={navigateTo}
+              />
+            )}
 
-          {currentTab === 'daily-collection' && (
-            <DailyCollection
-              onNavigate={navigateTo}
-            />
-          )}
+            {currentTab === 'daily-collection' && (
+              <DailyCollection
+                onNavigate={navigateTo}
+              />
+            )}
 
-          {currentTab === 'collections' && (
-            <Collections
-              initialLoan={preselectedLoanForCollection}
-            />
-          )}
+            {currentTab === 'collections' && (
+              <Collections
+                initialLoan={preselectedLoanForCollection}
+              />
+            )}
 
-          {currentTab === 'dues' && (
-            <DueManagement
-              onNavigate={navigateTo}
-              onOpenCollection={handleOpenCollectionWithLoan}
-            />
-          )}
+            {currentTab === 'dues' && (
+              <DueManagement
+                onNavigate={navigateTo}
+                onOpenCollection={handleOpenCollectionWithLoan}
+              />
+            )}
 
-          {currentTab === 'notifications' && (
-            <Notifications
-              onNavigate={navigateTo}
-              onOpenCollection={handleOpenCollectionWithLoan}
-            />
-          )}
+            {currentTab === 'notifications' && (
+              <Notifications
+                onNavigate={navigateTo}
+                onOpenCollection={handleOpenCollectionWithLoan}
+              />
+            )}
 
-          {currentTab === 'ledgers' && <Ledger />}
+            {currentTab === 'ledgers' && <Ledger />}
 
-          {currentTab === 'moi-seer' && <MoiSeer />}
+            {currentTab === 'moi-seer' && <MoiSeer />}
 
-          {currentTab === 'chit-fund' && <ChitFund />}
+            {currentTab === 'chit-fund' && <ChitFund />}
 
-          {currentTab === 'reports' && <Reports />}
+            {currentTab === 'reports' && <Reports />}
 
-          {currentTab === 'settings' && <Settings />}
+            {currentTab === 'settings' && <Settings />}
+          </ErrorBoundary>
         </main>
       </div>
     </div>
@@ -168,8 +175,10 @@ function AppContent() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <AppContent />
-    </AuthProvider>
+    <ErrorBoundary title="Application Error">
+      <AuthProvider>
+        <AppContent />
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }

@@ -5,6 +5,7 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  validateStatus: (status) => (status >= 200 && status < 300) || status === 304,
 });
 
 // Request interceptor to attach JWT token
