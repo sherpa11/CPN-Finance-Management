@@ -13,7 +13,7 @@ const login = async (req, res, next) => {
       });
     }
 
-    const user = await User.findOne({
+    let user = await User.findOne({
       $or: [
         { username: username.toLowerCase().trim() },
         { email: username.toLowerCase().trim() },
@@ -21,10 +21,83 @@ const login = async (req, res, next) => {
     });
 
     if (!user) {
-      return res.status(401).json({
-        success: false,
-        message: 'Invalid username or password.',
-      });
+      // Auto-bootstrap official admin and default configurations if fresh database
+      const totalUsers = await User.countDocuments();
+      if (totalUsers === 0 && username.toLowerCase().trim() === 'cpnraja') {
+        const bcrypt = require('bcryptjs');
+        const defaultHash = await bcrypt.hash('cpnraja2026', 10);
+        user = await User.create({
+          username: 'cpnraja',
+          email: 'admin@cpnraja.com',
+          fullName: 'CPN Raja',
+          passwordHash: defaultHash,
+          role: 'admin',
+          isActive: true,
+        });
+
+        // Ensure calculation configurations exist
+        try {
+          const CalculationConfiguration = require('../models/CalculationConfiguration');
+          const CONSTANTS = require('../config/constants');
+          const configCount = await CalculationConfiguration.countDocuments();
+          if (configCount === 0) {
+            await CalculationConfiguration.create([
+              {
+                configType: 'MONTHLY',
+                isActive: true,
+                isPendingOwnerConfirmation: true,
+                description: 'Monthly simple interest with configurable partial month rule.',
+                settings: {
+                  partialMonthRule: CONSTANTS.MONTHLY_PARTIAL_RULES.PRO_RATA_DAILY,
+                  isSimpleInterest: true,
+                  leapYearAware: true,
+                  defaultInterestRatePercent: 2.0,
+                },
+              },
+              {
+                configType: 'DAILY',
+                isActive: true,
+                isPendingOwnerConfirmation: false,
+                description: 'Daily simple interest with Asia/Kolkata date handling.',
+                settings: {
+                  dateInclusionConvention: CONSTANTS.DAILY_INCLUSION_CONVENTIONS.INCLUDE_START_EXCLUDE_END,
+                  isSimpleInterest: true,
+                  defaultInterestRatePercent: 0.1,
+                },
+              },
+              {
+                configType: 'DAILY_COLLECTION_70',
+                isActive: true,
+                isPendingOwnerConfirmation: false,
+                description: 'Daily Collection Scheme A (70 Calendar Days). Upfront interest deduction, 70 equal daily instalments.',
+                settings: {
+                  scheme: 'SCHEME_A',
+                  durationDays: 70,
+                  defaultInterestRatePercent: 10.0,
+                },
+              },
+              {
+                configType: 'DAILY_COLLECTION_100',
+                isActive: true,
+                isPendingOwnerConfirmation: false,
+                description: 'Daily Collection Scheme A (100 Calendar Days). Upfront interest deduction, 100 equal daily instalments.',
+                settings: {
+                  scheme: 'SCHEME_A',
+                  durationDays: 100,
+                  defaultInterestRatePercent: 10.0,
+                },
+              },
+            ]);
+          }
+        } catch (cErr) {
+          console.error('[Bootstrap] Config init note:', cErr.message);
+        }
+      } else {
+        return res.status(401).json({
+          success: false,
+          message: 'Invalid username or password.',
+        });
+      }
     }
 
     if (!user.isActive) {
