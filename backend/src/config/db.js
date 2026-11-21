@@ -41,7 +41,7 @@ const connectDB = async () => {
     return conn;
   } catch (error) {
     console.error(`[MongoDB] Initial connection failure: ${error.message}`);
-    if (process.env.NODE_ENV === 'test') {
+    if (process.env.NODE_ENV === 'test' || process.env.VERCEL) {
       throw error;
     }
     process.exit(1);

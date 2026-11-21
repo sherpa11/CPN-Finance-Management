@@ -137,25 +137,37 @@ npm run clear-demo
 
 ## 5. HOSTING DEPLOYMENT INSTRUCTIONS
 
-### Tier A: Frontend Deployment on Vercel
+### Option 1: Unified Full-Stack Vercel Deployment (Frontend SPA + Serverless Express API)
 
-1. In [Vercel Dashboard](https://vercel.com), click **Add New Project** and select the repository: `https://github.com/sherpa11/CPN-Finance-Management.git`.
-2. Configure Project Settings:
+This deploys **both** the React frontend and the Express backend into a single unified Vercel project with zero cross-origin configuration needed:
+
+1. In [Vercel Dashboard](https://vercel.com), select your project `cpn-finance-management`.
+2. Under **Settings** -> **General**:
+   - **Root Directory:** Keep as `./` (or blank) — DO NOT set to `frontend`.
+   - **Framework Preset:** Other / Vite
+   - **Build Command:** `npm run build` (configured automatically via root `vercel.json`)
+   - **Output Directory:** `frontend/dist` (configured automatically via root `vercel.json`)
+3. Under **Settings** -> **Environment Variables**, add:
+   - `MONGODB_URI`: `mongodb+srv://<username>:<password>@cluster.mongodb.net/cpn_raja_vatti_db?retryWrites=true&w=majority`
+   - `JWT_SECRET`: `<minimum 32-character random string>`
+   - `NODE_ENV`: `production`
+4. Root `vercel.json` handles all routing:
+   - Static assets (`/assets/*`, `/index.html`) served from `frontend/dist`.
+   - Frontend SPA navigation (`/customers`, `/due-management`, `/chit-fund`, `/moi-seer`) rewrites to `/index.html`.
+   - API endpoints (`/api/*`) route to the serverless function `api/index.js` connected to MongoDB Atlas.
+
+### Option 2: Frontend-Only Vercel Deployment (Split with Render / Railway / VPS)
+
+If hosting the backend API on an external server (Render/Railway/VPS) and using Vercel solely for the React static frontend:
+
+1. In Vercel Project **Settings** -> **General**:
+   - **Root Directory:** Edit and set to `frontend`.
    - **Framework Preset:** `Vite`
-   - **Root Directory:** `frontend`
    - **Build Command:** `npm run build`
    - **Output Directory:** `dist`
-3. Add Environment Variable:
-   - `VITE_API_URL` = `https://<your-backend-url>/api` (or keep `/api` if using Vercel rewrites)
-4. Verify `frontend/vercel.json` is included:
-   ```json
-   {
-     "rewrites": [
-       { "source": "/(.*)", "destination": "/index.html" }
-     ]
-   }
-   ```
-5. Click **Deploy**. Vercel will build the frontend in ~1.5s and provide a production HTTPS URL.
+2. Under **Settings** -> **Environment Variables**:
+   - `VITE_API_URL`: `https://your-backend-api.onrender.com/api`
+3. Frontend routes are handled by `frontend/vercel.json` rewriting to `/index.html`.
 
 ### Tier B: Backend Deployment on Render / Railway / Linux VPS
 
