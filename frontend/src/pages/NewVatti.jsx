@@ -44,7 +44,7 @@ export default function NewVatti({ preselectedCustomer, onNavigate }) {
   useEffect(() => {
     async function loadCustomers() {
       try {
-        const res = await api.get('/customers?status=ACTIVE&limit=200');
+        const res = await api.get('/customers?status=ACTIVE&limit=200&fields=dropdown');
         if (res.data.success) {
           setCustomers(res.data.customers);
           if (!selectedCustomerId && res.data.customers.length > 0) {

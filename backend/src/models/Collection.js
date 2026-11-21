@@ -115,5 +115,7 @@ const collectionSchema = new mongoose.Schema(
 
 collectionSchema.index({ customerId: 1, paymentDate: -1 });
 collectionSchema.index({ loanId: 1, paymentDate: -1 });
+collectionSchema.index({ status: 1, paymentDate: -1 });
+collectionSchema.index({ paymentDate: -1 });
 
 module.exports = mongoose.model('Collection', collectionSchema);

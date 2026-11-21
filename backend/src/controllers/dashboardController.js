@@ -8,8 +8,27 @@ const CONSTANTS = require('../config/constants');
 
 const TIMEZONE = CONSTANTS.DEFAULT_TIMEZONE;
 
+// In-memory safe cache for dashboard metrics (10 seconds TTL)
+let dashboardCache = {
+  timestamp: 0,
+  payload: null,
+};
+
+function invalidateDashboardCache() {
+  dashboardCache.timestamp = 0;
+  dashboardCache.payload = null;
+}
+
 const getDashboardData = async (req, res, next) => {
   try {
+    const isFreshRequested = req.query.fresh === 'true' || req.query.skipCache === 'true';
+    const nowMs = Date.now();
+
+    // Serve cached payload if valid within 10 seconds and not forced fresh
+    if (!isFreshRequested && dashboardCache.payload && nowMs - dashboardCache.timestamp < 10000) {
+      return res.json(dashboardCache.payload);
+    }
+
     const today = DateTime.now().setZone(TIMEZONE).startOf('day');
 
     // 1. Aggregations for Summary Cards with optimized projections and lean execution
@@ -195,7 +214,7 @@ const getDashboardData = async (req, res, next) => {
       };
     };
 
-    res.json({
+    const responseData = {
       success: true,
       data: {
         summary: {
@@ -218,7 +237,15 @@ const getDashboardData = async (req, res, next) => {
           recentlySettled: recentlySettledLoans.map(formatLoanItem),
         },
       },
-    });
+    };
+
+    // Cache valid payload
+    dashboardCache = {
+      timestamp: Date.now(),
+      payload: responseData,
+    };
+
+    res.json(responseData);
   } catch (error) {
     next(error);
   }
@@ -226,4 +253,5 @@ const getDashboardData = async (req, res, next) => {
 
 module.exports = {
   getDashboardData,
+  invalidateDashboardCache,
 };

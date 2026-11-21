@@ -206,6 +206,7 @@ const dailyCollectionAccountSchema = new mongoose.Schema(
 );
 
 dailyCollectionAccountSchema.index({ customerId: 1, status: 1 });
+dailyCollectionAccountSchema.index({ customerId: 1, status: 1, createdAt: -1 });
 dailyCollectionAccountSchema.index({ scheme: 1, status: 1 });
 dailyCollectionAccountSchema.index({ expectedCompletionDate: 1, status: 1 });
 dailyCollectionAccountSchema.index({ status: 1, createdAt: -1 });

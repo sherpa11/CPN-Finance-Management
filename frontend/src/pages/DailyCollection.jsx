@@ -149,10 +149,10 @@ export default function DailyCollection({ onNavigate }) {
   }, [debouncedSearch, statusFilter]);
 
   useEffect(() => {
-    if (selectedAccountId) {
+    if (selectedAccountId && activeView === 'tracker') {
       loadAccountTracker(selectedAccountId);
     }
-  }, [selectedAccountId]);
+  }, [selectedAccountId, activeView]);
 
   useEffect(() => {
     if (activeView === 'today-sheet') {

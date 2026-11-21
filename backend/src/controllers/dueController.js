@@ -80,7 +80,7 @@ const getDuesList = async (req, res, next) => {
 
     const total = await Loan.countDocuments(query);
     const loans = await Loan.find(query)
-      .populate('customerId')
+      .select('loanId customerId customerCode customerName customerMobile vattiType principalPaise interestRatePercent accruedInterestPaise outstandingPrincipalPaise outstandingInterestPaise startDate dueDate status')
       .sort(sort)
       .skip((page - 1) * limit)
       .limit(Number(limit))
@@ -93,7 +93,7 @@ const getDuesList = async (req, res, next) => {
       return {
         id: l._id,
         loanId: l.loanId,
-        customerId: l.customerId?._id,
+        customerId: l.customerId,
         customerCode: l.customerCode,
         customerName: l.customerName,
         customerMobile: l.customerMobile,

@@ -93,6 +93,8 @@ const ChitCollectionSchema = new mongoose.Schema({
 });
 
 ChitCollectionSchema.index({ chitGroupId: 1, month: 1, memberNumber: 1 });
+ChitCollectionSchema.index({ chitGroupId: 1, isReversed: 1 });
+ChitCollectionSchema.index({ chitMemberId: 1, paymentDate: -1 });
 ChitCollectionSchema.index({ paymentDate: -1 });
 
 module.exports = mongoose.model('ChitCollection', ChitCollectionSchema);

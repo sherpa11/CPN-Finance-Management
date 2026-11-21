@@ -93,14 +93,24 @@ async function generateChitPayoutVoucher() {
  */
 const getChitSummary = async (req, res, next) => {
   try {
-    const totalGroups = await ChitGroup.countDocuments();
-    const activeGroups = await ChitGroup.countDocuments({ status: 'ACTIVE' });
-    const formingGroups = await ChitGroup.countDocuments({ status: 'FORMING' });
-    const completedGroups = await ChitGroup.countDocuments({ status: 'COMPLETED' });
+    const [
+      totalGroups,
+      activeGroups,
+      formingGroups,
+      completedGroups,
+      totalMembers,
+      groups,
+    ] = await Promise.all([
+      ChitGroup.countDocuments(),
+      ChitGroup.countDocuments({ status: 'ACTIVE' }),
+      ChitGroup.countDocuments({ status: 'FORMING' }),
+      ChitGroup.countDocuments({ status: 'COMPLETED' }),
+      ChitMember.countDocuments({ status: 'ACTIVE' }),
+      ChitGroup.find()
+        .select('totalValuePaise totalInstalmentExpectedPaise totalCollectedPaise totalPayoutsPaise')
+        .lean(),
+    ]);
 
-    const totalMembers = await ChitMember.countDocuments({ status: 'ACTIVE' });
-
-    const groups = await ChitGroup.find();
     let totalChitValuePaise = 0;
     let totalInstalmentExpectedPaise = 0;
     let totalCollectedPaise = 0;

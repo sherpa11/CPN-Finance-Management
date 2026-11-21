@@ -164,7 +164,10 @@ const loanSchema = new mongoose.Schema(
 loanSchema.index({ customerId: 1, status: 1 });
 loanSchema.index({ vattiType: 1, status: 1 });
 loanSchema.index({ dueDate: 1, status: 1 });
+loanSchema.index({ status: 1, dueDate: 1 });
 loanSchema.index({ status: 1, createdAt: -1 });
+loanSchema.index({ status: 1, settledDate: -1 });
 loanSchema.index({ vattiType: 1, status: 1, createdAt: -1 });
+loanSchema.index({ startDate: -1 });
 
 module.exports = mongoose.model('Loan', loanSchema);

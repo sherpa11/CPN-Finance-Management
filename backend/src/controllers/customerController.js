@@ -27,7 +27,7 @@ async function generateCustomerId() {
 
 const listCustomers = async (req, res, next) => {
   try {
-    const { search, status, page = 1, limit = 50 } = req.query;
+    const { search, status, page = 1, limit = 50, fields, minimal } = req.query;
     const query = {};
 
     if (status && status !== 'ALL') {
@@ -45,8 +45,15 @@ const listCustomers = async (req, res, next) => {
       ];
     }
 
+    const isMinimal = minimal === 'true' || fields === 'minimal' || fields === 'dropdown';
+    let customerQuery = Customer.find(query);
+
+    if (isMinimal) {
+      customerQuery = customerQuery.select('customerId name mobileNumber status address');
+    }
+
     const total = await Customer.countDocuments(query);
-    const customers = await Customer.find(query)
+    const customers = await customerQuery
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
       .limit(Number(limit))

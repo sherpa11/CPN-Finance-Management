@@ -1,28 +1,65 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Navbar from './components/Navbar';
 import Sidebar from './components/Sidebar';
 import ErrorBoundary from './components/ErrorBoundary';
+import PageSkeleton from './components/PageSkeleton';
 import Login from './pages/Login';
-import Dashboard from './pages/Dashboard';
-import Customers from './pages/Customers';
-import NewVatti from './pages/NewVatti';
-import Collections from './pages/Collections';
-import DueManagement from './pages/DueManagement';
-import Notifications from './pages/Notifications';
-import Ledger from './pages/Ledger';
-import Reports from './pages/Reports';
-import Settings from './pages/Settings';
-import MoiSeer from './pages/MoiSeer';
-import DailyCollection from './pages/DailyCollection';
-import ChitFund from './pages/ChitFund';
+
+// Lazy-loaded page components for instant initial bundle loading and code splitting
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const Customers = lazy(() => import('./pages/Customers'));
+const NewVatti = lazy(() => import('./pages/NewVatti'));
+const Collections = lazy(() => import('./pages/Collections'));
+const DueManagement = lazy(() => import('./pages/DueManagement'));
+const Notifications = lazy(() => import('./pages/Notifications'));
+const Ledger = lazy(() => import('./pages/Ledger'));
+const Reports = lazy(() => import('./pages/Reports'));
+const Settings = lazy(() => import('./pages/Settings'));
+const MoiSeer = lazy(() => import('./pages/MoiSeer'));
+const DailyCollection = lazy(() => import('./pages/DailyCollection'));
+const ChitFund = lazy(() => import('./pages/ChitFund'));
+
+// Helper to resolve route tab from URL pathname
+function getTabFromPath() {
+  const path = window.location.pathname.replace(/^\//, '').toLowerCase();
+  const validTabs = [
+    'dashboard',
+    'customers',
+    'new-finance',
+    'new-vatti',
+    'daily-collection',
+    'collections',
+    'dues',
+    'notifications',
+    'ledgers',
+    'reports',
+    'settings',
+    'moi-seer',
+    'chit-fund',
+  ];
+  if (path === '' || path === 'login') return 'dashboard';
+  if (validTabs.includes(path)) {
+    return path === 'new-vatti' ? 'new-finance' : path;
+  }
+  return 'dashboard';
+}
 
 function AppContent() {
   const { user, loading } = useAuth();
-  const [currentTab, setCurrentTab] = useState('dashboard');
+  const [currentTab, setCurrentTab] = useState(getTabFromPath);
   const [preselectedCustomerForLoan, setPreselectedCustomerForLoan] = useState(null);
   const [preselectedLoanForCollection, setPreselectedLoanForCollection] = useState(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  // Synchronize browser history and support Back / Forward buttons
+  useEffect(() => {
+    const handlePopState = () => {
+      setCurrentTab(getTabFromPath());
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   // Prevent background scrolling while mobile navigation drawer is open
   useEffect(() => {
@@ -55,17 +92,21 @@ function AppContent() {
   const navigateTo = (tab) => {
     setCurrentTab(tab);
     setIsMobileMenuOpen(false);
+    const targetPath = tab === 'dashboard' ? '/' : `/${tab}`;
+    if (window.location.pathname !== targetPath) {
+      window.history.pushState({ tab }, '', targetPath);
+    }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleOpenCollectionWithLoan = (loan) => {
     setPreselectedLoanForCollection(loan);
-    setCurrentTab('collections');
+    navigateTo('collections');
   };
 
   const handleSelectCustomerForLoan = (customer) => {
     setPreselectedCustomerForLoan(customer);
-    setCurrentTab('new-finance');
+    navigateTo('new-finance');
   };
 
   return (
@@ -110,62 +151,64 @@ function AppContent() {
             title={`Error in ${currentTab.replace('-', ' ')}`}
             onNavigateHome={() => navigateTo('dashboard')}
           >
-            {currentTab === 'dashboard' && (
-              <Dashboard
-                onNavigate={navigateTo}
-                onOpenCollection={handleOpenCollectionWithLoan}
-              />
-            )}
+            <Suspense fallback={<PageSkeleton />}>
+              {currentTab === 'dashboard' && (
+                <Dashboard
+                  onNavigate={navigateTo}
+                  onOpenCollection={handleOpenCollectionWithLoan}
+                />
+              )}
 
-            {currentTab === 'customers' && (
-              <Customers
-                onNavigate={navigateTo}
-                onSelectCustomerForLoan={handleSelectCustomerForLoan}
-              />
-            )}
+              {currentTab === 'customers' && (
+                <Customers
+                  onNavigate={navigateTo}
+                  onSelectCustomerForLoan={handleSelectCustomerForLoan}
+                />
+              )}
 
-            {(currentTab === 'new-finance' || currentTab === 'new-vatti') && (
-              <NewVatti
-                preselectedCustomer={preselectedCustomerForLoan}
-                onNavigate={navigateTo}
-              />
-            )}
+              {(currentTab === 'new-finance' || currentTab === 'new-vatti') && (
+                <NewVatti
+                  preselectedCustomer={preselectedCustomerForLoan}
+                  onNavigate={navigateTo}
+                />
+              )}
 
-            {currentTab === 'daily-collection' && (
-              <DailyCollection
-                onNavigate={navigateTo}
-              />
-            )}
+              {currentTab === 'daily-collection' && (
+                <DailyCollection
+                  onNavigate={navigateTo}
+                />
+              )}
 
-            {currentTab === 'collections' && (
-              <Collections
-                initialLoan={preselectedLoanForCollection}
-              />
-            )}
+              {currentTab === 'collections' && (
+                <Collections
+                  initialLoan={preselectedLoanForCollection}
+                />
+              )}
 
-            {currentTab === 'dues' && (
-              <DueManagement
-                onNavigate={navigateTo}
-                onOpenCollection={handleOpenCollectionWithLoan}
-              />
-            )}
+              {currentTab === 'dues' && (
+                <DueManagement
+                  onNavigate={navigateTo}
+                  onOpenCollection={handleOpenCollectionWithLoan}
+                />
+              )}
 
-            {currentTab === 'notifications' && (
-              <Notifications
-                onNavigate={navigateTo}
-                onOpenCollection={handleOpenCollectionWithLoan}
-              />
-            )}
+              {currentTab === 'notifications' && (
+                <Notifications
+                  onNavigate={navigateTo}
+                  onOpenCollection={handleOpenCollectionWithLoan}
+                />
+              )}
 
-            {currentTab === 'ledgers' && <Ledger />}
+              {currentTab === 'ledgers' && <Ledger />}
 
-            {currentTab === 'moi-seer' && <MoiSeer />}
+              {currentTab === 'moi-seer' && <MoiSeer />}
 
-            {currentTab === 'chit-fund' && <ChitFund />}
+              {currentTab === 'chit-fund' && <ChitFund />}
 
-            {currentTab === 'reports' && <Reports />}
+              {currentTab === 'reports' && <Reports />}
 
-            {currentTab === 'settings' && <Settings />}
+              {currentTab === 'settings' && <Settings />}
+            </Suspense>
           </ErrorBoundary>
         </main>
       </div>

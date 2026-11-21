@@ -1,45 +1,49 @@
 /**
- * MongoDB Connection Configuration
+ * MongoDB Connection Configuration with Optimized Serverless Connection Caching
  */
 require('dotenv').config();
 const mongoose = require('mongoose');
 
-let isConnected = false;
+// Serverless-aware global connection cache to prevent duplicate connection pools across invocations
+let cached = global.mongoose;
+if (!cached) {
+  cached = global.mongoose = { conn: null, promise: null };
+}
 
 const connectDB = async () => {
-  if (mongoose.connection.readyState === 1) {
-    isConnected = true;
-    return mongoose.connection;
+  if (cached.conn && mongoose.connection.readyState === 1) {
+    return cached.conn;
   }
 
-  const uri = process.env.NODE_ENV === 'test'
-    ? (process.env.MONGODB_URI_TEST || 'mongodb://127.0.0.1:27017/cpn_raja_test_db')
-    : (process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/cpn_raja_vatti_db');
+  const uri =
+    process.env.NODE_ENV === 'test'
+      ? process.env.MONGODB_URI_TEST || 'mongodb://127.0.0.1:27017/cpn_raja_test_db'
+      : process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/cpn_raja_vatti_db';
+
+  if (!cached.promise) {
+    const opts = {
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 45000,
+      maxPoolSize: process.env.VERCEL ? 10 : 20,
+      minPoolSize: process.env.VERCEL ? 1 : 2,
+      autoIndex: true,
+    };
+
+    cached.promise = mongoose.connect(uri, opts).then((mongooseInstance) => {
+      if (process.env.NODE_ENV !== 'test') {
+        console.log(
+          `[MongoDB] Connected successfully to: ${mongooseInstance.connection.host}/${mongooseInstance.connection.name}`
+        );
+      }
+      return mongooseInstance;
+    });
+  }
 
   try {
-    const conn = await mongoose.connect(uri, {
-      serverSelectionTimeoutMS: 5000,
-      autoIndex: true,
-    });
-
-    isConnected = conn.connections[0].readyState === 1;
-    if (process.env.NODE_ENV !== 'test') {
-      console.log(`[MongoDB] Connected successfully to: ${conn.connection.host}/${conn.connection.name}`);
-    }
-    
-    mongoose.connection.on('error', (err) => {
-      console.error('[MongoDB] Connection error:', err);
-    });
-
-    mongoose.connection.on('disconnected', () => {
-      if (process.env.NODE_ENV !== 'test') {
-        console.warn('[MongoDB] Disconnected from server');
-      }
-      isConnected = false;
-    });
-
-    return conn;
+    cached.conn = await cached.promise;
+    return cached.conn;
   } catch (error) {
+    cached.promise = null;
     console.error(`[MongoDB] Initial connection failure: ${error.message}`);
     if (process.env.NODE_ENV === 'test' || process.env.VERCEL) {
       throw error;

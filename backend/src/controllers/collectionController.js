@@ -11,6 +11,7 @@ const {
   validateAndAllocatePayment,
 } = require('../services/calculationEngine');
 const { evaluateDueNotifications } = require('../services/notificationService');
+const { invalidateDashboardCache } = require('./dashboardController');
 const CONSTANTS = require('../config/constants');
 
 // Generate unique sequential Collection ID e.g. CPN-COL-0001
@@ -272,6 +273,8 @@ const recordCollection = async (req, res, next) => {
       console.error('[Notification Trigger Error]', err.message);
     });
 
+    invalidateDashboardCache();
+
     res.status(201).json({
       success: true,
       message: `Payment receipt ${result.receiptNumber} recorded successfully`,
@@ -404,6 +407,8 @@ const reverseCollection = async (req, res, next) => {
     evaluateDueNotifications().catch((err) => {
       console.error('[Notification Trigger Error]', err.message);
     });
+
+    invalidateDashboardCache();
 
     res.json({
       success: true,

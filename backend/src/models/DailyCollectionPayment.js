@@ -104,6 +104,7 @@ const dailyCollectionPaymentSchema = new mongoose.Schema(
 
 dailyCollectionPaymentSchema.index({ collectionAccountId: 1, dayNumber: 1 });
 dailyCollectionPaymentSchema.index({ collectionAccountId: 1, paymentDate: -1 });
-dailyCollectionPaymentSchema.index({ paymentDate: 1, status: 1 });
+dailyCollectionPaymentSchema.index({ paymentDate: -1, status: 1 });
+dailyCollectionPaymentSchema.index({ customerId: 1, paymentDate: -1 });
 
 module.exports = mongoose.model('DailyCollectionPayment', dailyCollectionPaymentSchema);

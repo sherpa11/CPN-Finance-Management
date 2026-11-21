@@ -83,8 +83,13 @@ export default function Collections({ initialLoan }) {
 
   useEffect(() => {
     fetchCollections();
-    loadActiveLoans();
   }, []);
+
+  useEffect(() => {
+    if (isRecordModalOpen || initialLoan) {
+      loadActiveLoans();
+    }
+  }, [isRecordModalOpen, initialLoan]);
 
   useEffect(() => {
     if (initialLoan) {

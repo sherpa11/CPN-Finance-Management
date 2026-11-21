@@ -110,21 +110,25 @@ const getMonthlyReport = async (req, res, next) => {
     const startOfMonth = DateTime.fromObject({ year: targetYear, month: targetMonth, day: 1 }, { zone: TIMEZONE }).startOf('month');
     const endOfMonth = startOfMonth.endOf('month');
 
-    // Lending during this month
-    const loans = await Loan.find({
-      startDate: { $gte: startOfMonth.toJSDate(), $lte: endOfMonth.toJSDate() },
-    }).lean();
-
-    // Collections during this month
-    const collections = await Collection.find({
-      paymentDate: { $gte: startOfMonth.toJSDate(), $lte: endOfMonth.toJSDate() },
-      status: 'CONFIRMED',
-    }).lean();
-
-    // Active loans breakdown as of month end
-    const activeLoans = await Loan.find({
-      status: { $in: [CONSTANTS.LOAN_STATUS.ACTIVE, CONSTANTS.LOAN_STATUS.OVERDUE] },
-    }).lean();
+    // Run monthly queries in parallel with optimized projections
+    const [loans, collections, activeLoans] = await Promise.all([
+      Loan.find({
+        startDate: { $gte: startOfMonth.toJSDate(), $lte: endOfMonth.toJSDate() },
+      })
+        .select('principalPaise vattiType loanId')
+        .lean(),
+      Collection.find({
+        paymentDate: { $gte: startOfMonth.toJSDate(), $lte: endOfMonth.toJSDate() },
+        status: 'CONFIRMED',
+      })
+        .select('principalAllocationPaise interestAllocationPaise totalAmountPaise loanCode')
+        .lean(),
+      Loan.find({
+        status: { $in: [CONSTANTS.LOAN_STATUS.ACTIVE, CONSTANTS.LOAN_STATUS.OVERDUE] },
+      })
+        .select('outstandingPrincipalPaise outstandingInterestPaise accruedInterestPaise')
+        .lean(),
+    ]);
 
     const totalPrincipalLentPaise = loans.reduce((sum, l) => sum + l.principalPaise, 0);
     const totalPrincipalCollectedPaise = collections.reduce((sum, c) => sum + c.principalAllocationPaise, 0);
@@ -186,18 +190,25 @@ const getYearlyReport = async (req, res, next) => {
     const startOfYear = DateTime.fromObject({ year: targetYear, month: 1, day: 1 }, { zone: TIMEZONE }).startOf('year');
     const endOfYear = startOfYear.endOf('year');
 
-    const loans = await Loan.find({
-      startDate: { $gte: startOfYear.toJSDate(), $lte: endOfYear.toJSDate() },
-    }).lean();
-
-    const collections = await Collection.find({
-      paymentDate: { $gte: startOfYear.toJSDate(), $lte: endOfYear.toJSDate() },
-      status: 'CONFIRMED',
-    }).lean();
-
-    const activeLoans = await Loan.find({
-      status: { $in: [CONSTANTS.LOAN_STATUS.ACTIVE, CONSTANTS.LOAN_STATUS.OVERDUE] },
-    }).lean();
+    // Run yearly queries in parallel with optimized projections
+    const [loans, collections, activeLoans] = await Promise.all([
+      Loan.find({
+        startDate: { $gte: startOfYear.toJSDate(), $lte: endOfYear.toJSDate() },
+      })
+        .select('principalPaise vattiType')
+        .lean(),
+      Collection.find({
+        paymentDate: { $gte: startOfYear.toJSDate(), $lte: endOfYear.toJSDate() },
+        status: 'CONFIRMED',
+      })
+        .select('principalAllocationPaise interestAllocationPaise totalAmountPaise')
+        .lean(),
+      Loan.find({
+        status: { $in: [CONSTANTS.LOAN_STATUS.ACTIVE, CONSTANTS.LOAN_STATUS.OVERDUE] },
+      })
+        .select('outstandingPrincipalPaise outstandingInterestPaise')
+        .lean(),
+    ]);
 
     const totalPrincipalLentPaise = loans.reduce((sum, l) => sum + l.principalPaise, 0);
     const totalPrincipalCollectedPaise = collections.reduce((sum, c) => sum + c.principalAllocationPaise, 0);

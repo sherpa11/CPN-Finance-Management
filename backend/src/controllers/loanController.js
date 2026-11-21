@@ -14,6 +14,7 @@ const {
 const { evaluateDueNotifications } = require('../services/notificationService');
 const CONSTANTS = require('../config/constants');
 const { escapeRegex } = require('../utils/sanitize');
+const { invalidateDashboardCache } = require('./dashboardController');
 
 // Generate sequential Loan ID e.g. CPN-LN-0001
 async function generateLoanId() {
@@ -231,6 +232,8 @@ const createLoan = async (req, res, next) => {
     evaluateDueNotifications().catch((err) => {
       console.error('[Notification Trigger Error]', err.message);
     });
+
+    invalidateDashboardCache();
 
     res.status(201).json({
       success: true,
