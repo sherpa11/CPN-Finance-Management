@@ -5,8 +5,32 @@ const { evaluateDueNotifications } = require('./services/notificationService');
 
 const PORT = process.env.PORT || 5000;
 
+function validateEnvironment() {
+  const isProduction = process.env.NODE_ENV === 'production';
+  const missing = [];
+
+  if (isProduction) {
+    if (!process.env.MONGODB_URI) {
+      missing.push('MONGODB_URI (MongoDB Atlas connection string)');
+    }
+    if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 16) {
+      missing.push('JWT_SECRET (Cryptographically secure string, minimum 16-32 characters)');
+    }
+  }
+
+  if (missing.length > 0) {
+    console.error('\n=====================================================');
+    console.error('  FATAL: CRITICAL ENVIRONMENT CONFIGURATION MISSING');
+    console.error('=====================================================');
+    missing.forEach((m) => console.error(`  - Missing: ${m}`));
+    console.error('Please configure these in your deployment environment variables.\n');
+    process.exit(1);
+  }
+}
+
 async function startServer() {
   try {
+    validateEnvironment();
     await connectDB();
 
     // Initial evaluation of dues and notifications on startup
@@ -29,7 +53,7 @@ async function startServer() {
     const server = app.listen(PORT, () => {
       console.log(`
 =====================================================
-  CPN RAJA – VATTI MANAGEMENT SYSTEM
+  CPN RAJA – FINANCE MANAGEMENT SYSTEM
   Backend Server Running on Port: ${PORT}
   Environment: ${process.env.NODE_ENV || 'development'}
   Timezone: ${process.env.TIMEZONE || 'Asia/Kolkata'}

@@ -12,7 +12,9 @@ const connectDB = async () => {
     return mongoose.connection;
   }
 
-  const uri = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/cpn_raja_vatti_db';
+  const uri = process.env.NODE_ENV === 'test'
+    ? (process.env.MONGODB_URI_TEST || 'mongodb://127.0.0.1:27017/cpn_raja_test_db')
+    : (process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/cpn_raja_vatti_db');
 
   try {
     const conn = await mongoose.connect(uri, {

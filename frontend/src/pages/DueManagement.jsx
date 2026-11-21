@@ -10,7 +10,7 @@ import {
   Phone,
   Banknote,
 } from 'lucide-react';
-import { formatINR, formatDate, getVattiBadge } from '../utils/formatters';
+import { formatINR, formatDate, getFinanceBadge } from '../utils/formatters';
 import api from '../api';
 
 export default function DueManagement({ onNavigate, onOpenCollection }) {
@@ -71,7 +71,7 @@ export default function DueManagement({ onNavigate, onOpenCollection }) {
             <span>Due Management & Maturity Schedule</span>
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            Filter and sort accounts by maturity date, outstanding amount, and Vatti scheme
+            Filter and sort accounts by maturity date, outstanding amount, and Finance scheme
           </p>
         </div>
 
@@ -107,7 +107,7 @@ export default function DueManagement({ onNavigate, onOpenCollection }) {
 
       {/* Custom Date Pickers if CUSTOM selected */}
       {filter === 'CUSTOM' && (
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center space-x-3 text-xs">
+        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-wrap items-center gap-2 sm:gap-3 text-xs">
           <span>From:</span>
           <input
             type="date"
@@ -124,7 +124,7 @@ export default function DueManagement({ onNavigate, onOpenCollection }) {
           />
           <button
             onClick={fetchDues}
-            className="px-3 py-1.5 bg-blue-600 text-white rounded font-bold hover:bg-blue-500"
+            className="px-3.5 py-1.5 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-500 cursor-pointer min-h-[36px]"
           >
             Apply Range
           </button>
@@ -149,10 +149,10 @@ export default function DueManagement({ onNavigate, onOpenCollection }) {
           onChange={(e) => setVattiType(e.target.value)}
           className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-700 font-semibold"
         >
-          <option value="ALL">All Vatti Types</option>
-          <option value="MONTHLY">Monthly Vatti</option>
-          <option value="DAILY">Daily Vatti</option>
-          <option value="MEATER">Meater Vatti</option>
+          <option value="ALL">All Finance Types</option>
+          <option value="MONTHLY">Monthly Finance</option>
+          <option value="DAILY">Daily Finance</option>
+          <option value="MEATER">Meater Finance</option>
         </select>
 
         <select
@@ -182,13 +182,13 @@ export default function DueManagement({ onNavigate, onOpenCollection }) {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-xs text-left">
+            <table className="w-full text-xs text-left min-w-[700px]">
               <thead className="bg-slate-100 text-slate-700 border-b border-slate-200">
                 <tr>
                   <th className="py-3 px-4 font-semibold">Customer</th>
                   <th className="py-3 px-3 font-semibold">Mobile</th>
                   <th className="py-3 px-3 font-semibold">Loan Code</th>
-                  <th className="py-3 px-3 font-semibold">Vatti Type</th>
+                  <th className="py-3 px-3 font-semibold">Finance Type</th>
                   <th className="py-3 px-3 font-semibold">Rate</th>
                   <th className="py-3 px-3 font-semibold text-right">Principal</th>
                   <th className="py-3 px-3 font-semibold text-right">Outstanding</th>
@@ -199,7 +199,7 @@ export default function DueManagement({ onNavigate, onOpenCollection }) {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {dues.map((d) => {
-                  const badge = getVattiBadge(d.vattiType);
+                  const badge = getFinanceBadge(d.financeType || d.vattiType);
                   const isOverdue = d.dueStatus === 'OVERDUE';
                   const isToday = d.dueStatus === 'DUE_TODAY';
 

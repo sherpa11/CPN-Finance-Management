@@ -7,6 +7,8 @@ const {
   calculateMeaterInterest,
   validateAndAllocatePayment,
   getKolkataDate,
+  calculateDailyCollectionSchemeA,
+  calculateDailyCollectionSchemeB,
 } = require('../src/services/calculationEngine');
 const CONSTANTS = require('../src/config/constants');
 
@@ -33,7 +35,7 @@ describe('CPN RAJA – Centralized Financial Calculation Engine', () => {
     });
   });
 
-  describe('Monthly Vatti Financial Calculations', () => {
+  describe('Monthly Finance Financial Calculations', () => {
     test('calculates exact 1-month simple interest at 2% on ₹50,000', () => {
       const principalPaise = toPaise(50000); // ₹50,000 = 5,000,000 paise
       const res = calculateMonthlyInterest({
@@ -119,7 +121,7 @@ describe('CPN RAJA – Centralized Financial Calculation Engine', () => {
     });
   });
 
-  describe('Daily Vatti Financial Calculations', () => {
+  describe('Daily Finance Financial Calculations', () => {
     test('calculates daily interest accurately using Asia/Kolkata timezone', () => {
       const principalPaise = toPaise(20000); // ₹20,000
       const dailyRate = 0.1; // 0.1% per day = ₹20/day
@@ -154,7 +156,7 @@ describe('CPN RAJA – Centralized Financial Calculation Engine', () => {
     });
   });
 
-  describe('Meater Vatti Explicit Pending State', () => {
+  describe('Meater Finance Explicit Pending State', () => {
     test('does NOT invent formula and returns explicit pending status', () => {
       const res = calculateMeaterInterest({
         principalPaise: toPaise(30000),
@@ -238,6 +240,142 @@ describe('CPN RAJA – Centralized Financial Calculation Engine', () => {
           interestAllocationPaise: 0,
         });
       }).toThrow('exceeds current outstanding principal');
+    });
+  });
+
+  describe('Daily Collection – Two Repayment Schemes & Exact Math', () => {
+    test('Scheme A: Upfront interest deduction on ₹1,00,000 @ 10% (₹10,000 upfront, ₹90,000 net, 100 days)', () => {
+      const grossPaise = toPaise(100000);
+      const res = calculateDailyCollectionSchemeA({
+        grossLoanAmountPaise: grossPaise,
+        upfrontInterestPercent: 10,
+        startDate: '2026-11-20',
+      });
+
+      expect(res.scheme).toBe('UPFRONT_DEDUCTION');
+      expect(res.grossLoanAmountPaise).toBe(10000000);
+      expect(res.upfrontInterestPaise).toBe(1000000); // ₹10,000
+      expect(res.netDisbursementPaise).toBe(9000000); // ₹90,000
+      expect(res.dailyInstalmentPaise).toBe(100000); // ₹1,000
+      expect(res.totalDurationDays).toBe(100);
+      expect(res.totalRepaymentPaise).toBe(10000000); // ₹1,00,000
+      expect(res.schedule.length).toBe(100);
+
+      // Verify all 100 days sum exactly to gross principal
+      const sumExpected = res.schedule.reduce((acc, s) => acc + s.expectedPaise, 0);
+      expect(sumExpected).toBe(10000000);
+
+      // Expected completion date = 2026-11-20 + 99 days = 2027-02-27
+      expect(res.expectedCompletionDate).toBe('2027-02-27');
+    });
+
+    test('Scheme B: Extended Days on ₹1,00,000 with 10 extra days (110 days, ₹1,10,000 total)', () => {
+      const grossPaise = toPaise(100000);
+      const res = calculateDailyCollectionSchemeB({
+        grossPrincipalPaise: grossPaise,
+        additionalInterestDays: 10,
+        startDate: '2026-11-20',
+      });
+
+      expect(res.scheme).toBe('EXTENDED_DAYS');
+      expect(res.grossPrincipalPaise).toBe(10000000);
+      expect(res.netDisbursementPaise).toBe(10000000); // Full ₹1,00,000 given
+      expect(res.dailyInstalmentPaise).toBe(100000); // ₹1,000
+      expect(res.principalRepaymentDays).toBe(100);
+      expect(res.additionalInterestDays).toBe(10);
+      expect(res.additionalInterestPaise).toBe(1000000); // ₹10,000
+      expect(res.totalDurationDays).toBe(110);
+      expect(res.totalRepaymentPaise).toBe(11000000); // ₹1,10,000
+      expect(res.schedule.length).toBe(110);
+
+      // Days 1-100 must be PRINCIPAL
+      for (let i = 0; i < 100; i++) {
+        expect(res.schedule[i].category).toBe('PRINCIPAL');
+      }
+      // Days 101-110 must be INTEREST
+      for (let i = 100; i < 110; i++) {
+        expect(res.schedule[i].category).toBe('INTEREST');
+      }
+
+      const sumExpected = res.schedule.reduce((acc, s) => acc + s.expectedPaise, 0);
+      expect(sumExpected).toBe(11000000);
+    });
+
+    test('Scheme B supports maximum 20 additional days (120 days total)', () => {
+      const grossPaise = toPaise(50000);
+      const res = calculateDailyCollectionSchemeB({
+        grossPrincipalPaise: grossPaise,
+        additionalInterestDays: 20,
+        startDate: '2026-11-01',
+      });
+
+      expect(res.totalDurationDays).toBe(120);
+      expect(res.schedule.length).toBe(120);
+      expect(res.additionalInterestPaise).toBe(toPaise(10000)); // 500 * 20 = 10,000
+      expect(res.totalRepaymentPaise).toBe(toPaise(60000));
+    });
+
+    test('Scheme A (70 Days): Upfront interest deduction on ₹70,000 @ 10% (₹7,000 upfront, ₹63,000 net, 70 days)', () => {
+      const grossPaise = toPaise(70000);
+      const res = calculateDailyCollectionSchemeA({
+        grossLoanAmountPaise: grossPaise,
+        upfrontInterestPercent: 10,
+        startDate: '2026-11-20',
+        totalDurationDays: 70,
+      });
+
+      expect(res.scheme).toBe('UPFRONT_DEDUCTION');
+      expect(res.grossLoanAmountPaise).toBe(7000000);
+      expect(res.upfrontInterestPaise).toBe(700000); // ₹7,000
+      expect(res.netDisbursementPaise).toBe(6300000); // ₹63,000
+      expect(res.dailyInstalmentPaise).toBe(100000); // ₹1,000 / day
+      expect(res.totalDurationDays).toBe(70);
+      expect(res.totalRepaymentPaise).toBe(7000000); // ₹70,000
+      expect(res.schedule.length).toBe(70);
+
+      // Verify all 70 days sum exactly to gross principal
+      const sumExpected = res.schedule.reduce((acc, s) => acc + s.expectedPaise, 0);
+      expect(sumExpected).toBe(7000000);
+
+      // Expected completion date = 2026-11-20 + 69 days = 2027-01-28
+      expect(res.expectedCompletionDate).toBe('2027-01-28');
+    });
+
+    test('Odd paise division is absorbed on Day 70 with zero floating-point leakage', () => {
+      const oddPaise = 70005; // ₹700.05
+      const res = calculateDailyCollectionSchemeA({
+        grossLoanAmountPaise: oddPaise,
+        upfrontInterestPaise: 0,
+        startDate: '2026-11-20',
+        totalDurationDays: 70,
+      });
+
+      expect(res.dailyInstalmentPaise).toBe(1000); // Math.floor(70005 / 70) = 1000
+      expect(res.schedule[0].expectedPaise).toBe(1000);
+      expect(res.schedule[68].expectedPaise).toBe(1000);
+      // Day 70 absorbs the 105 paise
+      expect(res.schedule[69].expectedPaise).toBe(1005);
+
+      const sumExpected = res.schedule.reduce((acc, s) => acc + s.expectedPaise, 0);
+      expect(sumExpected).toBe(oddPaise);
+    });
+
+    test('Odd paise division is absorbed on Day 100 with zero floating-point leakage', () => {
+      const oddPaise = 100005; // ₹1,000.05
+      const res = calculateDailyCollectionSchemeA({
+        grossLoanAmountPaise: oddPaise,
+        upfrontInterestPaise: 0,
+        startDate: '2026-11-20',
+      });
+
+      expect(res.dailyInstalmentPaise).toBe(1000); // Math.floor(100005 / 100) = 1000
+      expect(res.schedule[0].expectedPaise).toBe(1000);
+      expect(res.schedule[98].expectedPaise).toBe(1000);
+      // Day 100 absorbs the 105 paise
+      expect(res.schedule[99].expectedPaise).toBe(1005);
+
+      const sumExpected = res.schedule.reduce((acc, s) => acc + s.expectedPaise, 0);
+      expect(sumExpected).toBe(oddPaise);
     });
   });
 });

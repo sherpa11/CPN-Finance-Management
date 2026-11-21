@@ -15,17 +15,33 @@ const dueRoutes = require('./routes/dueRoutes');
 const dashboardRoutes = require('./routes/dashboardRoutes');
 const reportRoutes = require('./routes/reportRoutes');
 const settingRoutes = require('./routes/settingRoutes');
+const moiSeerRoutes = require('./routes/moiSeerRoutes');
+const dailyCollectionRoutes = require('./routes/dailyCollectionRoutes');
+const chitFundRoutes = require('./routes/chitFundRoutes');
 const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
 
 // Security middleware
 app.use(helmet());
-app.use(cors({
-  origin: '*',
+
+const corsOrigin = process.env.CORS_ORIGIN;
+const corsOptions = {
+  origin: corsOrigin && corsOrigin !== '*'
+    ? corsOrigin.split(',').map((o) => o.trim())
+    : '*',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
-}));
+};
+app.use(cors(corsOptions));
+
+// URL normalization: handle accidental duplicate /api/api prefixes seamlessly
+app.use((req, res, next) => {
+  if (req.url.startsWith('/api/api/')) {
+    req.url = req.url.replace(/^\/api\/api\//, '/api/');
+  }
+  next();
+});
 
 // Request compression & logging
 app.use(compression());
@@ -50,7 +66,7 @@ app.use('/api/', apiLimiter);
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'healthy',
-    application: 'CPN RAJA – VATTI MANAGEMENT SYSTEM',
+    application: 'CPN RAJA – FINANCE MANAGEMENT SYSTEM',
     time: new Date().toISOString(),
     uptime: process.uptime(),
   });
@@ -67,6 +83,9 @@ app.use('/api/dues', dueRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/settings', settingRoutes);
+app.use('/api/moi-seer', moiSeerRoutes);
+app.use('/api/daily-collections', dailyCollectionRoutes);
+app.use('/api/chit-funds', chitFundRoutes);
 
 // Static frontend build serving if available
 const path = require('path');

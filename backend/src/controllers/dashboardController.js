@@ -12,7 +12,7 @@ const getDashboardData = async (req, res, next) => {
   try {
     const today = DateTime.now().setZone(TIMEZONE).startOf('day');
 
-    // 1. Aggregations for Summary Cards
+    // 1. Aggregations for Summary Cards with optimized projections and lean execution
     const [
       totalCustomers,
       activeLoansCount,
@@ -53,7 +53,7 @@ const getDashboardData = async (req, res, next) => {
           },
         },
       ]),
-      // Today Due Loans
+      // Today Due Loans (optimized: no redundant populate, explicit select + lean)
       Loan.find({
         status: { $in: [CONSTANTS.LOAN_STATUS.ACTIVE, CONSTANTS.LOAN_STATUS.OVERDUE] },
         dueDate: {
@@ -61,17 +61,20 @@ const getDashboardData = async (req, res, next) => {
           $lte: today.endOf('day').toJSDate(),
         },
       })
-        .populate('customerId', 'name mobileNumber customerId')
+        .select('loanId customerName customerMobile vattiType principalPaise outstandingPrincipalPaise outstandingInterestPaise dueDate')
+        .sort({ dueDate: 1 })
+        .lean()
         .limit(10),
-      // Overdue Loans
+      // Overdue Loans (optimized: no redundant populate, explicit select + lean)
       Loan.find({
         status: { $in: [CONSTANTS.LOAN_STATUS.ACTIVE, CONSTANTS.LOAN_STATUS.OVERDUE] },
         dueDate: { $lt: today.toJSDate() },
       })
-        .populate('customerId', 'name mobileNumber customerId')
+        .select('loanId customerName customerMobile vattiType principalPaise outstandingPrincipalPaise outstandingInterestPaise dueDate')
         .sort({ dueDate: 1 })
+        .lean()
         .limit(10),
-      // Upcoming Loans (next 7 days)
+      // Upcoming Loans (next 7 days, optimized: no redundant populate, explicit select + lean)
       Loan.find({
         status: { $in: [CONSTANTS.LOAN_STATUS.ACTIVE, CONSTANTS.LOAN_STATUS.OVERDUE] },
         dueDate: {
@@ -79,13 +82,15 @@ const getDashboardData = async (req, res, next) => {
           $lte: today.plus({ days: 7 }).endOf('day').toJSDate(),
         },
       })
-        .populate('customerId', 'name mobileNumber customerId')
+        .select('loanId customerName customerMobile vattiType principalPaise outstandingPrincipalPaise outstandingInterestPaise dueDate')
         .sort({ dueDate: 1 })
+        .lean()
         .limit(10),
-      // Recently Settled Accounts
+      // Recently Settled Accounts (optimized: no redundant populate, explicit select + lean)
       Loan.find({ status: CONSTANTS.LOAN_STATUS.SETTLED })
-        .populate('customerId', 'name mobileNumber customerId')
+        .select('loanId customerName customerMobile vattiType principalPaise outstandingPrincipalPaise outstandingInterestPaise dueDate settledDate updatedAt')
         .sort({ settledDate: -1, updatedAt: -1 })
+        .lean()
         .limit(5),
     ]);
 
@@ -161,6 +166,7 @@ const getDashboardData = async (req, res, next) => {
     const categoryDistribution = ['MONTHLY', 'DAILY', 'MEATER'].map((type) => {
       const found = categoryCounts.find((c) => c._id === type);
       return {
+        financeType: type,
         vattiType: type,
         totalLoans: found ? found.count : 0,
         activeLoans: found ? found.activeCount : 0,
@@ -170,13 +176,14 @@ const getDashboardData = async (req, res, next) => {
     });
 
     const formatLoanItem = (l) => {
-      const dueKolkata = DateTime.fromJSDate(l.dueDate, { zone: TIMEZONE }).startOf('day');
+      const dueKolkata = DateTime.fromJSDate(new Date(l.dueDate), { zone: TIMEZONE }).startOf('day');
       const diffDays = Math.round(dueKolkata.diff(today, 'days').days);
       return {
         id: l._id,
         loanId: l.loanId,
         customerName: l.customerName,
         customerMobile: l.customerMobile,
+        financeType: l.vattiType,
         vattiType: l.vattiType,
         principalRupees: toRupees(l.principalPaise),
         outstandingPrincipalRupees: toRupees(l.outstandingPrincipalPaise),

@@ -11,7 +11,7 @@ import {
   ShieldCheck,
   Check,
 } from 'lucide-react';
-import { formatINR, formatDate, getVattiBadge } from '../utils/formatters';
+import { formatINR, formatDate, getFinanceBadge } from '../utils/formatters';
 import api from '../api';
 
 export default function Notifications({ onNavigate, onOpenCollection }) {
@@ -199,7 +199,7 @@ export default function Notifications({ onNavigate, onOpenCollection }) {
       ) : (
         <div className="space-y-3">
           {notifications.map((notif) => {
-            const vattiBadge = getVattiBadge(notif.vattiType);
+            const vattiBadge = getFinanceBadge(notif.financeType || notif.vattiType);
             const isOverdue = notif.category === 'OVERDUE';
             const isDueToday = notif.category === 'DUE_TODAY';
             const isCompleted = notif.category === 'COMPLETED';
@@ -228,7 +228,7 @@ export default function Notifications({ onNavigate, onOpenCollection }) {
                       <span className="font-mono text-xs font-semibold text-blue-700">{notif.loanCode}</span>
                     </div>
 
-                    <div className="flex items-center space-x-4 text-xs text-slate-600">
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
                       <a
                         href={`tel:${notif.mobileNumber}`}
                         className="flex items-center space-x-1 text-slate-700 hover:text-blue-600 font-mono font-medium"
@@ -236,9 +236,9 @@ export default function Notifications({ onNavigate, onOpenCollection }) {
                         <Phone className="w-3.5 h-3.5 text-slate-400" />
                         <span>{notif.mobileNumber}</span>
                       </a>
-                      <span>•</span>
-                      <span>Maturity Due Date: <strong className="text-slate-900">{formatDate(notif.dueDate)}</strong></span>
-                      <span>•</span>
+                      <span className="hidden sm:inline">•</span>
+                      <span>Due: <strong className="text-slate-900">{formatDate(notif.dueDate)}</strong></span>
+                      <span className="hidden sm:inline">•</span>
                       <span className={isOverdue ? 'text-rose-700 font-bold' : isDueToday ? 'text-amber-700 font-bold' : 'text-blue-700 font-medium'}>
                         {isOverdue
                           ? `${Math.abs(notif.daysRemainingOrOverdue)} days overdue`
@@ -252,13 +252,13 @@ export default function Notifications({ onNavigate, onOpenCollection }) {
                   </div>
 
                   {/* Middle Column: Financial Balances */}
-                  <div className="grid grid-cols-3 gap-3 font-mono text-xs text-right bg-slate-50 md:bg-transparent p-3 md:p-0 rounded-lg">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3 font-mono text-xs text-left sm:text-right bg-slate-50 md:bg-transparent p-3 md:p-0 rounded-lg">
                     <div>
                       <p className="text-[10px] text-slate-500 font-sans">Principal Lent</p>
                       <p className="font-bold text-slate-800">{formatINR(notif.principalRupees)}</p>
                     </div>
                     <div>
-                      <p className="text-[10px] text-slate-500 font-sans">Accrued Vatti</p>
+                      <p className="text-[10px] text-slate-500 font-sans">Accrued Interest</p>
                       <p className="font-bold text-purple-700">{formatINR(notif.accruedInterestRupees)}</p>
                     </div>
                     <div>
@@ -270,7 +270,7 @@ export default function Notifications({ onNavigate, onOpenCollection }) {
                   </div>
 
                   {/* Right Column: Actions */}
-                  <div className="flex items-center justify-end space-x-2 pt-2 md:pt-0 border-t md:border-t-0 border-slate-100">
+                  <div className="flex flex-wrap items-center justify-start sm:justify-end gap-2 pt-2 md:pt-0 border-t md:border-t-0 border-slate-100">
                     {notif.status === 'ACTIVE' && (
                       <button
                         onClick={() => handleAcknowledge(notif.id)}

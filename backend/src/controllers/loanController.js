@@ -13,6 +13,7 @@ const {
 } = require('../services/calculationEngine');
 const { evaluateDueNotifications } = require('../services/notificationService');
 const CONSTANTS = require('../config/constants');
+const { escapeRegex } = require('../utils/sanitize');
 
 // Generate sequential Loan ID e.g. CPN-LN-0001
 async function generateLoanId() {
@@ -46,7 +47,8 @@ async function generateTransactionId() {
  */
 const previewLoan = async (req, res, next) => {
   try {
-    const { vattiType, principalAmount, interestRatePercent, startDate, dueDate } = req.body;
+    const vattiType = req.body.financeType || req.body.vattiType;
+    const { principalAmount, interestRatePercent, startDate, dueDate } = req.body;
 
     if (!vattiType || !principalAmount || interestRatePercent === undefined || !startDate || !dueDate) {
       return res.status(400).json({
@@ -74,6 +76,7 @@ const previewLoan = async (req, res, next) => {
     res.json({
       success: true,
       preview: {
+        financeType: vattiType,
         vattiType,
         principalAmount: toRupees(principalPaise),
         principalPaise,
@@ -98,13 +101,13 @@ const previewLoan = async (req, res, next) => {
 };
 
 /**
- * Create New Vatti / Loan
+ * Create New Finance / Loan
  */
 const createLoan = async (req, res, next) => {
   try {
+    const vattiType = req.body.financeType || req.body.vattiType;
     const {
       customerId,
-      vattiType,
       principalAmount,
       interestRatePercent,
       startDate,
@@ -115,7 +118,7 @@ const createLoan = async (req, res, next) => {
     if (!customerId || !vattiType || !principalAmount || interestRatePercent === undefined || !startDate || !dueDate) {
       return res.status(400).json({
         success: false,
-        message: 'All loan fields (Customer, Vatti Type, Principal, Interest Rate, Start Date, Due Date) are required.',
+        message: 'All loan fields (Customer, Finance Type, Principal, Interest Rate, Start Date, Due Date) are required.',
       });
     }
 
@@ -231,7 +234,7 @@ const createLoan = async (req, res, next) => {
 
     res.status(201).json({
       success: true,
-      message: `Vatti loan ${result.loanId} created successfully`,
+      message: `Finance loan ${result.loanId} created successfully`,
       loan: result,
     });
   } catch (error) {
@@ -244,7 +247,8 @@ const createLoan = async (req, res, next) => {
  */
 const listLoans = async (req, res, next) => {
   try {
-    const { customerId, vattiType, status, search, page = 1, limit = 50 } = req.query;
+    const vattiType = req.query.financeType || req.query.vattiType;
+    const { customerId, status, search, page = 1, limit = 50 } = req.query;
     const query = {};
 
     if (customerId) query.customerId = customerId;
@@ -252,7 +256,8 @@ const listLoans = async (req, res, next) => {
     if (status && status !== 'ALL') query.status = status;
 
     if (search && search.trim()) {
-      const searchRegex = new RegExp(search.trim(), 'i');
+      const escaped = escapeRegex(search.trim());
+      const searchRegex = new RegExp(escaped, 'i');
       query.$or = [
         { loanId: searchRegex },
         { customerName: searchRegex },
@@ -266,7 +271,8 @@ const listLoans = async (req, res, next) => {
       .populate('customerId', 'name mobileNumber customerId address')
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
-      .limit(Number(limit));
+      .limit(Number(limit))
+      .lean();
 
     res.json({
       success: true,
@@ -291,7 +297,7 @@ const getLoanById = async (req, res, next) => {
     }
 
     // Transactions for this loan
-    const transactions = await Transaction.find({ loanId: loan._id }).sort({ date: 1, createdAt: 1 });
+    const transactions = await Transaction.find({ loanId: loan._id }).sort({ date: 1, createdAt: 1 }).lean();
 
     // Live calculation as of today
     const liveCalc = calculateLoanInterest({

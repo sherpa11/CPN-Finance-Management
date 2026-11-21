@@ -1,5 +1,5 @@
 /**
- * CPN RAJA – VATTI MANAGEMENT SYSTEM
+ * CPN RAJA – FINANCE MANAGEMENT SYSTEM
  * Centralized Financial Calculation Engine
  * 
  * Rules:
@@ -9,7 +9,7 @@
  * 4. Business dates use Asia/Kolkata timezone.
  * 5. Simple interest initially (no automatic compounding).
  * 6. Partial-month rules and date-inclusion conventions are configurable.
- * 7. MEATER Vatti explicitly signals "Calculation configuration pending"
+ * 7. MEATER Finance explicitly signals "Calculation configuration pending"
  *    and produces no automatic calculations until owner confirms.
  */
 
@@ -64,7 +64,7 @@ function getKolkataDate(dateInput) {
 }
 
 /**
- * Monthly Vatti Calculation
+ * Monthly Finance Calculation
  * 
  * Formula:
  * Monthly Interest = Principal × Monthly Rate × Number of Eligible Months / 100
@@ -173,7 +173,7 @@ function calculateMonthlyInterest({
 }
 
 /**
- * Daily Vatti Calculation
+ * Daily Finance Calculation
  * 
  * Formula:
  * Daily Interest = Principal × Daily Rate × Eligible Days / 100
@@ -251,7 +251,7 @@ function calculateDailyInterest({
 }
 
 /**
- * Meater Vatti Calculation
+ * Meater Finance Calculation
  * 
  * IMPORTANT: The owner has NOT yet confirmed the exact calculation formula.
  * Must show explicit "Calculation configuration pending" status.
@@ -286,12 +286,199 @@ function calculateMeaterInterest({
     totalPayablePaise: principalPaise || 0,
     status: 'PENDING_CONFIRMATION',
     isPendingOwnerConfirmation: true,
-    message: 'Calculation configuration pending: Meater Vatti formula is awaiting owner confirmation as per business specification. Loan details are saved and managed independently.',
+    message: 'Calculation configuration pending: Meater Finance formula is awaiting owner confirmation as per business specification. Loan details are saved and managed independently.',
     calculationDetails: {
       startDate: start.toISODate(),
       asOfDate: target.toISODate(),
       formula: 'Pending Owner Confirmation',
     },
+  };
+}
+
+/**
+ * Daily Collection – Scheme A: Upfront Interest Deduction (முன் வட்டி)
+ * 
+ * Rules:
+ * - Customer repays original gross loan amount through 70 or 100 equal daily instalments.
+ * - Daily Instalment = Gross Loan Amount / totalDurationDays (70 or 100)
+ * - Net Amount Given to Customer = Gross Loan Amount - Upfront Interest Deduction
+ * - Upfront interest can be specified as fixed paise or percentage with two-way sync.
+ * - Upfront interest is deducted at inception and NEVER collected again in daily instalments.
+ * - Duration: Exactly 70 or 100 calendar days.
+ * - Start Date is Day 1. Expected Completion Date = Start Date + (duration - 1) days.
+ * - Final Day (Day 70 or Day 100) absorbs any integer division remainder (odd paise).
+ */
+function calculateDailyCollectionSchemeA({
+  grossLoanAmountPaise,
+  upfrontInterestPaise,
+  upfrontInterestPercent,
+  startDate,
+  totalDurationDays = 100,
+}) {
+  const gross = Math.round(grossLoanAmountPaise || 0);
+  if (gross <= 0) {
+    throw new Error('Gross loan amount must be greater than zero.');
+  }
+
+  let upfrontPaise = 0;
+  let upfrontPercent = 0;
+
+  if (upfrontInterestPaise !== undefined && upfrontInterestPaise !== null && upfrontInterestPaise !== '') {
+    upfrontPaise = Math.round(Number(upfrontInterestPaise));
+    upfrontPercent = Number(((upfrontPaise / gross) * 100).toFixed(2));
+  } else if (upfrontInterestPercent !== undefined && upfrontInterestPercent !== null && upfrontInterestPercent !== '') {
+    upfrontPercent = Number(upfrontInterestPercent);
+    upfrontPaise = Math.round((gross * upfrontPercent) / 100);
+  }
+
+  if (upfrontPaise < 0 || upfrontPaise > gross) {
+    throw new Error('Upfront interest deduction cannot be negative or exceed gross loan amount.');
+  }
+
+  const duration = Number(totalDurationDays) === 70 ? 70 : 100;
+  const netDisbursementPaise = gross - upfrontPaise;
+  const dailyInstalmentPaise = Math.floor(gross / duration);
+  const totalRepaymentPaise = gross;
+
+  const startKolkata = getKolkataDate(startDate);
+  const expectedCompletionDate = startKolkata.plus({ days: duration - 1 });
+
+  // Generate schedule for duration days (70 or 100)
+  const schedule = [];
+  let principalRunningSum = 0;
+  for (let day = 1; day <= duration; day++) {
+    const scheduledDate = startKolkata.plus({ days: day - 1 });
+    let expectedPaise = dailyInstalmentPaise;
+    if (day === duration) {
+      expectedPaise = gross - principalRunningSum;
+    } else {
+      principalRunningSum += dailyInstalmentPaise;
+    }
+
+    schedule.push({
+      dayNumber: day,
+      scheduledDate: scheduledDate.toJSDate(),
+      category: 'PRINCIPAL',
+      expectedPaise,
+      collectedPaise: 0,
+      status: 'UPCOMING',
+    });
+  }
+
+  return {
+    scheme: 'UPFRONT_DEDUCTION',
+    schemeLabel: `Daily Collection: Upfront Interest Deduction (${duration} Days / முன் வட்டி)`,
+    grossLoanAmountPaise: gross,
+    grossPrincipalPaise: gross,
+    upfrontInterestPaise: upfrontPaise,
+    upfrontInterestPercent: upfrontPercent,
+    netDisbursementPaise,
+    dailyInstalmentPaise,
+    principalRepaymentDays: duration,
+    additionalInterestDays: 0,
+    totalDurationDays: duration,
+    totalRepaymentPaise,
+    interestPaise: upfrontPaise,
+    startDate: startKolkata.toISODate(),
+    expectedCompletionDate: expectedCompletionDate.toISODate(),
+    schedule,
+  };
+}
+
+/**
+ * Daily Collection – Scheme B: Extended Days (கூடுதல் நாட்கள்)
+ * 
+ * Rules:
+ * - Customer receives full Gross Principal (Net Disbursement = Gross Principal).
+ * - First 100 days: Principal repayment.
+ * - Additional 10 to 20 days: Interest repayment.
+ * - Daily Instalment = Gross Principal / 100 (remains identical for both principal and additional days).
+ * - Additional Interest = Daily Instalment × Additional Days.
+ * - Total Duration = 100 + Additional Days (110 to 120 days).
+ * - Total Repayment = Daily Instalment × Total Duration = Principal + Additional Interest.
+ * - Start Date is Day 1. Expected Completion Date = Start Date + (Total Duration - 1) days.
+ * - Final Day 100 absorbs any odd paise on principal; Additional days each equal dailyInstalmentPaise.
+ */
+function calculateDailyCollectionSchemeB({
+  grossPrincipalPaise,
+  additionalInterestDays = 10,
+  startDate,
+}) {
+  const gross = Math.round(grossPrincipalPaise || 0);
+  if (gross <= 0) {
+    throw new Error('Gross principal amount must be greater than zero.');
+  }
+
+  const addDays = Math.round(Number(additionalInterestDays || 10));
+  if (addDays < 10 || addDays > 20) {
+    throw new Error('Additional interest days must be between 10 and 20 days.');
+  }
+
+  const netDisbursementPaise = gross;
+  const dailyInstalmentPaise = Math.floor(gross / 100);
+  const principalRepaymentDays = 100;
+  const additionalInterestPaise = dailyInstalmentPaise * addDays;
+  const totalDurationDays = principalRepaymentDays + addDays;
+  const totalRepaymentPaise = gross + additionalInterestPaise;
+
+  const startKolkata = getKolkataDate(startDate);
+  const expectedCompletionDate = startKolkata.plus({ days: totalDurationDays - 1 });
+
+  // Generate 110-120 day schedule
+  const schedule = [];
+  let principalRunningSum = 0;
+
+  // Days 1-100: Principal
+  for (let day = 1; day <= 100; day++) {
+    const scheduledDate = startKolkata.plus({ days: day - 1 });
+    let expectedPaise = dailyInstalmentPaise;
+    if (day === 100) {
+      expectedPaise = gross - principalRunningSum;
+    } else {
+      principalRunningSum += dailyInstalmentPaise;
+    }
+
+    schedule.push({
+      dayNumber: day,
+      scheduledDate: scheduledDate.toJSDate(),
+      category: 'PRINCIPAL',
+      expectedPaise,
+      collectedPaise: 0,
+      status: 'UPCOMING',
+    });
+  }
+
+  // Days 101 to TotalDuration: Additional Interest
+  for (let day = 101; day <= totalDurationDays; day++) {
+    const scheduledDate = startKolkata.plus({ days: day - 1 });
+    schedule.push({
+      dayNumber: day,
+      scheduledDate: scheduledDate.toJSDate(),
+      category: 'INTEREST',
+      expectedPaise: dailyInstalmentPaise,
+      collectedPaise: 0,
+      status: 'UPCOMING',
+    });
+  }
+
+  return {
+    scheme: 'EXTENDED_DAYS',
+    schemeLabel: 'Scheme B: Extended Days (கூடுதல் நாட்கள்)',
+    grossPrincipalPaise: gross,
+    grossLoanAmountPaise: gross,
+    upfrontInterestPaise: 0,
+    upfrontInterestPercent: 0,
+    netDisbursementPaise,
+    dailyInstalmentPaise,
+    principalRepaymentDays: 100,
+    additionalInterestDays: addDays,
+    additionalInterestPaise,
+    totalDurationDays,
+    totalRepaymentPaise,
+    interestPaise: additionalInterestPaise,
+    startDate: startKolkata.toISODate(),
+    expectedCompletionDate: expectedCompletionDate.toISODate(),
+    schedule,
   };
 }
 
@@ -325,6 +512,48 @@ function calculateLoanInterest({
         config,
       });
 
+    case CONSTANTS.VATTI_TYPES.DAILY_COLLECTION: {
+      const scheme = config.scheme || (config.additionalInterestDays ? 'EXTENDED_DAYS' : 'UPFRONT_DEDUCTION');
+      if (scheme === 'EXTENDED_DAYS') {
+        const res = calculateDailyCollectionSchemeB({
+          grossPrincipalPaise: principalPaise,
+          additionalInterestDays: config.additionalInterestDays || 10,
+          startDate,
+        });
+        return {
+          ...res,
+          totalPayablePaise: res.totalRepaymentPaise,
+          eligibleDays: res.totalDurationDays,
+          status: 'ACTIVE',
+          calculationDetails: {
+            startDate: res.startDate,
+            asOfDate: res.expectedCompletionDate,
+            formula: 'Scheme B: 100 Principal Days + Additional Interest Days',
+          },
+        };
+      } else {
+        const duration = Number(config.totalDurationDays) === 70 ? 70 : 100;
+        const res = calculateDailyCollectionSchemeA({
+          grossLoanAmountPaise: principalPaise,
+          upfrontInterestPaise: config.upfrontInterestPaise,
+          upfrontInterestPercent: config.upfrontInterestPercent || ratePercent,
+          startDate,
+          totalDurationDays: duration,
+        });
+        return {
+          ...res,
+          totalPayablePaise: res.totalRepaymentPaise,
+          eligibleDays: duration,
+          status: 'ACTIVE',
+          calculationDetails: {
+            startDate: res.startDate,
+            asOfDate: res.expectedCompletionDate,
+            formula: `Upfront Interest Deduction (${duration} Daily Instalments)`,
+          },
+        };
+      }
+    }
+
     case CONSTANTS.VATTI_TYPES.MEATER:
       return calculateMeaterInterest({
         principalPaise,
@@ -335,7 +564,7 @@ function calculateLoanInterest({
       });
 
     default:
-      throw new Error(`Unsupported Vatti type: ${vattiType}`);
+      throw new Error(`Unsupported Finance type: ${vattiType}`);
   }
 }
 
@@ -404,6 +633,8 @@ module.exports = {
   calculateMonthlyInterest,
   calculateDailyInterest,
   calculateMeaterInterest,
+  calculateDailyCollectionSchemeA,
+  calculateDailyCollectionSchemeB,
   calculateLoanInterest,
   validateAndAllocatePayment,
 };

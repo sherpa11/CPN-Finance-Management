@@ -160,10 +160,10 @@ export default function Settings() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div className="bg-white p-4 sm:p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h2 className="text-lg font-bold text-slate-900 flex items-center space-x-2">
-            <SettingsIcon className="w-5 h-5 text-slate-700" />
+          <h2 className="text-base sm:text-lg font-bold text-slate-900 flex items-center space-x-2">
+            <SettingsIcon className="w-5 h-5 text-slate-700 shrink-0" />
             <span>Business Rules & System Configuration</span>
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
@@ -173,7 +173,7 @@ export default function Settings() {
 
         <button
           onClick={handleDownloadBackup}
-          className="flex items-center space-x-1.5 px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-lg shadow-sm transition-all cursor-pointer"
+          className="w-full sm:w-auto flex items-center justify-center space-x-1.5 px-3.5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-lg shadow-sm transition-all cursor-pointer min-h-[40px]"
         >
           <Database className="w-4 h-4 text-amber-400" />
           <span>Export Database Backup (JSON)</span>
@@ -199,7 +199,7 @@ export default function Settings() {
         {/* Monthly Calculation Config */}
         <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-            <h3 className="font-bold text-sm text-slate-900">Monthly Vatti Calculation Rules</h3>
+            <h3 className="font-bold text-sm text-slate-900">Monthly Finance Calculation Rules</h3>
             <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
               Simple Interest
             </span>
@@ -242,7 +242,7 @@ export default function Settings() {
             <button
               onClick={handleSaveMonthly}
               disabled={saving}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg transition-colors cursor-pointer"
+              className="w-full sm:w-auto px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg transition-colors cursor-pointer min-h-[38px]"
             >
               Save Monthly Rules
             </button>
@@ -252,7 +252,7 @@ export default function Settings() {
         {/* Daily Calculation Config */}
         <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-            <h3 className="font-bold text-sm text-slate-900">Daily Vatti Calculation Rules</h3>
+            <h3 className="font-bold text-sm text-slate-900">Daily Finance Calculation Rules</h3>
             <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
               Simple Interest
             </span>
@@ -285,32 +285,32 @@ export default function Settings() {
             <button
               onClick={handleSaveDaily}
               disabled={saving}
-              className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-lg transition-colors cursor-pointer"
+              className="w-full sm:w-auto px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-lg transition-colors cursor-pointer min-h-[38px]"
             >
               Save Daily Rules
             </button>
           </div>
         </div>
 
-        {/* Meater Vatti Config Card */}
+        {/* Daily Collection Configuration & Rules Card */}
         <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-            <h3 className="font-bold text-sm text-slate-900">Meater Vatti Formula</h3>
-            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200">
-              Pending Confirmation
+            <h3 className="font-bold text-sm text-slate-900">Daily Collection Rules (தினசரி வசூல்)</h3>
+            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+              Active • 70 & 100 Days
             </span>
           </div>
 
           <div className="space-y-3">
-            <div className="p-3 bg-purple-50/70 border border-purple-200 rounded-lg text-purple-900 text-xs">
-              <p className="font-bold">Status: Calculation Configuration Pending</p>
-              <p className="text-[11px] text-purple-700 mt-1 leading-relaxed">
-                As per specification, the exact Meater formula has not yet been confirmed by CPN Raja. Customer accounts and principal amounts are saved and managed independently. Once CPN Raja confirms the formula, it can be plugged into the engine here without redesigning the application.
+            <div className="p-3 bg-emerald-50/70 border border-emerald-200 rounded-lg text-emerald-950 text-xs space-y-1.5">
+              <p className="font-bold">Upfront Interest Deduction (முன் வட்டி முறை):</p>
+              <p className="text-[11px] text-emerald-800 leading-relaxed">
+                Agreed interest is deducted upfront before disbursement. Customer receives net cash and repays gross principal across either 70 or 100 equal daily instalments (Gross ÷ 70 or Gross ÷ 100).
               </p>
             </div>
 
             <p className="text-[11px] text-slate-400">
-              System architect is ready to plug custom formulas as soon as business terms are provided.
+              Odd paise remainder is automatically absorbed on the final day (Day 70 or Day 100). Upfront interest is never collected again in daily instalments.
             </p>
           </div>
         </div>
@@ -345,7 +345,7 @@ export default function Settings() {
             <button
               onClick={handleSaveBusiness}
               disabled={saving}
-              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-lg transition-colors cursor-pointer"
+              className="w-full sm:w-auto px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-lg transition-colors cursor-pointer min-h-[38px]"
             >
               Save Reminder Window
             </button>
@@ -366,7 +366,7 @@ export default function Settings() {
         </div>
 
         <div className="overflow-x-auto text-xs">
-          <table className="w-full text-left">
+          <table className="w-full text-left min-w-[650px]">
             <thead className="bg-slate-100 text-slate-700 border-b border-slate-200">
               <tr>
                 <th className="py-2.5 px-3">Timestamp</th>

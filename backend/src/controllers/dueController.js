@@ -2,17 +2,18 @@ const { DateTime } = require('luxon');
 const Loan = require('../models/Loan');
 const { toRupees } = require('../services/calculationEngine');
 const CONSTANTS = require('../config/constants');
+const { escapeRegex } = require('../utils/sanitize');
 
 const TIMEZONE = CONSTANTS.DEFAULT_TIMEZONE;
 
 const getDuesList = async (req, res, next) => {
   try {
+    const vattiType = req.query.financeType || req.query.vattiType;
     const {
       filter = 'ALL',
       search,
       sortBy = 'dueDate',
       sortOrder = 'asc',
-      vattiType,
       customStartDate,
       customEndDate,
       page = 1,
@@ -55,7 +56,7 @@ const getDuesList = async (req, res, next) => {
     }
 
     if (search && search.trim()) {
-      const searchRegex = new RegExp(search.trim(), 'i');
+      const searchRegex = new RegExp(escapeRegex(search.trim()), 'i');
       query.$or = [
         { customerName: searchRegex },
         { customerMobile: searchRegex },
@@ -71,7 +72,7 @@ const getDuesList = async (req, res, next) => {
       sort.outstandingPrincipalPaise = orderDirection;
     } else if (sortBy === 'customerName') {
       sort.customerName = orderDirection;
-    } else if (sortBy === 'vattiType') {
+    } else if (sortBy === 'vattiType' || sortBy === 'financeType') {
       sort.vattiType = orderDirection;
     } else {
       sort.dueDate = orderDirection;
@@ -82,7 +83,8 @@ const getDuesList = async (req, res, next) => {
       .populate('customerId')
       .sort(sort)
       .skip((page - 1) * limit)
-      .limit(Number(limit));
+      .limit(Number(limit))
+      .lean();
 
     const formatted = loans.map((l) => {
       const dueKolkata = DateTime.fromJSDate(l.dueDate, { zone: TIMEZONE }).startOf('day');
@@ -95,6 +97,7 @@ const getDuesList = async (req, res, next) => {
         customerCode: l.customerCode,
         customerName: l.customerName,
         customerMobile: l.customerMobile,
+        financeType: l.vattiType,
         vattiType: l.vattiType,
         principalRupees: toRupees(l.principalPaise),
         interestRatePercent: l.interestRatePercent,

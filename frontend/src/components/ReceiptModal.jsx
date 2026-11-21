@@ -10,25 +10,25 @@ export default function ReceiptModal({ receipt, onClose }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 overflow-y-auto">
-      <div className="bg-white rounded-xl shadow-2xl max-w-xl w-full border border-slate-200 overflow-hidden my-8">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-2 sm:p-4 overflow-y-auto">
+      <div className="bg-white rounded-xl shadow-2xl max-w-xl w-full border border-slate-200 overflow-hidden my-4 sm:my-8 max-h-[92vh] flex flex-col">
         {/* Top Header - No print */}
-        <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between no-print">
-          <div className="flex items-center space-x-2">
-            <CheckCircle className="w-5 h-5 text-emerald-400" />
-            <h2 className="font-bold text-base">Payment Receipt</h2>
+        <div className="bg-slate-900 text-white px-4 py-3 sm:px-6 sm:py-4 flex items-center justify-between gap-2 no-print shrink-0">
+          <div className="flex items-center space-x-2 min-w-0">
+            <CheckCircle className="w-5 h-5 text-emerald-400 shrink-0" />
+            <h2 className="font-bold text-sm sm:text-base truncate">Payment Receipt</h2>
           </div>
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-2 shrink-0">
             <button
               onClick={handlePrint}
-              className="flex items-center space-x-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors shadow-sm"
+              className="flex items-center space-x-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors shadow-sm cursor-pointer min-h-[36px]"
             >
               <Printer className="w-4 h-4" />
-              <span>Print Receipt</span>
+              <span className="hidden xs:inline">Print Receipt</span>
             </button>
             <button
               onClick={onClose}
-              className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors"
+              className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
@@ -36,23 +36,23 @@ export default function ReceiptModal({ receipt, onClose }) {
         </div>
 
         {/* Printable Receipt Content */}
-        <div className="p-8 print:p-0 text-slate-800" id="printable-receipt">
+        <div className="p-4 sm:p-8 print:p-0 text-slate-800 overflow-y-auto" id="printable-receipt">
           {/* Business Header */}
           <div className="text-center border-b border-slate-300 pb-4 mb-5">
-            <h1 className="text-2xl font-black text-slate-950 tracking-wider">CPN RAJA</h1>
-            <p className="text-xs font-bold text-slate-600 uppercase tracking-widest">
-              VATTI BUSINESS MANAGEMENT SYSTEM
+            <h1 className="text-xl sm:text-2xl font-black text-slate-950 tracking-wider">CPN RAJA</h1>
+            <p className="text-[10px] sm:text-xs font-bold text-slate-600 uppercase tracking-widest">
+              FINANCE MANAGEMENT SYSTEM
             </p>
             <p className="text-xs text-slate-500 mt-1">Official Financial Collection Voucher</p>
           </div>
 
           {/* Receipt Meta */}
-          <div className="grid grid-cols-2 gap-4 text-xs mb-6 bg-slate-50 print:bg-transparent p-3 rounded-lg border border-slate-200 print:border-none">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-4 text-xs mb-6 bg-slate-50 print:bg-transparent p-3 rounded-lg border border-slate-200 print:border-none">
             <div>
               <p className="text-slate-500">Receipt Number:</p>
               <p className="font-mono font-bold text-slate-900 text-sm">{receipt.receiptNumber}</p>
             </div>
-            <div className="text-right">
+            <div className="text-left sm:text-right">
               <p className="text-slate-500">Payment Date:</p>
               <p className="font-medium text-slate-900">{formatDate(receipt.paymentDate)}</p>
             </div>
@@ -76,7 +76,9 @@ export default function ReceiptModal({ receipt, onClose }) {
             )}
             <div className="flex justify-between pt-2 border-t border-slate-100">
               <span className="text-slate-500">Loan Account:</span>
-              <span className="font-mono font-bold text-blue-700">{receipt.loanCode} ({receipt.vattiType})</span>
+              <span className="font-mono font-bold text-blue-700">
+                {receipt.loanCode} ({receipt.vattiType === 'MONTHLY' ? 'Monthly Finance' : receipt.vattiType === 'DAILY' ? 'Daily Finance' : receipt.vattiType === 'MEATER' ? 'Meater Finance' : (receipt.vattiType || '')})
+              </span>
             </div>
           </div>
 

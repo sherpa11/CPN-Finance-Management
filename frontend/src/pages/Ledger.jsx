@@ -126,7 +126,7 @@ export default function Ledger() {
             <option value="ALL">All Loans (Unified Customer Ledger)</option>
             {customerLoans.map((l) => (
               <option key={l._id} value={l._id}>
-                {l.loanId} ({l.vattiType} - ₹{l.principalPaise / 100})
+                {l.loanId} ({l.financeType || (l.vattiType ? `${l.vattiType} Finance` : '')} - ₹{l.principalPaise / 100})
               </option>
             ))}
           </select>
@@ -177,7 +177,7 @@ export default function Ledger() {
           <div className="text-center border-b border-slate-300 pb-4">
             <h1 className="text-2xl font-black text-slate-950 tracking-wider">CPN RAJA</h1>
             <p className="text-xs font-bold text-slate-600 uppercase tracking-widest">
-              VATTI BUSINESS MANAGEMENT SYSTEM
+              FINANCE MANAGEMENT SYSTEM
             </p>
             <p className="text-xs text-slate-500 mt-1">Official Account Ledger & Double-Entry Statement</p>
           </div>
@@ -215,7 +215,7 @@ export default function Ledger() {
 
           {/* Ledger Table */}
           <div className="overflow-x-auto">
-            <table className="w-full text-xs text-left border border-slate-200 rounded-lg overflow-hidden">
+            <table className="w-full text-xs text-left border border-slate-200 rounded-lg overflow-hidden min-w-[720px]">
               <thead className="bg-slate-100 text-slate-700 border-b border-slate-200">
                 <tr>
                   <th className="py-2.5 px-3 font-semibold">Date</th>
@@ -278,7 +278,7 @@ export default function Ledger() {
           </div>
 
           <div className="pt-4 border-t border-slate-300 text-center text-[10px] text-slate-400">
-            Statement generated on {formatDateTime(new Date())} • Double-entry verified • CPN Raja
+            Statement generated on {formatDateTime(new Date())} • Double-entry verified • CPN Raja Finance Management System
           </div>
         </div>
       )}

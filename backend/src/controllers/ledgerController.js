@@ -27,7 +27,7 @@ const getLoanLedger = async (req, res, next) => {
       }
     }
 
-    const transactions = await Transaction.find(query).sort({ date: 1, createdAt: 1 });
+    const transactions = await Transaction.find(query).sort({ date: 1, createdAt: 1 }).lean();
 
     const formattedTxns = transactions.map((t) => ({
       id: t._id,
@@ -98,14 +98,16 @@ const getCustomerLedger = async (req, res, next) => {
 
     const transactions = await Transaction.find(query)
       .populate('loanId', 'loanId vattiType')
-      .sort({ date: 1, createdAt: 1 });
+      .sort({ date: 1, createdAt: 1 })
+      .lean();
 
-    const loans = await Loan.find({ customerId: customer._id }).sort({ startDate: 1 });
+    const loans = await Loan.find({ customerId: customer._id }).sort({ startDate: 1 }).lean();
 
     const formattedTxns = transactions.map((t) => ({
       id: t._id,
       transactionId: t.transactionId,
       loanCode: t.loanId?.loanId || 'N/A',
+      financeType: t.loanId?.vattiType || 'N/A',
       vattiType: t.loanId?.vattiType || 'N/A',
       date: t.date,
       type: t.type,

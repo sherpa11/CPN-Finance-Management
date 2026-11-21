@@ -41,7 +41,7 @@ const notificationSchema = new mongoose.Schema(
     },
     vattiType: {
       type: String,
-      enum: ['MONTHLY', 'DAILY', 'MEATER'],
+      enum: ['MONTHLY', 'DAILY', 'DAILY_COLLECTION', 'MEATER'],
       required: true,
     },
     principalPaise: {
@@ -106,5 +106,6 @@ const notificationSchema = new mongoose.Schema(
 
 notificationSchema.index({ category: 1, status: 1 });
 notificationSchema.index({ dueDate: 1, status: 1 });
+notificationSchema.index({ status: 1, dueDate: 1, createdAt: -1 });
 
 module.exports = mongoose.model('Notification', notificationSchema);

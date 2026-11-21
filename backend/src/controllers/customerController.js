@@ -4,6 +4,7 @@ const Collection = require('../models/Collection');
 const Transaction = require('../models/Transaction');
 const { logAuditEvent } = require('../services/auditService');
 const { toRupees, formatINR } = require('../services/calculationEngine');
+const { escapeRegex } = require('../utils/sanitize');
 
 // Generate sequential customer ID e.g. CPN-CUST-0001
 async function generateCustomerId() {
@@ -29,7 +30,8 @@ const listCustomers = async (req, res, next) => {
     }
 
     if (search && search.trim()) {
-      const searchRegex = new RegExp(search.trim(), 'i');
+      const escaped = escapeRegex(search.trim());
+      const searchRegex = new RegExp(escaped, 'i');
       query.$or = [
         { name: searchRegex },
         { mobileNumber: searchRegex },
@@ -42,7 +44,8 @@ const listCustomers = async (req, res, next) => {
     const customers = await Customer.find(query)
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
-      .limit(Number(limit));
+      .limit(Number(limit))
+      .lean();
 
     res.json({
       success: true,
@@ -58,18 +61,19 @@ const listCustomers = async (req, res, next) => {
 
 const getCustomerById = async (req, res, next) => {
   try {
-    const customer = await Customer.findById(req.params.id);
+    const customer = await Customer.findById(req.params.id).lean();
     if (!customer) {
       return res.status(404).json({ success: false, message: 'Customer not found' });
     }
 
-    // Fetch customer's loans
-    const loans = await Loan.find({ customerId: customer._id }).sort({ createdAt: -1 });
+    // Fetch customer's loans with lean
+    const loans = await Loan.find({ customerId: customer._id }).sort({ createdAt: -1 }).lean();
 
-    // Fetch customer's collections
+    // Fetch customer's collections with lean
     const collections = await Collection.find({ customerId: customer._id })
       .sort({ paymentDate: -1 })
-      .limit(50);
+      .limit(50)
+      .lean();
 
     res.json({
       success: true,
@@ -193,14 +197,14 @@ const updateCustomer = async (req, res, next) => {
 
 const getCustomerStatement = async (req, res, next) => {
   try {
-    const customer = await Customer.findById(req.params.id);
+    const customer = await Customer.findById(req.params.id).lean();
     if (!customer) {
       return res.status(404).json({ success: false, message: 'Customer not found' });
     }
 
-    const loans = await Loan.find({ customerId: customer._id }).sort({ startDate: 1 });
-    const transactions = await Transaction.find({ customerId: customer._id }).sort({ date: 1, createdAt: 1 });
-    const collections = await Collection.find({ customerId: customer._id, status: 'CONFIRMED' }).sort({ paymentDate: 1 });
+    const loans = await Loan.find({ customerId: customer._id }).sort({ startDate: 1 }).lean();
+    const transactions = await Transaction.find({ customerId: customer._id }).sort({ date: 1, createdAt: 1 }).lean();
+    const collections = await Collection.find({ customerId: customer._id, status: 'CONFIRMED' }).sort({ paymentDate: 1 }).lean();
 
     res.json({
       success: true,

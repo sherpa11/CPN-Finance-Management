@@ -62,7 +62,7 @@ const loanSchema = new mongoose.Schema(
     },
     vattiType: {
       type: String,
-      enum: ['MONTHLY', 'DAILY', 'MEATER'],
+      enum: ['MONTHLY', 'DAILY', 'DAILY_COLLECTION', 'MEATER'],
       required: true,
       index: true,
     },
@@ -135,7 +135,12 @@ const loanSchema = new mongoose.Schema(
     },
     // Audit trail of any interest rate amendments
     amendmentHistory: [rateAmendmentSchema],
-    // For MEATER Vatti status and formula parameters
+    // For Daily Collection details snapshot
+    dailyCollectionDetails: {
+      type: mongoose.Schema.Types.Mixed,
+      default: undefined,
+    },
+    // For MEATER Finance status and formula parameters
     meaterConfig: {
       status: {
         type: String,
@@ -159,5 +164,7 @@ const loanSchema = new mongoose.Schema(
 loanSchema.index({ customerId: 1, status: 1 });
 loanSchema.index({ vattiType: 1, status: 1 });
 loanSchema.index({ dueDate: 1, status: 1 });
+loanSchema.index({ status: 1, createdAt: -1 });
+loanSchema.index({ vattiType: 1, status: 1, createdAt: -1 });
 
 module.exports = mongoose.model('Loan', loanSchema);

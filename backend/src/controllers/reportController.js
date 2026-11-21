@@ -21,28 +21,28 @@ const getDailyReport = async (req, res, next) => {
     const startOfDay = targetDate.toJSDate();
     const endOfDay = targetDate.endOf('day').toJSDate();
 
-    // 1. Loans issued on this day
+    // 1. Loans issued on this day (optimized: lean, no redundant populate)
     const loansIssued = await Loan.find({
       startDate: { $gte: startOfDay, $lte: endOfDay },
-    }).populate('customerId', 'name mobileNumber customerId');
+    }).lean();
 
-    // 2. Collections received on this day
+    // 2. Collections received on this day (optimized: lean, no redundant populate)
     const collections = await Collection.find({
       paymentDate: { $gte: startOfDay, $lte: endOfDay },
       status: 'CONFIRMED',
-    }).populate('customerId', 'name mobileNumber customerId');
+    }).lean();
 
-    // 3. Customers Due on this day
+    // 3. Customers Due on this day (optimized: lean, no redundant populate)
     const dueToday = await Loan.find({
       dueDate: { $gte: startOfDay, $lte: endOfDay },
       status: { $in: [CONSTANTS.LOAN_STATUS.ACTIVE, CONSTANTS.LOAN_STATUS.OVERDUE] },
-    }).populate('customerId', 'name mobileNumber customerId');
+    }).lean();
 
-    // 4. Overdue Customers as of this day
+    // 4. Overdue Customers as of this day (optimized: lean, no redundant populate)
     const overdue = await Loan.find({
       dueDate: { $lt: startOfDay },
       status: { $in: [CONSTANTS.LOAN_STATUS.ACTIVE, CONSTANTS.LOAN_STATUS.OVERDUE] },
-    }).populate('customerId', 'name mobileNumber customerId');
+    }).lean();
 
     const principalLentPaise = loansIssued.reduce((sum, l) => sum + l.principalPaise, 0);
     const principalCollectedPaise = collections.reduce((sum, c) => sum + c.principalAllocationPaise, 0);
@@ -113,18 +113,18 @@ const getMonthlyReport = async (req, res, next) => {
     // Lending during this month
     const loans = await Loan.find({
       startDate: { $gte: startOfMonth.toJSDate(), $lte: endOfMonth.toJSDate() },
-    });
+    }).lean();
 
     // Collections during this month
     const collections = await Collection.find({
       paymentDate: { $gte: startOfMonth.toJSDate(), $lte: endOfMonth.toJSDate() },
       status: 'CONFIRMED',
-    });
+    }).lean();
 
     // Active loans breakdown as of month end
     const activeLoans = await Loan.find({
       status: { $in: [CONSTANTS.LOAN_STATUS.ACTIVE, CONSTANTS.LOAN_STATUS.OVERDUE] },
-    });
+    }).lean();
 
     const totalPrincipalLentPaise = loans.reduce((sum, l) => sum + l.principalPaise, 0);
     const totalPrincipalCollectedPaise = collections.reduce((sum, c) => sum + c.principalAllocationPaise, 0);
@@ -135,12 +135,13 @@ const getMonthlyReport = async (req, res, next) => {
     const outstandingInterestPaise = activeLoans.reduce((sum, l) => sum + l.outstandingInterestPaise, 0);
     const totalAccruedInterestPaise = activeLoans.reduce((sum, l) => sum + (l.accruedInterestPaise || 0), 0);
 
-    // Vatti Type Breakdown
+    // Finance Type Breakdown
     const vattiTypes = ['MONTHLY', 'DAILY', 'MEATER'];
     const vattiBreakdown = vattiTypes.map((type) => {
       const typeLoans = loans.filter((l) => l.vattiType === type);
       const typeCollections = collections.filter((c) => c.loanCode && c.loanCode.includes(type.slice(0, 1))); // or mapped
       return {
+        financeType: type,
         vattiType: type,
         loansCount: typeLoans.length,
         principalLentRupees: toRupees(typeLoans.reduce((sum, l) => sum + l.principalPaise, 0)),
@@ -165,6 +166,7 @@ const getMonthlyReport = async (req, res, next) => {
           loansCount: loans.length,
           collectionsCount: collections.length,
         },
+        financeBreakdown: vattiBreakdown,
         vattiBreakdown,
       },
     });
@@ -186,16 +188,16 @@ const getYearlyReport = async (req, res, next) => {
 
     const loans = await Loan.find({
       startDate: { $gte: startOfYear.toJSDate(), $lte: endOfYear.toJSDate() },
-    });
+    }).lean();
 
     const collections = await Collection.find({
       paymentDate: { $gte: startOfYear.toJSDate(), $lte: endOfYear.toJSDate() },
       status: 'CONFIRMED',
-    });
+    }).lean();
 
     const activeLoans = await Loan.find({
       status: { $in: [CONSTANTS.LOAN_STATUS.ACTIVE, CONSTANTS.LOAN_STATUS.OVERDUE] },
-    });
+    }).lean();
 
     const totalPrincipalLentPaise = loans.reduce((sum, l) => sum + l.principalPaise, 0);
     const totalPrincipalCollectedPaise = collections.reduce((sum, c) => sum + c.principalAllocationPaise, 0);
@@ -231,7 +233,7 @@ const getYearlyReport = async (req, res, next) => {
  */
 const getCustomerReport = async (req, res, next) => {
   try {
-    const customers = await Customer.find().sort({ name: 1 });
+    const customers = await Customer.find().sort({ name: 1 }).lean();
 
     const customerReports = customers.map((c) => ({
       id: c._id,
@@ -268,7 +270,7 @@ const getCategoryReport = async (req, res, next) => {
     const results = [];
 
     for (const cat of categories) {
-      const allLoans = await Loan.find({ vattiType: cat });
+      const allLoans = await Loan.find({ vattiType: cat }).lean();
       const activeLoans = allLoans.filter((l) => [CONSTANTS.LOAN_STATUS.ACTIVE, CONSTANTS.LOAN_STATUS.OVERDUE].includes(l.status));
       const settledLoans = allLoans.filter((l) => l.status === CONSTANTS.LOAN_STATUS.SETTLED);
 
@@ -279,6 +281,7 @@ const getCategoryReport = async (req, res, next) => {
       const outstandingInterestPaise = activeLoans.reduce((s, l) => s + l.outstandingInterestPaise, 0);
 
       results.push({
+        financeType: cat,
         vattiType: cat,
         totalLoans: allLoans.length,
         activeLoans: activeLoans.length,

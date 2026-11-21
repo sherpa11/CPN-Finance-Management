@@ -1,6 +1,7 @@
 const Notification = require('../models/Notification');
 const { evaluateDueNotifications, acknowledgeNotification } = require('../services/notificationService');
 const { toRupees } = require('../services/calculationEngine');
+const { escapeRegex } = require('../utils/sanitize');
 
 const listNotifications = async (req, res, next) => {
   try {
@@ -16,7 +17,7 @@ const listNotifications = async (req, res, next) => {
     }
 
     if (search && search.trim()) {
-      const searchRegex = new RegExp(search.trim(), 'i');
+      const searchRegex = new RegExp(escapeRegex(search.trim()), 'i');
       query.$or = [
         { customerName: searchRegex },
         { mobileNumber: searchRegex },
@@ -28,7 +29,8 @@ const listNotifications = async (req, res, next) => {
     const notifications = await Notification.find(query)
       .sort({ dueDate: 1, createdAt: -1 })
       .skip((page - 1) * limit)
-      .limit(Number(limit));
+      .limit(Number(limit))
+      .lean();
 
     const formatted = notifications.map((n) => ({
       id: n._id,
@@ -39,6 +41,7 @@ const listNotifications = async (req, res, next) => {
       customerName: n.customerName,
       mobileNumber: n.mobileNumber,
       loanCode: n.loanCode,
+      financeType: n.vattiType,
       vattiType: n.vattiType,
       principalRupees: toRupees(n.principalPaise),
       accruedInterestRupees: toRupees(n.accruedInterestPaise),

@@ -4,8 +4,8 @@ import { Lock, User, AlertCircle, ShieldCheck } from 'lucide-react';
 
 export default function Login() {
   const { login } = useAuth();
-  const [username, setUsername] = useState('cpnraja');
-  const [password, setPassword] = useState('cpnraja2026');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -23,25 +23,25 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-slate-950 flex flex-col justify-center py-8 sm:py-12 px-4 sm:px-6 lg:px-8">
       <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
         {/* Logo Badge */}
-        <div className="mx-auto w-16 h-16 rounded-2xl bg-gradient-to-tr from-amber-500 to-amber-300 flex items-center justify-center font-black text-slate-950 text-3xl shadow-xl shadow-amber-500/20 mb-4">
+        <div className="mx-auto w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-tr from-amber-500 to-amber-300 flex items-center justify-center font-black text-slate-950 text-2xl sm:text-3xl shadow-xl shadow-amber-500/20 mb-3 sm:mb-4">
           CR
         </div>
-        <h2 className="text-2xl font-black tracking-wider text-white uppercase">
+        <h2 className="text-xl sm:text-2xl font-black tracking-wider text-white uppercase">
           CPN RAJA
         </h2>
-        <p className="text-xs font-semibold tracking-widest text-amber-400 uppercase mt-0.5">
-          VATTI MANAGEMENT SYSTEM
+        <p className="text-[11px] sm:text-xs font-semibold tracking-widest text-amber-400 uppercase mt-0.5">
+          FINANCE MANAGEMENT SYSTEM
         </p>
-        <p className="text-xs text-slate-400 mt-2">
-          Secure Financial Management Portal • Production Ready
+        <p className="text-xs text-slate-400 mt-2 px-2">
+          Secure Financial Management Portal • Production Environment
         </p>
       </div>
 
-      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="bg-slate-900 py-8 px-6 shadow-2xl rounded-2xl sm:px-10 border border-slate-800">
+      <div className="mt-6 sm:mt-8 sm:mx-auto sm:w-full sm:max-w-md">
+        <div className="bg-slate-900 py-6 px-4 sm:py-8 sm:px-10 shadow-2xl rounded-2xl border border-slate-800">
           {error && (
             <div className="mb-5 p-3.5 bg-rose-950/80 border border-rose-800/80 rounded-lg text-rose-300 text-xs flex items-center space-x-2">
               <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
@@ -64,7 +64,8 @@ export default function Login() {
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   className="block w-full pl-9 pr-3 py-2.5 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 text-sm"
-                  placeholder="cpnraja"
+                  placeholder="Enter username or email"
+                  autoComplete="username"
                 />
               </div>
             </div>
@@ -84,6 +85,7 @@ export default function Login() {
                   onChange={(e) => setPassword(e.target.value)}
                   className="block w-full pl-9 pr-3 py-2.5 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 text-sm"
                   placeholder="••••••••"
+                  autoComplete="current-password"
                 />
               </div>
             </div>
@@ -104,13 +106,11 @@ export default function Login() {
             </button>
           </form>
 
-          {/* Quick Access Helper */}
+          {/* Secure Production Portal Note */}
           <div className="mt-6 pt-5 border-t border-slate-800 text-center">
-            <p className="text-[11px] text-slate-400">
-              Default Administrator Credentials:
-            </p>
-            <p className="font-mono text-xs text-amber-400 font-semibold mt-0.5">
-              Username: <span className="text-white">cpnraja</span> | Password: <span className="text-white">cpnraja2026</span>
+            <p className="text-[11px] text-slate-500 flex items-center justify-center gap-1.5">
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
+              <span>Protected by 256-bit encryption • Authorized Personnel Only</span>
             </p>
           </div>
         </div>

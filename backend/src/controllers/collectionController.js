@@ -444,7 +444,8 @@ const listCollections = async (req, res, next) => {
       .populate('loanId', 'loanId vattiType')
       .sort({ paymentDate: -1, createdAt: -1 })
       .skip((page - 1) * limit)
-      .limit(Number(limit));
+      .limit(Number(limit))
+      .lean();
 
     res.json({
       success: true,
@@ -465,7 +466,8 @@ const getReceipt = async (req, res, next) => {
   try {
     const collection = await Collection.findById(req.params.id)
       .populate('customerId')
-      .populate('loanId');
+      .populate('loanId')
+      .lean();
 
     if (!collection) {
       return res.status(404).json({ success: false, message: 'Collection receipt not found' });
@@ -482,6 +484,7 @@ const getReceipt = async (req, res, next) => {
         customerAddress: collection.customerId?.address,
         customerId: collection.customerId?.customerId,
         loanCode: collection.loanCode,
+        financeType: collection.loanId?.vattiType,
         vattiType: collection.loanId?.vattiType,
         totalAmountRupees: toRupees(collection.totalAmountPaise),
         principalAllocationRupees: toRupees(collection.principalAllocationPaise),

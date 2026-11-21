@@ -259,7 +259,7 @@ export default function Collections({ initialLoan }) {
             setBreakdownError('');
             setIsRecordModalOpen(true);
           }}
-          className="flex items-center space-x-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg shadow-sm transition-all cursor-pointer"
+          className="flex items-center justify-center space-x-1.5 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg shadow-sm transition-all cursor-pointer min-h-[40px] w-full sm:w-auto"
         >
           <Plus className="w-4 h-4" />
           <span>Record New Collection</span>
@@ -277,10 +277,16 @@ export default function Collections({ initialLoan }) {
         {loading ? (
           <div className="p-8 text-center text-xs text-slate-500">Loading payment collections...</div>
         ) : collections.length === 0 ? (
-          <div className="p-8 text-center text-xs text-slate-500">No collection records found.</div>
+          <div className="p-12 text-center text-xs text-slate-500">
+            <Receipt className="w-10 h-10 mx-auto mb-3 text-slate-300" />
+            <p className="text-sm font-bold text-slate-700">No collections recorded yet</p>
+            <p className="text-slate-400 mt-1 max-w-sm mx-auto">
+              Payments collected against active Monthly Finance and Daily Finance loans will appear here with instant printable receipts.
+            </p>
+          </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-xs text-left">
+            <table className="w-full text-xs text-left min-w-[760px]">
               <thead className="bg-slate-100 text-slate-700 border-b border-slate-200">
                 <tr>
                   <th className="py-3 px-4 font-semibold">Receipt #</th>
@@ -356,14 +362,14 @@ export default function Collections({ initialLoan }) {
 
       {/* Record Collection Modal */}
       {isRecordModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 overflow-y-auto">
-          <div className="bg-white rounded-xl shadow-2xl max-w-xl w-full p-6 border border-slate-200 my-8">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-xl shadow-2xl max-w-xl w-full p-4 sm:p-6 border border-slate-200 my-4 sm:my-8 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-slate-200 mb-4">
-              <h3 className="font-bold text-base text-slate-900 flex items-center space-x-2">
-                <Banknote className="w-5 h-5 text-emerald-600" />
+              <h3 className="font-bold text-sm sm:text-base text-slate-900 flex items-center space-x-2">
+                <Banknote className="w-5 h-5 text-emerald-600 shrink-0" />
                 <span>Record Customer Collection</span>
               </h3>
-              <button onClick={() => setIsRecordModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+              <button onClick={() => setIsRecordModalOpen(false)} className="text-slate-400 hover:text-slate-600 p-1">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -388,7 +394,7 @@ export default function Collections({ initialLoan }) {
                   <option value="">-- Choose Loan Account --</option>
                   {activeLoans.map((l) => (
                     <option key={l._id} value={l._id}>
-                      {l.customerName} - {l.loanId} ({l.vattiType}) | Principal Due: ₹{l.outstandingPrincipalPaise / 100}
+                      {l.customerName} - {l.loanId} ({l.financeType || (l.vattiType ? `${l.vattiType} Finance` : '')}) | Principal Due: ₹{l.outstandingPrincipalPaise / 100}
                     </option>
                   ))}
                 </select>
@@ -396,7 +402,7 @@ export default function Collections({ initialLoan }) {
 
               {/* Outstanding Balance Banner */}
               {selectedLoanObj && (
-                <div className="bg-slate-50 border border-slate-200 p-3 rounded-lg grid grid-cols-2 gap-3 text-xs font-mono">
+                <div className="bg-slate-50 border border-slate-200 p-3 rounded-lg grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 text-xs font-mono">
                   <div>
                     <span className="text-[10px] text-slate-500 font-sans block">Current Outstanding Principal:</span>
                     <span className="text-sm font-bold text-slate-900">
@@ -452,7 +458,7 @@ export default function Collections({ initialLoan }) {
                   Explicit Payment Allocation (Must sum exactly to total received)
                 </p>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
                   <div>
                     <label className="block text-[11px] font-medium text-slate-600 mb-1">
                       Principal Allocation (₹)
@@ -506,7 +512,7 @@ export default function Collections({ initialLoan }) {
               </div>
 
               {/* Payment Method & Date */}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">Payment Method *</label>
                   <select

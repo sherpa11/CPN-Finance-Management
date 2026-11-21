@@ -2,6 +2,7 @@
  * CPN RAJA – End-to-End Comprehensive API Integration Test Suite
  * Runs directly in Node runtime to ensure 100% accurate native socket performance
  */
+process.env.NODE_ENV = 'test';
 require('dotenv').config();
 const request = require('supertest');
 const mongoose = require('mongoose');

@@ -13,7 +13,7 @@ import {
   CheckCircle,
   X,
 } from 'lucide-react';
-import { formatINR, formatDate, getVattiBadge } from '../utils/formatters';
+import { formatINR, formatDate, getFinanceBadge } from '../utils/formatters';
 import CustomerStatementModal from '../components/CustomerStatementModal';
 import api from '../api';
 
@@ -39,12 +39,21 @@ export default function Customers({ onNavigate, onSelectCustomerForLoan }) {
   const [formStatus, setFormStatus] = useState('ACTIVE');
   const [formError, setFormError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [debouncedSearch, setDebouncedSearch] = useState(search);
 
-  const fetchCustomers = async () => {
+  // Debounce search input to prevent rapid unnecessary API queries
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  const fetchCustomers = async (searchTerm = debouncedSearch, status = statusFilter) => {
     setLoading(true);
     try {
       const res = await api.get('/customers', {
-        params: { search, status: statusFilter },
+        params: { search: searchTerm, status },
       });
       if (res.data.success) {
         setCustomers(res.data.customers);
@@ -58,8 +67,8 @@ export default function Customers({ onNavigate, onSelectCustomerForLoan }) {
   };
 
   useEffect(() => {
-    fetchCustomers();
-  }, [search, statusFilter]);
+    fetchCustomers(debouncedSearch, statusFilter);
+  }, [debouncedSearch, statusFilter]);
 
   const openAddModal = () => {
     setFormName('');
@@ -155,7 +164,7 @@ export default function Customers({ onNavigate, onSelectCustomerForLoan }) {
 
         <button
           onClick={openAddModal}
-          className="flex items-center space-x-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-lg shadow-sm transition-all cursor-pointer"
+          className="flex items-center justify-center space-x-1.5 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-lg shadow-sm transition-all cursor-pointer min-h-[40px] w-full sm:w-auto"
         >
           <Plus className="w-4 h-4" />
           <span>Register New Customer</span>
@@ -191,12 +200,23 @@ export default function Customers({ onNavigate, onSelectCustomerForLoan }) {
         {loading ? (
           <div className="p-8 text-center text-xs text-slate-500">Loading customers...</div>
         ) : customers.length === 0 ? (
-          <div className="p-8 text-center text-xs text-slate-500">
-            No customers found matching your criteria.
+          <div className="p-12 text-center text-xs text-slate-500">
+            <Users className="w-10 h-10 mx-auto mb-3 text-slate-300" />
+            <p className="text-sm font-bold text-slate-700">No customers registered yet</p>
+            <p className="text-slate-400 mt-1 max-w-sm mx-auto">
+              Register your first customer to begin managing Monthly Finance, Daily Finance, or Daily Collection accounts.
+            </p>
+            <button
+              onClick={openAddModal}
+              className="mt-4 inline-flex items-center space-x-1.5 px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg shadow-sm cursor-pointer transition-all"
+            >
+              <UserPlus className="w-4 h-4" />
+              <span>Register First Customer</span>
+            </button>
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-xs text-left">
+            <table className="w-full text-xs text-left min-w-[720px]">
               <thead className="bg-slate-100 text-slate-700 border-b border-slate-200">
                 <tr>
                   <th className="py-3 px-4 font-semibold">Customer ID</th>
@@ -259,12 +279,12 @@ export default function Customers({ onNavigate, onSelectCustomerForLoan }) {
                             if (onSelectCustomerForLoan) {
                               onSelectCustomerForLoan(c);
                             } else {
-                              onNavigate('new-vatti');
+                              onNavigate('new-finance');
                             }
                           }}
                           className="px-2 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded text-[10px] transition-colors"
                         >
-                          + Vatti
+                          + Finance
                         </button>
                       </div>
                     </td>
@@ -463,20 +483,20 @@ export default function Customers({ onNavigate, onSelectCustomerForLoan }) {
 
       {/* Customer Profile View Modal */}
       {viewCustomerDetail && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4">
-          <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full p-6 border border-slate-200 max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full p-4 sm:p-6 border border-slate-200 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
               <div>
                 <h3 className="font-bold text-base text-slate-900">{viewCustomerDetail.customer.name}</h3>
                 <p className="text-xs font-mono text-blue-700">{viewCustomerDetail.customer.customerId}</p>
               </div>
-              <button onClick={() => setViewCustomerDetail(null)} className="text-slate-400 hover:text-slate-600">
+              <button onClick={() => setViewCustomerDetail(null)} className="text-slate-400 hover:text-slate-600 p-1">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             {/* Quick Balances */}
-            <div className="grid grid-cols-3 gap-3 mb-6 font-mono text-center">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3 mb-6 font-mono text-center">
               <div className="bg-slate-50 p-3 rounded-lg border border-slate-200">
                 <p className="text-[10px] text-slate-500 font-sans uppercase">Total Lent</p>
                 <p className="text-sm font-bold text-slate-900">{formatINR(viewCustomerDetail.customer.totalLentPaise / 100)}</p>
@@ -502,15 +522,15 @@ export default function Customers({ onNavigate, onSelectCustomerForLoan }) {
                 <p className="text-xs text-slate-400">No loans on record.</p>
               ) : (
                 viewCustomerDetail.loans.map((loan) => (
-                  <div key={loan._id} className="p-3 bg-slate-50 rounded-lg border border-slate-200 flex items-center justify-between text-xs">
+                  <div key={loan._id} className="p-3 bg-slate-50 rounded-lg border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
                     <div>
                       <span className="font-mono font-bold text-blue-700">{loan.loanId}</span>
-                      <span className="ml-2 font-semibold text-slate-800">({loan.vattiType} @ {loan.interestRatePercent}%)</span>
+                      <span className="ml-2 font-semibold text-slate-800">({loan.financeType || (loan.vattiType ? `${loan.vattiType} Finance` : '')} @ {loan.interestRatePercent}%)</span>
                       <p className="text-[10px] text-slate-500 mt-0.5">
                         Due: {formatDate(loan.dueDate)} • Disbursed: {formatDate(loan.startDate)}
                       </p>
                     </div>
-                    <div className="text-right font-mono">
+                    <div className="text-left sm:text-right font-mono">
                       <p className="font-bold text-slate-900">{formatINR(loan.principalPaise / 100)}</p>
                       <p className="text-[11px] text-rose-600 font-semibold">
                         Due: {formatINR((loan.outstandingPrincipalPaise + loan.outstandingInterestPaise) / 100)}
@@ -528,7 +548,7 @@ export default function Customers({ onNavigate, onSelectCustomerForLoan }) {
                   setSelectedStatementCustomer(viewCustomerDetail.customer._id);
                   setViewCustomerDetail(null);
                 }}
-                className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-500"
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-500 min-h-[38px] cursor-pointer"
               >
                 View Full Statement
               </button>

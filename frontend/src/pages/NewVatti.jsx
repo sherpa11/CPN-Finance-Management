@@ -4,12 +4,14 @@ import {
   Calculator,
   AlertCircle,
   CheckCircle,
-  HelpCircle,
   Clock,
   ArrowRight,
-  ShieldAlert,
+  Layers,
+  Coins,
+  Calendar,
+  Sparkles,
 } from 'lucide-react';
-import { formatINR, formatDate, getVattiBadge } from '../utils/formatters';
+import { formatINR, formatDate, getFinanceBadge } from '../utils/formatters';
 import api from '../api';
 
 export default function NewVatti({ preselectedCustomer, onNavigate }) {
@@ -22,6 +24,11 @@ export default function NewVatti({ preselectedCustomer, onNavigate }) {
   const [dueDate, setDueDate] = useState('');
   const [remarks, setRemarks] = useState('');
 
+  // Daily Collection specific states (Upfront Interest Deduction: 70 or 100 Days)
+  const [totalDurationDays, setTotalDurationDays] = useState(100);
+  const [upfrontInterestRupees, setUpfrontInterestRupees] = useState('');
+  const [upfrontInterestPercent, setUpfrontInterestPercent] = useState('10.0');
+
   // Live Preview State
   const [preview, setPreview] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -31,6 +38,7 @@ export default function NewVatti({ preselectedCustomer, onNavigate }) {
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [createdLoan, setCreatedLoan] = useState(null);
+  const [createdDcAccount, setCreatedDcAccount] = useState(null);
 
   // Load Customers
   useEffect(() => {
@@ -50,34 +58,63 @@ export default function NewVatti({ preselectedCustomer, onNavigate }) {
     loadCustomers();
   }, []);
 
+  // Sync Daily Collection upfront interest (Rupees <-> Percent two-way sync)
+  const handleUpfrontRupeesChange = (val) => {
+    setUpfrontInterestRupees(val);
+    const p = Number(principalAmount);
+    const rupees = Number(val);
+    if (p > 0 && !isNaN(rupees) && val !== '') {
+      const pct = ((rupees / p) * 100).toFixed(2);
+      setUpfrontInterestPercent(pct);
+    }
+  };
+
+  const handleUpfrontPercentChange = (val) => {
+    setUpfrontInterestPercent(val);
+    const p = Number(principalAmount);
+    const pct = Number(val);
+    if (p > 0 && !isNaN(pct) && val !== '') {
+      const rupees = Math.round((p * pct) / 100);
+      setUpfrontInterestRupees(String(rupees));
+    }
+  };
+
+  // Recalculate upfront rupees when principal changes if percentage is set
+  useEffect(() => {
+    if (vattiType === 'DAILY_COLLECTION') {
+      const p = Number(principalAmount);
+      const pct = Number(upfrontInterestPercent);
+      if (p > 0 && !isNaN(pct)) {
+        setUpfrontInterestRupees(String(Math.round((p * pct) / 100)));
+      }
+    }
+  }, [principalAmount, vattiType]);
+
   // Update default rate & due date when Vatti type changes
   useEffect(() => {
     const today = new Date(startDate || Date.now());
     if (vattiType === 'MONTHLY') {
       setInterestRatePercent('2.0');
-      // Default 1 month ahead
       const nextMonth = new Date(today);
       nextMonth.setMonth(nextMonth.getMonth() + 1);
       setDueDate(nextMonth.toISOString().split('T')[0]);
     } else if (vattiType === 'DAILY') {
       setInterestRatePercent('0.1');
-      // Default 10 days ahead
       const next10Days = new Date(today);
       next10Days.setDate(next10Days.getDate() + 10);
       setDueDate(next10Days.toISOString().split('T')[0]);
-    } else if (vattiType === 'MEATER') {
-      setInterestRatePercent('1.5');
-      // Default 30 days ahead
-      const next30Days = new Date(today);
-      next30Days.setDate(next30Days.getDate() + 30);
-      setDueDate(next30Days.toISOString().split('T')[0]);
+    } else if (vattiType === 'DAILY_COLLECTION') {
+      // 70 or 100 calendar days (Start date is Day 1)
+      const completionDate = new Date(today);
+      completionDate.setDate(completionDate.getDate() + (Number(totalDurationDays) - 1));
+      setDueDate(completionDate.toISOString().split('T')[0]);
     }
-  }, [vattiType, startDate]);
+  }, [vattiType, startDate, totalDurationDays]);
 
-  // Fetch Live Calculation Preview from backend calculation engine
+  // Fetch Live Calculation Preview
   useEffect(() => {
     async function fetchPreview() {
-      if (!principalAmount || Number(principalAmount) <= 0 || !dueDate || !interestRatePercent) {
+      if (!principalAmount || Number(principalAmount) <= 0) {
         setPreview(null);
         return;
       }
@@ -85,15 +122,40 @@ export default function NewVatti({ preselectedCustomer, onNavigate }) {
       setPreviewLoading(true);
       setError('');
       try {
-        const res = await api.post('/loans/preview', {
-          vattiType,
-          principalAmount: Number(principalAmount),
-          interestRatePercent: Number(interestRatePercent),
-          startDate,
-          dueDate,
-        });
-        if (res.data.success) {
-          setPreview(res.data.preview);
+        if (vattiType === 'DAILY_COLLECTION') {
+          const res = await api.post('/daily-collections/preview', {
+            scheme: 'UPFRONT_DEDUCTION',
+            grossPrincipal: Number(principalAmount),
+            upfrontInterestRupees: upfrontInterestRupees !== '' ? Number(upfrontInterestRupees) : undefined,
+            upfrontInterestPercent: upfrontInterestPercent !== '' ? Number(upfrontInterestPercent) : undefined,
+            totalDurationDays: Number(totalDurationDays),
+            startDate,
+          });
+          if (res.data.success) {
+            setPreview({
+              isDailyCollection: true,
+              ...res.data.preview,
+            });
+          }
+        } else {
+          if (!dueDate || !interestRatePercent) {
+            setPreview(null);
+            setPreviewLoading(false);
+            return;
+          }
+          const res = await api.post('/loans/preview', {
+            vattiType,
+            principalAmount: Number(principalAmount),
+            interestRatePercent: Number(interestRatePercent),
+            startDate,
+            dueDate,
+          });
+          if (res.data.success) {
+            setPreview({
+              isDailyCollection: false,
+              ...res.data.preview,
+            });
+          }
         }
       } catch (err) {
         console.error('Preview error', err);
@@ -103,23 +165,39 @@ export default function NewVatti({ preselectedCustomer, onNavigate }) {
       }
     }
 
-    const debounce = setTimeout(fetchPreview, 300);
+    const debounce = setTimeout(fetchPreview, 250);
     return () => clearTimeout(debounce);
-  }, [vattiType, principalAmount, interestRatePercent, startDate, dueDate]);
+  }, [
+    vattiType,
+    principalAmount,
+    interestRatePercent,
+    startDate,
+    dueDate,
+    upfrontInterestRupees,
+    upfrontInterestPercent,
+    totalDurationDays,
+  ]);
 
   const handlePreConfirm = (e) => {
     e.preventDefault();
     if (!selectedCustomerId) {
-      setError('Please select a customer.');
+      setError('Please select a borrower customer.');
       return;
     }
     if (!principalAmount || Number(principalAmount) <= 0) {
       setError('Please enter a valid principal amount.');
       return;
     }
-    if (!dueDate) {
-      setError('Please select a maturity/due date.');
-      return;
+    if (vattiType === 'DAILY_COLLECTION') {
+      if (Number(upfrontInterestRupees) > Number(principalAmount)) {
+        setError('Upfront interest deduction cannot exceed gross loan amount.');
+        return;
+      }
+    } else {
+      if (!dueDate) {
+        setError('Please select a maturity/due date.');
+        return;
+      }
     }
     setError('');
     setIsConfirmOpen(true);
@@ -129,19 +207,39 @@ export default function NewVatti({ preselectedCustomer, onNavigate }) {
     setSubmitting(true);
     setError('');
     try {
-      const res = await api.post('/loans', {
-        customerId: selectedCustomerId,
-        vattiType,
-        principalAmount: Number(principalAmount),
-        interestRatePercent: Number(interestRatePercent),
-        startDate,
-        dueDate,
-        remarks,
-      });
+      if (vattiType === 'DAILY_COLLECTION') {
+        const res = await api.post('/daily-collections', {
+          customerId: selectedCustomerId,
+          scheme: 'UPFRONT_DEDUCTION',
+          grossPrincipal: Number(principalAmount),
+          upfrontInterestRupees: Number(upfrontInterestRupees) || 0,
+          upfrontInterestPercent: Number(upfrontInterestPercent) || 0,
+          totalDurationDays: Number(totalDurationDays),
+          additionalInterestDays: 0,
+          startDate,
+          remarks,
+        });
 
-      if (res.data.success) {
-        setCreatedLoan(res.data.loan);
-        setIsConfirmOpen(false);
+        if (res.data.success) {
+          setCreatedDcAccount(res.data.account);
+          setCreatedLoan(res.data.loan);
+          setIsConfirmOpen(false);
+        }
+      } else {
+        const res = await api.post('/loans', {
+          customerId: selectedCustomerId,
+          vattiType,
+          principalAmount: Number(principalAmount),
+          interestRatePercent: Number(interestRatePercent),
+          startDate,
+          dueDate,
+          remarks,
+        });
+
+        if (res.data.success) {
+          setCreatedLoan(res.data.loan);
+          setIsConfirmOpen(false);
+        }
       }
     } catch (err) {
       setError(err.response?.data?.message || err.message || 'Failed to disburse loan');
@@ -160,10 +258,10 @@ export default function NewVatti({ preselectedCustomer, onNavigate }) {
         <div>
           <h2 className="text-lg font-bold text-slate-900 flex items-center space-x-2">
             <PlusCircle className="w-5 h-5 text-amber-500" />
-            <span>New Vatti / Loan Disbursement</span>
+            <span>New Finance / Loan Disbursement</span>
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            Disburse Monthly, Daily, or Meater loans with individual agreed interest rates
+            Disburse Monthly, Daily, or Daily Collection (70 or 100 Days Upfront Interest Deduction)
           </p>
         </div>
       </div>
@@ -174,23 +272,46 @@ export default function NewVatti({ preselectedCustomer, onNavigate }) {
           <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto">
             <CheckCircle className="w-10 h-10" />
           </div>
-          <h3 className="text-xl font-bold text-slate-900">Loan Disbursed Successfully!</h3>
+          <h3 className="text-xl font-bold text-slate-900">
+            {createdDcAccount ? 'Daily Collection Account Disbursed!' : 'Loan Disbursed Successfully!'}
+          </h3>
           <p className="text-xs text-slate-600 max-w-md mx-auto">
-            Loan Account <span className="font-mono font-bold text-blue-700">{createdLoan.loanId}</span> has been created
-            for <span className="font-bold text-slate-900">{createdLoan.customerName}</span>. Customer balances and due notifications have been updated.
+            Account{' '}
+            <span className="font-mono font-bold text-blue-700">
+              {createdDcAccount ? createdDcAccount.accountId : createdLoan.loanId}
+            </span>{' '}
+            has been created for <span className="font-bold text-slate-900">{createdLoan.customerName}</span>. Customer balances and {createdDcAccount?.totalDurationDays || totalDurationDays}-day collection schedule are initialized.
           </p>
 
-          <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 max-w-sm mx-auto text-xs font-mono space-y-1">
+          <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 max-w-sm mx-auto text-xs font-mono space-y-1.5 text-left">
             <div className="flex justify-between font-sans">
-              <span className="text-slate-500">Principal Lent:</span>
+              <span className="text-slate-500">Gross Principal:</span>
               <span className="font-bold text-slate-900">{formatINR(createdLoan.principalPaise / 100)}</span>
             </div>
+            {createdDcAccount && (
+              <>
+                <div className="flex justify-between font-sans">
+                  <span className="text-slate-500">Net Cash Given:</span>
+                  <span className="font-bold text-emerald-700">{formatINR(createdDcAccount.netDisbursementPaise / 100)}</span>
+                </div>
+                <div className="flex justify-between font-sans">
+                  <span className="text-slate-500">Upfront Interest Deducted:</span>
+                  <span className="font-bold text-rose-700">
+                    - {formatINR(createdDcAccount.upfrontInterestPaise / 100)} ({createdDcAccount.upfrontInterestPercent}%)
+                  </span>
+                </div>
+                <div className="flex justify-between font-sans">
+                  <span className="text-slate-500">Daily Instalment:</span>
+                  <span className="font-bold text-slate-900">{formatINR(createdDcAccount.dailyInstalmentPaise / 100)} / day</span>
+                </div>
+                <div className="flex justify-between font-sans">
+                  <span className="text-slate-500">Total Duration:</span>
+                  <span className="font-bold text-slate-900">{createdDcAccount.totalDurationDays || totalDurationDays} Calendar Days</span>
+                </div>
+              </>
+            )}
             <div className="flex justify-between font-sans">
-              <span className="text-slate-500">Agreed Rate:</span>
-              <span className="font-bold text-slate-900">{createdLoan.interestRatePercent}%</span>
-            </div>
-            <div className="flex justify-between font-sans">
-              <span className="text-slate-500">Maturity Date:</span>
+              <span className="text-slate-500">Expected Completion:</span>
               <span className="font-bold text-slate-900">{formatDate(createdLoan.dueDate)}</span>
             </div>
           </div>
@@ -199,19 +320,30 @@ export default function NewVatti({ preselectedCustomer, onNavigate }) {
             <button
               onClick={() => {
                 setCreatedLoan(null);
+                setCreatedDcAccount(null);
                 setPrincipalAmount('');
                 setRemarks('');
               }}
               className="px-4 py-2 border border-slate-300 rounded-lg text-xs font-bold text-slate-700 hover:bg-slate-50 cursor-pointer"
             >
-              + Create Another Loan
+              + Disburse Another Account
             </button>
-            <button
-              onClick={() => onNavigate('dashboard')}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-bold cursor-pointer"
-            >
-              Go to Dashboard
-            </button>
+            {createdDcAccount ? (
+              <button
+                onClick={() => onNavigate('daily-collection')}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold cursor-pointer flex items-center space-x-1.5"
+              >
+                <Layers className="w-4 h-4" />
+                <span>Open {createdDcAccount.totalDurationDays || totalDurationDays}-Day Collection Tracker</span>
+              </button>
+            ) : (
+              <button
+                onClick={() => onNavigate('dashboard')}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-bold cursor-pointer"
+              >
+                Go to Dashboard
+              </button>
+            )}
           </div>
         </div>
       ) : (
@@ -255,36 +387,74 @@ export default function NewVatti({ preselectedCustomer, onNavigate }) {
                 </div>
               </div>
 
-              {/* Vatti Type Selector */}
+              {/* Finance Type Selector */}
               <div>
-                <label className="block font-semibold text-slate-700 mb-1.5">Vatti Category *</label>
-                <div className="grid grid-cols-3 gap-3">
+                <label className="block font-semibold text-slate-700 mb-1.5">Finance Category *</label>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3">
                   {[
-                    { id: 'MONTHLY', label: '1. Monthly Vatti', desc: 'Simple interest monthly' },
-                    { id: 'DAILY', label: '2. Daily Vatti', desc: 'Simple interest daily' },
-                    { id: 'MEATER', label: '3. Meater Vatti', desc: 'Custom / Pending formula' },
+                    { id: 'MONTHLY', label: '1. Monthly Finance', desc: 'Simple interest monthly' },
+                    { id: 'DAILY', label: '2. Daily Finance', desc: 'Simple interest daily' },
+                    { id: 'DAILY_COLLECTION', label: '3. Daily Collection', desc: 'Upfront Interest (70 or 100 days)' },
                   ].map((cat) => (
                     <button
                       key={cat.id}
                       type="button"
                       onClick={() => setVattiType(cat.id)}
-                      className={`p-3 rounded-lg border text-left transition-all cursor-pointer ${
+                      className={`p-3 rounded-lg border text-left transition-all cursor-pointer min-h-[50px] ${
                         vattiType === cat.id
-                          ? 'border-blue-600 bg-blue-50/70 text-blue-900 ring-2 ring-blue-500/20'
+                          ? 'border-blue-600 bg-blue-50/70 text-blue-900 ring-2 ring-blue-500/20 shadow-xs'
                           : 'border-slate-200 hover:border-slate-300 bg-slate-50/50'
                       }`}
                     >
-                      <p className="font-bold">{cat.label}</p>
+                      <p className="font-bold text-xs sm:text-sm">{cat.label}</p>
                       <p className="text-[10px] text-slate-500 mt-0.5">{cat.desc}</p>
                     </button>
                   ))}
                 </div>
               </div>
 
-              {/* Principal Amount & Agreed Individual Rate */}
+              {/* Daily Collection Duration Option Selection (70 or 100 Days) */}
+              {vattiType === 'DAILY_COLLECTION' && (
+                <div className="p-3 sm:p-3.5 bg-emerald-50/50 border border-emerald-200 rounded-xl space-y-2">
+                  <label className="block font-bold text-slate-800 text-xs">
+                    Collection Duration / தவணை நாட்கள் *
+                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
+                    {[
+                      { days: 70, label: '70 Days (70 நாட்கள்)', desc: 'Daily instalment = Gross ÷ 70' },
+                      { days: 100, label: '100 Days (100 நாட்கள்)', desc: 'Daily instalment = Gross ÷ 100' },
+                    ].map((opt) => (
+                      <button
+                        key={opt.days}
+                        type="button"
+                        onClick={() => setTotalDurationDays(opt.days)}
+                        className={`p-3 rounded-lg border text-left transition-all cursor-pointer min-h-[50px] ${
+                          totalDurationDays === opt.days
+                            ? 'border-emerald-600 bg-white text-emerald-950 ring-2 ring-emerald-500/30 shadow-sm'
+                            : 'border-slate-200 hover:border-slate-300 bg-white/60 text-slate-700'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-xs">{opt.label}</span>
+                          {totalDurationDays === opt.days && (
+                            <span className="px-2 py-0.5 bg-emerald-600 text-white text-[10px] font-bold rounded-full">
+                              Selected
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-slate-500 mt-1">{opt.desc}</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Principal Amount & Rate / Upfront Interest Inputs */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Principal Amount (₹) *</label>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    {vattiType === 'DAILY_COLLECTION' ? 'Gross Loan Amount (₹) *' : 'Principal Amount (₹) *'}
+                  </label>
                   <div className="relative">
                     <span className="absolute left-3 top-2.5 font-bold text-slate-400">₹</span>
                     <input
@@ -292,35 +462,82 @@ export default function NewVatti({ preselectedCustomer, onNavigate }) {
                       required
                       min="100"
                       step="1"
-                      placeholder="e.g. 50000"
+                      placeholder="e.g. 100000"
                       value={principalAmount}
                       onChange={(e) => setPrincipalAmount(e.target.value)}
                       className="w-full pl-8 pr-3 py-2.5 border border-slate-300 rounded-lg text-sm font-mono font-bold text-slate-900 focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
+                  {vattiType === 'DAILY_COLLECTION' && principalAmount > 0 && (
+                    <p className="text-[11px] text-slate-500 mt-1">
+                      Daily Instalment:{' '}
+                      <span className="font-bold text-emerald-700">
+                        {formatINR(Math.floor(Number(principalAmount) / totalDurationDays))} / day ({totalDurationDays} Days)
+                      </span>
+                    </p>
+                  )}
                 </div>
 
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">
-                    Individual Interest Rate (% {vattiType === 'DAILY' ? 'per Day' : 'per Month'}) *
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="number"
-                      required
-                      min="0.01"
-                      step="0.01"
-                      placeholder="e.g. 2.0"
-                      value={interestRatePercent}
-                      onChange={(e) => setInterestRatePercent(e.target.value)}
-                      className="w-full pr-8 pl-3 py-2.5 border border-slate-300 rounded-lg text-sm font-mono font-bold text-slate-900 focus:ring-2 focus:ring-blue-500"
-                    />
-                    <span className="absolute right-3 top-2.5 font-bold text-slate-400">%</span>
+                {/* For Standard Monthly & Daily Finance */}
+                {vattiType !== 'DAILY_COLLECTION' ? (
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">
+                      Individual Interest Rate (% {vattiType === 'DAILY' ? 'per Day' : 'per Month'}) *
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        required
+                        min="0.01"
+                        step="0.01"
+                        placeholder="e.g. 2.0"
+                        value={interestRatePercent}
+                        onChange={(e) => setInterestRatePercent(e.target.value)}
+                        className="w-full pr-8 pl-3 py-2.5 border border-slate-300 rounded-lg text-sm font-mono font-bold text-slate-900 focus:ring-2 focus:ring-blue-500"
+                      />
+                      <span className="absolute right-3 top-2.5 font-bold text-slate-400">%</span>
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-1">
+                      Saved as permanent snapshot on this loan.
+                    </p>
                   </div>
-                  <p className="text-[10px] text-slate-400 mt-1">
-                    Saved as permanent snapshot on this loan.
-                  </p>
-                </div>
+                ) : (
+                  /* Daily Collection: Upfront interest inputs with two-way sync */
+                  <div className="space-y-1.5">
+                    <label className="block font-semibold text-slate-700">
+                      Upfront Interest Deduction (முன் வட்டி) *
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="relative">
+                        <span className="absolute left-2.5 top-2 font-bold text-slate-400">₹</span>
+                        <input
+                          type="number"
+                          required
+                          min="0"
+                          placeholder="Amount in ₹"
+                          value={upfrontInterestRupees}
+                          onChange={(e) => handleUpfrontRupeesChange(e.target.value)}
+                          className="w-full pl-6 pr-2 py-2 border border-slate-300 rounded-lg text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-emerald-500"
+                        />
+                      </div>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.1"
+                          placeholder="% Rate"
+                          value={upfrontInterestPercent}
+                          onChange={(e) => handleUpfrontPercentChange(e.target.value)}
+                          className="w-full pr-6 pl-2.5 py-2 border border-slate-300 rounded-lg text-xs font-mono font-bold text-slate-900 focus:ring-2 focus:ring-emerald-500"
+                        />
+                        <span className="absolute right-2.5 top-2 font-bold text-slate-400">%</span>
+                      </div>
+                    </div>
+                    <p className="text-[10px] text-slate-500">
+                      Auto-syncs ₹ and %. Deducted upfront and never collected in daily instalments.
+                    </p>
+                  </div>
+                )}
               </div>
 
               {/* Dates */}
@@ -334,17 +551,30 @@ export default function NewVatti({ preselectedCustomer, onNavigate }) {
                     onChange={(e) => setStartDate(e.target.value)}
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-800 focus:ring-2 focus:ring-blue-500"
                   />
+                  {vattiType === 'DAILY_COLLECTION' && (
+                    <p className="text-[10px] text-slate-400 mt-0.5">Start Date is Day 1 of {totalDurationDays} days.</p>
+                  )}
                 </div>
 
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Maturity / Due Date *</label>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    {vattiType === 'DAILY_COLLECTION' ? `Expected Completion Date (Day ${totalDurationDays}) *` : 'Maturity / Due Date *'}
+                  </label>
                   <input
                     type="date"
                     required
+                    readOnly={vattiType === 'DAILY_COLLECTION'}
                     value={dueDate}
                     onChange={(e) => setDueDate(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-800 focus:ring-2 focus:ring-blue-500"
+                    className={`w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-800 focus:ring-2 focus:ring-blue-500 ${
+                      vattiType === 'DAILY_COLLECTION' ? 'bg-slate-100 cursor-not-allowed font-medium' : ''
+                    }`}
                   />
+                  {vattiType === 'DAILY_COLLECTION' && (
+                    <p className="text-[10px] text-slate-400 mt-0.5">
+                      Automatically calculated as Start Date + {totalDurationDays - 1} calendar days.
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -384,18 +614,51 @@ export default function NewVatti({ preselectedCustomer, onNavigate }) {
                 {previewLoading && <span className="text-[10px] text-blue-600 animate-pulse">Calculating...</span>}
               </div>
 
-              {vattiType === 'MEATER' ? (
-                <div className="p-4 bg-purple-50 border border-purple-200 rounded-lg text-purple-900 text-xs space-y-2">
-                  <div className="flex items-center space-x-2 text-purple-800 font-bold">
-                    <ShieldAlert className="w-4 h-4 shrink-0" />
-                    <span>Calculation Configuration Pending</span>
+              {preview?.isDailyCollection ? (
+                <div className="space-y-3 font-mono text-xs">
+                  <div className="p-2.5 bg-emerald-100/70 border border-emerald-200 rounded-lg text-emerald-900 font-sans text-[11px] flex items-center justify-between">
+                    <span className="font-bold">Daily Collection (முன் வட்டி)</span>
+                    <span className="font-bold px-2 py-0.5 bg-emerald-600 text-white text-[10px] rounded">
+                      {preview.totalDurationDays || totalDurationDays} Days
+                    </span>
                   </div>
-                  <p className="text-[11px] text-purple-700 leading-relaxed">
-                    As per business specification, Meater Vatti interest formula has not yet been confirmed by CPN Raja.
-                  </p>
-                  <p className="text-[11px] text-purple-700 leading-relaxed">
-                    Loan principal will be recorded and tracked independently. No arbitrary interest will be assumed until the formula is confirmed in Settings.
-                  </p>
+
+                  <div className="flex justify-between py-1 border-b border-slate-200/60 font-sans">
+                    <span className="text-slate-500">Gross Loan Amount:</span>
+                    <span className="font-bold text-slate-900">{formatINR(preview.grossPrincipalRupees)}</span>
+                  </div>
+
+                  <div className="flex justify-between py-1 border-b border-slate-200/60 font-sans text-rose-700">
+                    <span className="font-semibold">Upfront Interest ({preview.upfrontInterestPercent}%):</span>
+                    <span className="font-bold">- {formatINR(preview.upfrontInterestRupees)}</span>
+                  </div>
+
+                  <div className="flex justify-between py-1.5 border-b border-slate-200/60 font-sans bg-emerald-50 px-2 rounded">
+                    <span className="font-bold text-emerald-800">Net Cash Given:</span>
+                    <span className="font-bold text-emerald-800">{formatINR(preview.netDisbursementRupees)}</span>
+                  </div>
+
+                  <div className="flex justify-between py-1.5 border-b border-slate-200/60 font-sans">
+                    <span className="text-slate-500">Daily Instalment:</span>
+                    <span className="font-bold text-sm text-blue-800">
+                      {formatINR(preview.dailyInstalmentRupees)} / day
+                    </span>
+                  </div>
+
+                  <div className="flex justify-between py-1 border-b border-slate-200/60 font-sans">
+                    <span className="text-slate-500">Duration:</span>
+                    <span className="font-bold text-slate-900">{preview.totalDurationDays || totalDurationDays} Calendar Days</span>
+                  </div>
+
+                  <div className="flex justify-between py-1 border-b border-slate-200/60 font-sans">
+                    <span className="text-slate-500">Expected End Date:</span>
+                    <span className="font-bold text-slate-900">{formatDate(preview.expectedCompletionDate)}</span>
+                  </div>
+
+                  <div className="flex justify-between py-2 border-t-2 border-slate-300 font-sans text-slate-950 font-bold">
+                    <span>Total Repayment:</span>
+                    <span className="text-base text-blue-700">{formatINR(preview.totalRepaymentRupees)}</span>
+                  </div>
                 </div>
               ) : preview ? (
                 <div className="space-y-3 font-mono text-xs">
@@ -417,7 +680,7 @@ export default function NewVatti({ preselectedCustomer, onNavigate }) {
                   </div>
 
                   <div className="flex justify-between py-1.5 border-b border-slate-200/60 font-sans text-purple-800">
-                    <span className="font-semibold">Expected Vatti:</span>
+                    <span className="font-semibold">Expected Interest:</span>
                     <span className="font-bold text-sm">{formatINR(preview.expectedInterestRupees)}</span>
                   </div>
 
@@ -425,16 +688,10 @@ export default function NewVatti({ preselectedCustomer, onNavigate }) {
                     <span>Total Payable:</span>
                     <span className="text-base text-blue-700">{formatINR(preview.expectedTotalPayableRupees)}</span>
                   </div>
-
-                  {preview.isPendingOwnerConfirmation && (
-                    <div className="mt-3 p-2 bg-amber-50 border border-amber-200 rounded text-[10px] font-sans text-amber-800">
-                      Note: Partial month calculation rule is currently set to pro-rata daily, pending final owner confirmation.
-                    </div>
-                  )}
                 </div>
               ) : (
                 <div className="p-8 text-center text-slate-400 text-xs">
-                  Enter Principal and Due Date to view live interest forecast.
+                  Enter Principal to view live calculation forecast.
                 </div>
               )}
             </div>
@@ -448,40 +705,69 @@ export default function NewVatti({ preselectedCustomer, onNavigate }) {
 
       {/* Pre-save Confirmation Modal */}
       {isConfirmOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4">
-          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6 border border-slate-200 space-y-4">
-            <h3 className="text-base font-bold text-slate-900 flex items-center space-x-2">
-              <CheckCircle className="w-5 h-5 text-blue-600" />
-              <span>Confirm Loan Disbursement</span>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-4 sm:p-6 border border-slate-200 space-y-4 max-h-[90vh] overflow-y-auto">
+            <h3 className="text-sm sm:text-base font-bold text-slate-900 flex items-center space-x-2">
+              <CheckCircle className="w-5 h-5 text-blue-600 shrink-0" />
+              <span>Confirm {vattiType === 'DAILY_COLLECTION' ? 'Daily Collection' : 'Finance'} Disbursement</span>
             </h3>
 
             <p className="text-xs text-slate-600">
-              Please verify the terms before saving. Once created, a unique loan ID will be generated, the customer profile will be debited, and this account will enter due monitoring.
+              Please verify all agreed terms before proceeding. Once confirmed, ledger entries will be created and the {totalDurationDays}-day collection schedule will be initialized.
             </p>
 
-            <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 text-xs font-mono space-y-1.5">
+            <div className="bg-slate-50 p-3.5 sm:p-4 rounded-lg border border-slate-200 text-xs font-mono space-y-1.5">
               <div className="flex justify-between font-sans">
                 <span className="text-slate-500">Borrower:</span>
-                <span className="font-bold text-slate-900">{selectedCustomerObj?.name}</span>
+                <span className="font-bold text-slate-900 truncate ml-2">{selectedCustomerObj?.name}</span>
               </div>
               <div className="flex justify-between font-sans">
                 <span className="text-slate-500">Category:</span>
-                <span className="font-bold text-blue-700">{vattiType} Vatti</span>
+                <span className="font-bold text-blue-700 ml-2">
+                  {vattiType === 'DAILY_COLLECTION'
+                    ? `Daily Collection (முன் வட்டி: ${totalDurationDays} நாட்கள்)`
+                    : `${vattiType} Finance`}
+                </span>
               </div>
               <div className="flex justify-between font-sans">
-                <span className="text-slate-500">Principal Amount:</span>
+                <span className="text-slate-500">Gross Principal:</span>
                 <span className="font-bold text-slate-900">{formatINR(Number(principalAmount))}</span>
               </div>
-              <div className="flex justify-between font-sans">
-                <span className="text-slate-500">Agreed Rate:</span>
-                <span className="font-bold text-slate-900">{interestRatePercent}%</span>
-              </div>
+
+              {vattiType === 'DAILY_COLLECTION' && (
+                <>
+                  <div className="flex justify-between font-sans text-rose-700">
+                    <span className="font-semibold">Upfront Interest Deducted:</span>
+                    <span className="font-bold">
+                      - {formatINR(Number(upfrontInterestRupees))} ({upfrontInterestPercent}%)
+                    </span>
+                  </div>
+
+                  <div className="flex justify-between font-sans text-emerald-800 font-bold bg-emerald-50 px-2 py-0.5 rounded">
+                    <span>Net Cash Given to Customer:</span>
+                    <span>{formatINR(Number(principalAmount) - Number(upfrontInterestRupees))}</span>
+                  </div>
+
+                  <div className="flex justify-between font-sans">
+                    <span className="text-slate-500">Daily Instalment:</span>
+                    <span className="font-bold text-blue-800">
+                      {formatINR(Math.floor(Number(principalAmount) / totalDurationDays))} / day
+                    </span>
+                  </div>
+
+                  <div className="flex justify-between font-sans">
+                    <span className="text-slate-500">Total Duration:</span>
+                    <span className="font-bold text-slate-900">{totalDurationDays} Calendar Days</span>
+                  </div>
+                </>
+              )}
+
               <div className="flex justify-between font-sans">
                 <span className="text-slate-500">Disbursement Date:</span>
                 <span className="text-slate-900">{formatDate(startDate)}</span>
               </div>
               <div className="flex justify-between font-sans">
-                <span className="text-slate-500">Maturity Due Date:</span>
+                <span className="text-slate-500">Expected End Date:</span>
                 <span className="font-bold text-slate-900">{formatDate(dueDate)}</span>
               </div>
             </div>
@@ -490,7 +776,7 @@ export default function NewVatti({ preselectedCustomer, onNavigate }) {
               <button
                 type="button"
                 onClick={() => setIsConfirmOpen(false)}
-                className="px-4 py-2 border border-slate-300 rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
+                className="px-4 py-2 border border-slate-300 rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer min-h-[38px]"
               >
                 Back to Edit
               </button>
@@ -498,7 +784,7 @@ export default function NewVatti({ preselectedCustomer, onNavigate }) {
                 type="button"
                 disabled={submitting}
                 onClick={handleFinalSave}
-                className="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg text-xs shadow-md transition-all cursor-pointer disabled:opacity-50"
+                className="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg text-xs shadow-md transition-all cursor-pointer disabled:opacity-50 min-h-[38px]"
               >
                 {submitting ? 'Disbursing...' : 'Confirm & Disburse'}
               </button>

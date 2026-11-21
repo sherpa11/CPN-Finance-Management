@@ -46,7 +46,7 @@ async function seed() {
       configType: 'MEATER',
       isActive: true,
       isPendingOwnerConfirmation: true,
-      description: 'Meater Vatti category. Exact formula pending owner confirmation as per specification.',
+      description: 'Meater Finance category. Exact formula pending owner confirmation as per specification.',
       settings: {
         isFormulaConfirmed: false,
         status: 'PENDING_CONFIRMATION',
