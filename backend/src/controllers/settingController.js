@@ -6,6 +6,16 @@ const Collection = require('../models/Collection');
 const Transaction = require('../models/Transaction');
 const Notification = require('../models/Notification');
 const User = require('../models/User');
+const DailyCollectionAccount = require('../models/DailyCollectionAccount');
+const DailyCollectionPayment = require('../models/DailyCollectionPayment');
+const ChitGroup = require('../models/ChitGroup');
+const ChitMember = require('../models/ChitMember');
+const ChitCollection = require('../models/ChitCollection');
+const ChitPayout = require('../models/ChitPayout');
+const ChitAuditLog = require('../models/ChitAuditLog');
+const MoiSeerPerson = require('../models/MoiSeerPerson');
+const MoiSeerContribution = require('../models/MoiSeerContribution');
+const { invalidateDashboardCache } = require('./dashboardController');
 const { logAuditEvent } = require('../services/auditService');
 const CONSTANTS = require('../config/constants');
 
@@ -204,9 +214,96 @@ const exportDatabaseBackup = async (req, res, next) => {
   }
 };
 
+/**
+ * Reset and remove all demo/test data from the database
+ * Strictly requires admin authorization and explicit confirmation { confirm: 'CLEAR_DEMO_DATA' }
+ */
+const resetDemoData = async (req, res, next) => {
+  try {
+    const { confirm } = req.body;
+    if (confirm !== 'CLEAR_DEMO_DATA') {
+      return res.status(400).json({
+        success: false,
+        message: 'Explicit confirmation required. Send { confirm: "CLEAR_DEMO_DATA" } to remove all demo data.',
+      });
+    }
+
+    const [
+      customersDeleted,
+      loansDeleted,
+      collectionsDeleted,
+      transactionsDeleted,
+      notificationsDeleted,
+      dcAccountsDeleted,
+      dcPaymentsDeleted,
+      chitGroupsDeleted,
+      chitMembersDeleted,
+      chitCollectionsDeleted,
+      chitPayoutsDeleted,
+      chitAuditLogsDeleted,
+      moiPersonsDeleted,
+      moiContributionsDeleted,
+      auditLogsDeleted,
+    ] = await Promise.all([
+      Customer.deleteMany({}),
+      Loan.deleteMany({}),
+      Collection.deleteMany({}),
+      Transaction.deleteMany({}),
+      Notification.deleteMany({}),
+      DailyCollectionAccount.deleteMany({}),
+      DailyCollectionPayment.deleteMany({}),
+      ChitGroup.deleteMany({}),
+      ChitMember.deleteMany({}),
+      ChitCollection.deleteMany({}),
+      ChitPayout.deleteMany({}),
+      ChitAuditLog.deleteMany({}),
+      MoiSeerPerson.deleteMany({}),
+      MoiSeerContribution.deleteMany({}),
+      AuditLog.deleteMany({}),
+    ]);
+
+    // Invalidate dashboard caching
+    invalidateDashboardCache();
+
+    // Log the reset event in AuditLog as the initial clean baseline entry
+    await logAuditEvent({
+      action: 'SYSTEM_RESET',
+      entityType: 'SETTINGS',
+      entityId: 'SYSTEM',
+      performedBy: req.user.username,
+      ipAddress: req.ip,
+      details: 'All demo and test data removed by admin. System initialized for clean production use.',
+    });
+
+    res.json({
+      success: true,
+      message: 'All demo and test data has been successfully removed. System is clean and ready for live production transactions.',
+      summary: {
+        customers: customersDeleted.deletedCount,
+        loans: loansDeleted.deletedCount,
+        collections: collectionsDeleted.deletedCount,
+        transactions: transactionsDeleted.deletedCount,
+        notifications: notificationsDeleted.deletedCount,
+        dailyCollectionAccounts: dcAccountsDeleted.deletedCount,
+        dailyCollectionPayments: dcPaymentsDeleted.deletedCount,
+        chitGroups: chitGroupsDeleted.deletedCount,
+        chitMembers: chitMembersDeleted.deletedCount,
+        chitCollections: chitCollectionsDeleted.deletedCount,
+        chitPayouts: chitPayoutsDeleted.deletedCount,
+        moiPersons: moiPersonsDeleted.deletedCount,
+        moiContributions: moiContributionsDeleted.deletedCount,
+        auditLogs: auditLogsDeleted.deletedCount,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getSettings,
   updateConfiguration,
   getAuditLogs,
   exportDatabaseBackup,
+  resetDemoData,
 };

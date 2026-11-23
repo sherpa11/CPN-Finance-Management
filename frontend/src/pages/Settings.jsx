@@ -9,6 +9,8 @@ import {
   AlertCircle,
   CheckCircle,
   HelpCircle,
+  Trash2,
+  AlertTriangle,
 } from 'lucide-react';
 import { formatDateTime } from '../utils/formatters';
 import api from '../api';
@@ -27,6 +29,11 @@ export default function Settings() {
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState('');
   const [saveError, setSaveError] = useState('');
+
+  // Reset Demo Data states
+  const [showResetModal, setShowResetModal] = useState(false);
+  const [resetConfirmationInput, setResetConfirmationInput] = useState('');
+  const [resetting, setResetting] = useState(false);
 
   const fetchSettingsAndAudit = async () => {
     setLoading(true);
@@ -150,6 +157,27 @@ export default function Settings() {
       document.body.removeChild(link);
     } catch (err) {
       alert('Failed to download database backup: ' + err.message);
+    }
+  };
+
+  const handleResetDemoData = async () => {
+    if (resetConfirmationInput.trim().toUpperCase() !== 'CLEAR') {
+      alert('Please type CLEAR to confirm.');
+      return;
+    }
+    setResetting(true);
+    setSaveError('');
+    setSaveSuccess('');
+    try {
+      const res = await api.post('/settings/reset-demo-data', { confirm: 'CLEAR_DEMO_DATA' });
+      setSaveSuccess(res.data.message || 'All demo and test data successfully removed!');
+      setShowResetModal(false);
+      setResetConfirmationInput('');
+      await fetchSettingsAndAudit();
+    } catch (err) {
+      setSaveError(err.response?.data?.message || err.message);
+    } finally {
+      setResetting(false);
     }
   };
 
@@ -352,6 +380,80 @@ export default function Settings() {
           </div>
         </div>
       </div>
+
+      {/* Danger Zone: Clean Demo / Test Data */}
+      <div className="bg-rose-50/60 p-5 rounded-xl border border-rose-200 shadow-sm space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h3 className="text-sm font-bold text-rose-900 flex items-center space-x-2">
+              <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+              <span>Clean System / Reset Demo Data</span>
+            </h3>
+            <p className="text-xs text-rose-700 mt-0.5">
+              Permanently wipe all demo and test records (customers, loans, collections, daily collections, chit fund records, and contributions). System configurations and the admin account remain completely preserved.
+            </p>
+          </div>
+
+          <button
+            onClick={() => {
+              setResetConfirmationInput('');
+              setShowResetModal(true);
+            }}
+            className="w-full sm:w-auto flex items-center justify-center space-x-1.5 px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-lg shadow-sm transition-all cursor-pointer shrink-0"
+          >
+            <Trash2 className="w-4 h-4" />
+            <span>Reset Demo Data</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Reset Confirmation Modal */}
+      {showResetModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex items-center space-x-3 text-rose-600">
+              <AlertTriangle className="w-6 h-6 shrink-0" />
+              <h3 className="text-base font-bold text-slate-900">Confirm Reset of All Demo Data</h3>
+            </div>
+
+            <p className="text-xs text-slate-600 leading-relaxed">
+              This action will permanently delete all test customers, loans, daily collections, chit fund records, and ledger entries from the database.
+              <strong> The admin login credentials and business rules will remain intact.</strong>
+            </p>
+
+            <div className="bg-amber-50 border border-amber-200 p-3 rounded-lg text-xs text-amber-900">
+              Type <strong className="font-mono text-rose-700">CLEAR</strong> below to confirm.
+            </div>
+
+            <input
+              type="text"
+              placeholder="Type CLEAR to confirm"
+              value={resetConfirmationInput}
+              onChange={(e) => setResetConfirmationInput(e.target.value)}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-mono text-slate-900 focus:outline-none focus:ring-2 focus:ring-rose-500"
+            />
+
+            <div className="flex justify-end space-x-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowResetModal(false)}
+                disabled={resetting}
+                className="px-4 py-2 border border-slate-300 rounded-lg text-xs font-medium text-slate-700 hover:bg-slate-50 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleResetDemoData}
+                disabled={resetConfirmationInput.trim().toUpperCase() !== 'CLEAR' || resetting}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center space-x-1.5"
+              >
+                {resetting ? <span>Clearing...</span> : <span>Confirm & Wipe Demo Data</span>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Audit Log Trail Viewer */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
