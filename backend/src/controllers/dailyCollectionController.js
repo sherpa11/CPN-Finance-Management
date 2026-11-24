@@ -673,13 +673,16 @@ const recordDailyCollectionPayment = async (req, res, next) => {
     }
 
     let scheduleItem = account.schedule.find((s) => s.dayNumber === Number(dayNumber));
-    let isPenaltyDay = false;
+    const isPenaltyDay = Number(dayNumber) > account.totalDurationDays || scheduleItem?.category === 'PENALTY';
     let scheduledDate = new Date();
+
+    if (scheduleItem && scheduleItem.status === 'PAID') {
+      return res.status(400).json({ success: false, message: `Day ${dayNumber} is already fully paid.` });
+    }
 
     if (!scheduleItem) {
       if (Number(dayNumber) > account.totalDurationDays) {
         // Overdue penalty payment day
-        isPenaltyDay = true;
         const completionDate = getKolkataDate(account.expectedCompletionDate);
         const overdueIndex = Number(dayNumber) - account.totalDurationDays;
         scheduledDate = completionDate.plus({ days: overdueIndex }).toJSDate();
@@ -693,6 +696,23 @@ const recordDailyCollectionPayment = async (req, res, next) => {
     const amountPaise = status === 'MISSED' ? 0 : toPaise(amountRupees);
     if (status !== 'MISSED' && amountPaise <= 0) {
       return res.status(400).json({ success: false, message: 'Payment amount must be greater than zero.' });
+    }
+
+    // Calculate live penalty status
+    const penaltyCalc = calculateDailyPenalty({
+      dailyRepaymentAmountPaise: account.dailyInstalmentPaise,
+      dueDate: account.expectedCompletionDate,
+      asOfDate: paymentDate ? new Date(paymentDate) : new Date(),
+      isFullyRepaid: false,
+      penaltyPaidPaise: account.penaltyPaidPaise || 0,
+      penaltyRatePercent: account.penaltyRatePercent || 2.0,
+    });
+
+    if (isPenaltyDay && penaltyCalc.penaltyOutstandingPaise > 0 && amountPaise > penaltyCalc.penaltyOutstandingPaise) {
+      return res.status(400).json({
+        success: false,
+        message: `Penalty payment amount (₹${toRupees(amountPaise)}) exceeds current outstanding penalty (₹${toRupees(penaltyCalc.penaltyOutstandingPaise)}).`,
+      });
     }
 
     // Allocation logic based on day category:
@@ -803,14 +823,21 @@ const recordDailyCollectionPayment = async (req, res, next) => {
       account.daysMissed = missedCount;
       account.daysRemaining = Math.max(0, account.totalDurationDays - completedCount);
 
-      if (account.totalOutstandingPaise === 0 && completedCount === account.totalDurationDays) {
+      // Remaining live penalty after this payment is applied
+      const livePenaltyRemaining = isPenaltyDay
+        ? Math.max(0, penaltyCalc.penaltyOutstandingPaise - penaltyAllocationPaise)
+        : penaltyCalc.penaltyOutstandingPaise;
+
+      const totalRemainingToClosePaise = account.totalOutstandingPaise + livePenaltyRemaining;
+
+      if (totalRemainingToClosePaise === 0 && completedCount >= account.totalDurationDays) {
         account.status = 'COMPLETED';
         account.actualCompletionDate = new Date();
       } else {
         // Check if overdue
         const today = DateTime.now().setZone(CONSTANTS.DEFAULT_TIMEZONE).startOf('day');
         const completionDate = DateTime.fromJSDate(account.expectedCompletionDate).setZone(CONSTANTS.DEFAULT_TIMEZONE).startOf('day');
-        if (today > completionDate || missedCount > 0) {
+        if (today > completionDate || missedCount > 0 || livePenaltyRemaining > 0) {
           account.status = 'OVERDUE';
         } else {
           account.status = 'ACTIVE';
@@ -832,9 +859,11 @@ const recordDailyCollectionPayment = async (req, res, next) => {
             loan.penaltyOutstandingPaise = Math.max(0, (loan.penaltyOutstandingPaise || 0) - penaltyAllocationPaise);
           }
 
-          if (account.totalOutstandingPaise === 0) {
+          if (totalRemainingToClosePaise === 0) {
             loan.status = CONSTANTS.LOAN_STATUS.SETTLED;
             loan.settledDate = new Date();
+          } else {
+            loan.status = CONSTANTS.LOAN_STATUS.ACTIVE;
           }
           await loan.save(session ? { session } : undefined);
 
@@ -979,10 +1008,14 @@ const reverseDailyCollectionPayment = async (req, res, next) => {
       account.outstandingInterestPaise = Math.max(0, totalAdditionalInterest - interestCollected);
       account.totalOutstandingPaise = account.outstandingPrincipalPaise + account.outstandingInterestPaise;
 
+      if (payment.penaltyAllocationPaise > 0) {
+        account.penaltyPaidPaise = Math.max(0, (account.penaltyPaidPaise || 0) - payment.penaltyAllocationPaise);
+      }
+
       account.daysCompleted = completedCount;
       account.daysMissed = missedCount;
       account.daysRemaining = Math.max(0, account.totalDurationDays - completedCount);
-      account.status = missedCount > 0 ? 'OVERDUE' : 'ACTIVE';
+      account.status = (missedCount > 0 || (payment.dayNumber > account.totalDurationDays)) ? 'OVERDUE' : 'ACTIVE';
       account.actualCompletionDate = undefined;
 
       await account.save(session ? { session } : undefined);
@@ -995,7 +1028,12 @@ const reverseDailyCollectionPayment = async (req, res, next) => {
           loan.outstandingInterestPaise = account.outstandingInterestPaise;
           loan.totalPrincipalPaidPaise = Math.max(0, loan.totalPrincipalPaidPaise - payment.principalAllocationPaise);
           loan.totalInterestPaidPaise = Math.max(0, loan.totalInterestPaidPaise - payment.interestAllocationPaise);
+          if (payment.penaltyAllocationPaise > 0) {
+            loan.penaltyPaidPaise = Math.max(0, (loan.penaltyPaidPaise || 0) - payment.penaltyAllocationPaise);
+            loan.penaltyOutstandingPaise = (loan.penaltyOutstandingPaise || 0) + payment.penaltyAllocationPaise;
+          }
           loan.status = CONSTANTS.LOAN_STATUS.ACTIVE;
+          loan.settledDate = undefined;
           await loan.save(session ? { session } : undefined);
 
           // Reversal transaction
@@ -1009,9 +1047,12 @@ const reverseDailyCollectionPayment = async (req, res, next) => {
             principalCreditPaise: 0,
             interestDebitPaise: payment.interestAllocationPaise,
             interestCreditPaise: 0,
+            penaltyDebitPaise: payment.penaltyAllocationPaise || 0,
+            penaltyCreditPaise: 0,
             balancePrincipalPaise: loan.outstandingPrincipalPaise,
             balanceInterestPaise: loan.outstandingInterestPaise,
-            balanceTotalPaise: loan.outstandingPrincipalPaise + loan.outstandingInterestPaise,
+            balancePenaltyPaise: loan.penaltyOutstandingPaise || 0,
+            balanceTotalPaise: loan.outstandingPrincipalPaise + loan.outstandingInterestPaise + (loan.penaltyOutstandingPaise || 0),
             remarks: `Reversal of Day ${payment.dayNumber} collection ${payment.paymentId}: ${reason}`,
             referenceId: payment.paymentId,
           });

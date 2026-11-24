@@ -126,13 +126,13 @@ const getMonthlyReport = async (req, res, next) => {
       Loan.find({
         startDate: { $gte: startOfMonth.toJSDate(), $lte: endOfMonth.toJSDate() },
       })
-        .select('principalPaise vattiType loanId')
+        .select('principalPaise grossPrincipalPaise netDisbursementPaise upfrontInterestPaise vattiType loanId')
         .lean(),
       Collection.find({
         paymentDate: { $gte: startOfMonth.toJSDate(), $lte: endOfMonth.toJSDate() },
         status: 'CONFIRMED',
       })
-        .select('principalAllocationPaise interestAllocationPaise penaltyAllocationPaise totalAmountPaise loanCode')
+        .select('principalAllocationPaise interestAllocationPaise penaltyAllocationPaise totalAmountPaise loanCode isUpfrontInterest loanId')
         .lean(),
       Loan.find({
         status: { $in: [CONSTANTS.LOAN_STATUS.ACTIVE, CONSTANTS.LOAN_STATUS.OVERDUE] },

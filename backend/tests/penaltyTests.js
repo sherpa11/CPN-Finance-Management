@@ -1,3 +1,6 @@
+process.env.NODE_ENV = 'test';
+process.env.MONGODB_URI_TEST = process.env.MONGODB_URI_TEST || 'mongodb://127.0.0.1:27017/cpn_raja_test_db';
+
 const mongoose = require('mongoose');
 const request = require('supertest');
 const assert = require('assert');
@@ -33,7 +36,13 @@ async function runPenaltyTests() {
   console.log('  CPN RAJA – CLIENT-CONFIRMED PENALTY RULES REGRESSION SUITE   ');
   console.log('================================================================\n');
 
-  await connectDB();
+  const mongooseInstance = await connectDB();
+  const dbName = mongooseInstance.connection.name;
+  if (!dbName.toLowerCase().includes('test')) {
+    console.error(`[FATAL SAFETY CHECK] Connected to non-test database: "${dbName}". Aborting tests to protect production data!`);
+    process.exit(1);
+  }
+  console.log(`[Safety Verified] Connected to isolated test database: ${dbName}\n`);
 
   // 1. Authenticate admin
   const loginRes = await request(app)

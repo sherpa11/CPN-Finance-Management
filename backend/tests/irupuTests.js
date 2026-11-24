@@ -1,3 +1,6 @@
+process.env.NODE_ENV = 'test';
+process.env.MONGODB_URI_TEST = process.env.MONGODB_URI_TEST || 'mongodb://127.0.0.1:27017/cpn_raja_test_db';
+
 const mongoose = require('mongoose');
 const request = require('supertest');
 const assert = require('assert');
@@ -26,7 +29,13 @@ async function runIrupuTests() {
   console.log('  CPN RAJA – IRUPU (CASH IN HAND) TEST SUITE');
   console.log('=====================================================');
 
-  await connectDB();
+  const mongooseInstance = await connectDB();
+  const dbName = mongooseInstance.connection.name;
+  if (!dbName || !dbName.toLowerCase().includes('test')) {
+    console.error(`[FATAL SAFETY CHECK] Connected to non-test database: "${dbName}". Aborting tests to protect production data!`);
+    process.exit(1);
+  }
+  console.log(`[Safety Verified] Connected to isolated test database: ${dbName}\n`);
 
   // 1. Authenticate
   const loginRes = await request(app)
@@ -137,7 +146,12 @@ async function runIrupuTests() {
     .get('/api/irupu/summary?period=all')
     .set('Authorization', authHeader);
   // Net cash handed over is ₹49,000, so cash reduced by ₹49,000
+  // (Gross Outflow ₹50,000 - Retained Upfront Inflow ₹1,000 = Net reduction ₹49,000)
   const cashAfterDisbursement = summaryRes.body.currentCashInHandRupees;
+  assert(
+    cashAfterDisbursement === initialCash + 100000 - 49000,
+    `Net physical cash reduction is exactly ₹49,000 (Expected: ${initialCash + 100000 - 49000}, Got: ${cashAfterDisbursement})`
+  );
   logPass(`Net cash loan disbursement of ₹49,000 reduced cash in hand correctly (New Cash: ₹${cashAfterDisbursement})`);
 
   // Record a CASH collection of ₹10,000 against this loan

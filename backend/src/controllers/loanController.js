@@ -250,7 +250,7 @@ const createLoan = async (req, res, next) => {
         principalDebitPaise: initialOutstandingPrincipalPaise,
         principalCreditPaise: 0,
         interestDebitPaise: 0,
-        interestCreditPaise: isUpfrontDeduction ? upfrontInterestPaise : 0,
+        interestCreditPaise: 0,
         balancePrincipalPaise: initialOutstandingPrincipalPaise,
         balanceInterestPaise: 0,
         balanceTotalPaise: initialOutstandingPrincipalPaise,

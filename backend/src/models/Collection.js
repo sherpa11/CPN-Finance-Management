@@ -147,5 +147,8 @@ collectionSchema.index({ customerId: 1, paymentDate: -1 });
 collectionSchema.index({ loanId: 1, paymentDate: -1 });
 collectionSchema.index({ status: 1, paymentDate: -1 });
 collectionSchema.index({ paymentDate: -1 });
+collectionSchema.index({ status: 1, paymentMethod: 1, paymentDate: -1 });
+collectionSchema.index({ vattiType: 1, status: 1, paymentMethod: 1 });
+collectionSchema.index({ loanId: 1, isUpfrontInterest: 1 });
 
 module.exports = mongoose.model('Collection', collectionSchema);

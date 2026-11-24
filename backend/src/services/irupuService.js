@@ -87,19 +87,19 @@ async function getCurrentOpeningBalance() {
 }
 
 /**
- * Helper to compute net cash disbursed for a loan
+ * Helper to compute physical cash disbursement outflow for a loan
+ * Consistent Accounting Model:
+ * For cash disbursements, gross principal is recorded as the cash disbursement outflow,
+ * while the retained upfront interest is counted as a confirmed collection inflow.
+ * Net physical cash reduction: -Gross Principal + Upfront Interest = -Net Cash Given.
+ * For non-cash disbursements (UPI, Bank Transfer), 0 physical cash left the box.
  */
 function getLoanCashDisbursedPaise(loan) {
   // If payment method was non-cash, zero physical cash left the box
   if (loan.disbursementPaymentMethod && loan.disbursementPaymentMethod !== 'CASH') {
     return 0;
   }
-  if (loan.netDisbursementPaise !== undefined && loan.netDisbursementPaise !== null) {
-    return loan.netDisbursementPaise;
-  }
-  // Upfront interest was retained in the cash box, so only principal - upfrontInterest left the cash box
-  const upfront = loan.upfrontInterestPaise || 0;
-  return Math.max(0, (loan.principalPaise || 0) - upfront);
+  return loan.grossPrincipalPaise || loan.principalPaise || 0;
 }
 
 /**
@@ -283,7 +283,6 @@ function resolveVattiType(col, loanTypeMap, dcAccountSet) {
  * Main Irupu Cash In Hand Financial Calculation & Reconciliation Engine
  */
 async function getIrupuSummary({ startDate, endDate, period = 'all' } = {}) {
-  await syncHistoricalUpfrontCollections();
   const currentOpb = await getCurrentOpeningBalance();
 
   // Determine date bounds in Asia/Kolkata timezone
