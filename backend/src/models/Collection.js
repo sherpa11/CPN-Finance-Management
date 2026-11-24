@@ -86,6 +86,11 @@ const collectionSchema = new mongoose.Schema(
       default: false,
       index: true,
     },
+    accountedInDisbursement: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
     collectionType: {
       type: String,
       enum: ['REGULAR', 'UPFRONT_INTEREST'],

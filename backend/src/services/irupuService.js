@@ -104,6 +104,27 @@ function getLoanCashDisbursedPaise(loan) {
 }
 
 /**
+ * Helper to compute physical cash upfront interest retained for a loan
+ * Consistent Accounting Model:
+ * Retained upfront interest at disbursement is the single authoritative cash event.
+ * It is added to the finance cash inflow category (Mon, D.I, D.C) at disbursement.
+ * Linked collection receipt records in Collection model serve for receipt printing and ledger,
+ * with zero additional cash impact in Irupu.
+ */
+function getLoanCashUpfrontInterestPaise(loan) {
+  if (loan.disbursementPaymentMethod && loan.disbursementPaymentMethod !== 'CASH') {
+    return 0;
+  }
+  return (
+    loan.upfrontInterestPaise ||
+    loan.calculationConfigSnapshot?.upfrontInterestPaise ||
+    loan.monthlyFinanceDetails?.upfrontInterestPaise ||
+    loan.dailyFinanceDetails?.upfrontInterestPaise ||
+    0
+  );
+}
+
+/**
  * Helper to accurately resolve collection vattiType across models and legacy codes
  */
 function resolveVattiType(col, loanTypeMap, dcAccountSet) {
@@ -282,16 +303,38 @@ async function getIrupuSummary({ startDate, endDate, period = 'all' } = {}) {
   let allTimeDailyCollectionCashPaise = 0;
   let allTimeOtherLoanCashPaise = 0;
 
+  // 1. Authoritative accounting for retained upfront interest from cash loan disbursements
+  // This is the single cash event for upfront interest (retained in the business cash box).
+  loans.forEach((loan) => {
+    const upfront = getLoanCashUpfrontInterestPaise(loan);
+    if (upfront > 0) {
+      const vType = resolveVattiType(loan, loanTypeMap, dcAccountSet);
+      if (vType === 'MONTHLY') {
+        allTimeMonthlyCashPaise += upfront;
+      } else if (vType === 'DAILY') {
+        allTimeDailyFinanceCashPaise += upfront;
+      } else if (vType === 'DAILY_COLLECTION') {
+        allTimeDailyCollectionCashPaise += upfront;
+      } else {
+        allTimeOtherLoanCashPaise += upfront;
+      }
+    }
+  });
+
+  // 2. Genuine customer collections (Exclude upfront interest collections to avoid duplicate cash inflow)
   collections.forEach((col) => {
-    const vType = resolveVattiType(col, loanTypeMap, dcAccountSet);
-    if (vType === 'MONTHLY') {
-      allTimeMonthlyCashPaise += col.totalAmountPaise || 0;
-    } else if (vType === 'DAILY') {
-      allTimeDailyFinanceCashPaise += col.totalAmountPaise || 0;
-    } else if (vType === 'DAILY_COLLECTION') {
-      allTimeDailyCollectionCashPaise += col.totalAmountPaise || 0;
-    } else {
-      allTimeOtherLoanCashPaise += col.totalAmountPaise || 0;
+    const isUpfront = col.isUpfrontInterest === true || col.collectionType === 'UPFRONT_INTEREST' || col.accountedInDisbursement === true;
+    if (!isUpfront) {
+      const vType = resolveVattiType(col, loanTypeMap, dcAccountSet);
+      if (vType === 'MONTHLY') {
+        allTimeMonthlyCashPaise += col.totalAmountPaise || 0;
+      } else if (vType === 'DAILY') {
+        allTimeDailyFinanceCashPaise += col.totalAmountPaise || 0;
+      } else if (vType === 'DAILY_COLLECTION') {
+        allTimeDailyCollectionCashPaise += col.totalAmountPaise || 0;
+      } else {
+        allTimeOtherLoanCashPaise += col.totalAmountPaise || 0;
+      }
     }
   });
 
@@ -333,7 +376,8 @@ async function getIrupuSummary({ startDate, endDate, period = 'all' } = {}) {
     let priorOutflowsPaise = 0;
 
     collections.forEach((col) => {
-      if (new Date(col.paymentDate) < startBound) {
+      const isUpfront = col.isUpfrontInterest === true || col.collectionType === 'UPFRONT_INTEREST' || col.accountedInDisbursement === true;
+      if (!isUpfront && new Date(col.paymentDate) < startBound) {
         priorInflowsPaise += col.totalAmountPaise || 0;
       }
     });
@@ -354,6 +398,7 @@ async function getIrupuSummary({ startDate, endDate, period = 'all' } = {}) {
       const dDate = loan.startDate ? new Date(loan.startDate) : new Date(loan.createdAt);
       if (dDate < startBound) {
         priorOutflowsPaise += getLoanCashDisbursedPaise(loan);
+        priorInflowsPaise += getLoanCashUpfrontInterestPaise(loan);
       }
     });
 
@@ -388,7 +433,8 @@ async function getIrupuSummary({ startDate, endDate, period = 'all' } = {}) {
   const registerEntries = [];
 
   collections.forEach((col) => {
-    if (inPeriod(col.paymentDate)) {
+    const isUpfront = col.isUpfrontInterest === true || col.collectionType === 'UPFRONT_INTEREST' || col.accountedInDisbursement === true;
+    if (!isUpfront && inPeriod(col.paymentDate)) {
       const vType = resolveVattiType(col, loanTypeMap, dcAccountSet);
       const amt = col.totalAmountPaise || 0;
       if (vType === 'MONTHLY') {
@@ -400,9 +446,7 @@ async function getIrupuSummary({ startDate, endDate, period = 'all' } = {}) {
       }
 
       const typeLabel = vType === 'DAILY' ? 'Daily Finance (D.I)' : vType === 'DAILY_COLLECTION' ? 'Daily Collection (D.C)' : 'Monthly Finance (Mon)';
-      const particulars = col.isUpfrontInterest
-        ? `Upfront Interest Retained (${typeLabel}) – ${col.customerName} (${col.loanCode})`
-        : `${vType === 'DAILY' ? 'Daily Finance' : vType === 'DAILY_COLLECTION' ? 'Daily Collection' : 'Monthly Finance'} Cash Collection – ${col.customerName} (${col.loanCode})`;
+      const particulars = `${vType === 'DAILY' ? 'Daily Finance' : vType === 'DAILY_COLLECTION' ? 'Daily Collection' : 'Monthly Finance'} Cash Collection – ${col.customerName} (${col.loanCode})`;
 
       registerEntries.push({
         id: col.receiptNumber || col.collectionId,
@@ -463,6 +507,8 @@ async function getIrupuSummary({ startDate, endDate, period = 'all' } = {}) {
     const dDate = loan.startDate ? new Date(loan.startDate) : new Date(loan.createdAt);
     if (inPeriod(dDate)) {
       const cashDisbursed = getLoanCashDisbursedPaise(loan);
+      const cashUpfront = getLoanCashUpfrontInterestPaise(loan);
+
       if (cashDisbursed > 0) {
         periodLoanDisbursementCashPaise += cashDisbursed;
 
@@ -476,6 +522,32 @@ async function getIrupuSummary({ startDate, endDate, period = 'all' } = {}) {
           investmentPaise: 0,
           cashOutflowPaise: cashDisbursed,
           referenceNumber: loan.loanId,
+          performedBy: 'admin',
+        });
+      }
+
+      if (cashUpfront > 0) {
+        const vType = resolveVattiType(loan, loanTypeMap, dcAccountSet);
+        if (vType === 'MONTHLY') {
+          periodMonthlyCashPaise += cashUpfront;
+        } else if (vType === 'DAILY') {
+          periodDailyFinanceCashPaise += cashUpfront;
+        } else if (vType === 'DAILY_COLLECTION') {
+          periodDailyCollectionCashPaise += cashUpfront;
+        }
+
+        const typeLabel = vType === 'DAILY' ? 'Daily Finance (D.I)' : vType === 'DAILY_COLLECTION' ? 'Daily Collection (D.C)' : 'Monthly Finance (Mon)';
+
+        registerEntries.push({
+          id: loan.upfrontReceiptNumber || `UPF-${loan.loanId}`,
+          date: dDate,
+          source: vType === 'DAILY' ? 'DAILY_FINANCE' : vType === 'DAILY_COLLECTION' ? 'DAILY_COLLECTION' : 'MONTHLY',
+          sourceLabel: typeLabel,
+          particulars: `Upfront Interest Retained (${typeLabel}) – ${loan.customerName} (${loan.loanId})`,
+          cashInflowPaise: cashUpfront,
+          investmentPaise: 0,
+          cashOutflowPaise: 0,
+          referenceNumber: loan.upfrontReceiptNumber || loan.loanId,
           performedBy: 'admin',
         });
       }
@@ -508,8 +580,14 @@ async function getIrupuSummary({ startDate, endDate, period = 'all' } = {}) {
     }
   });
 
-  // Sort register entries chronologically
-  registerEntries.sort((a, b) => a.date - b.date);
+  // Sort register entries chronologically. For same date, order DISBURSEMENT first, then upfront interest / collections
+  registerEntries.sort((a, b) => {
+    const diff = a.date - b.date;
+    if (diff !== 0) return diff;
+    if (a.source === 'DISBURSEMENT') return -1;
+    if (b.source === 'DISBURSEMENT') return 1;
+    return 0;
+  });
 
   // Compute running balance starting from periodOpeningBalancePaise
   let running = periodOpeningBalancePaise;

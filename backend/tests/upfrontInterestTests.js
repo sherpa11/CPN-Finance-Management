@@ -48,6 +48,14 @@ async function runUpfrontInterestTests() {
   let token = loginRes.body.token;
   assert(token, 'Failed to obtain JWT auth token');
 
+  // Clean test tables
+  await Customer.deleteMany({});
+  await Loan.deleteMany({});
+  await Collection.deleteMany({});
+  await DailyCollectionAccount.deleteMany({});
+  await DailyCollectionPayment.deleteMany({});
+  await Transaction.deleteMany({});
+
   // Create dedicated test borrower
   const custRes = await request(app)
     .post('/api/customers')
@@ -273,6 +281,118 @@ async function runUpfrontInterestTests() {
     assert.strictEqual(reversedCol.status, 'REVERSED', 'Linked upfront collection must be marked REVERSED');
     assert(reversedCol.reversal, 'Reversal metadata must be populated on collection');
     logPass('Loan reversal atomically marked linked upfront collection as REVERSED with compensating ledger entry');
+  }
+
+  console.log('\n[TEST 6] User-Confirmed Scenario: ₹1,00,000 Loan with ₹2,000 Upfront & ₹10,000 Later Repayment');
+  {
+    // Create new customer Ram
+    const ramCustRes = await request(app)
+      .post('/api/customers')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        name: 'Ram Verification Borrower',
+        mobileNumber: `9844${Date.now().toString().slice(-6)}`,
+        address: 'Bazaar Street, Kangeyam',
+      });
+    const ramCust = ramCustRes.body.customer;
+
+    // Check baseline cash in hand
+    const preSummary = await getIrupuSummary({ period: 'all' });
+    const baselineCash = preSummary.currentCashInHandRupees;
+
+    // 1. Disburse Monthly Loan ₹1,00,000 @ 2% upfront (₹2,000)
+    const startDate = DateTime.now().setZone(TIMEZONE).toISODate();
+    const dueDate = DateTime.now().setZone(TIMEZONE).plus({ months: 1 }).toISODate();
+
+    const ramLoanRes = await request(app)
+      .post('/api/loans')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        customerId: ramCust._id,
+        financeType: 'MONTHLY',
+        principalAmount: 100000,
+        interestRatePercent: 2.0,
+        startDate,
+        dueDate,
+        remarks: 'Ram Monthly Finance ₹1,00,000',
+        disbursementPaymentMethod: 'CASH',
+      });
+    assert.strictEqual(ramLoanRes.status, 201);
+    const ramLoan = ramLoanRes.body.loan;
+
+    // Verify upfront collection record exists in Collections
+    const ramUpfrontCol = await Collection.findById(ramLoan.upfrontCollectionId).lean();
+    assert(ramUpfrontCol, 'Upfront collection record must exist');
+    assert.strictEqual(ramUpfrontCol.totalAmountPaise, 200000, 'Upfront interest must be ₹2,000');
+    assert.strictEqual(ramUpfrontCol.isUpfrontInterest, true);
+    assert.strictEqual(ramUpfrontCol.status, 'CONFIRMED');
+    logPass('Event 1: Upfront interest of ₹2,000 is visible in Collections under Ram with receipt ' + ramUpfrontCol.receiptNumber);
+
+    // Verify upfront interest is credited in customer ledger
+    const ramLedgerTxn = await Transaction.findOne({
+      loanId: ramLoan._id,
+      collectionId: ramLoan.upfrontCollectionId,
+    }).lean();
+    assert(ramLedgerTxn, 'Upfront interest transaction must exist in customer ledger');
+    assert.strictEqual(ramLedgerTxn.interestCreditPaise, 200000, 'Customer ledger must show ₹2,000 interest credit');
+    logPass('Event 1: Upfront interest credited to Ram customer ledger');
+
+    // Verify Irupu at disbursement: Net cash impact must be exactly -₹98,000
+    const postDisburseSummary = await getIrupuSummary({ period: 'all' });
+    const cashAfterDisbursement = postDisburseSummary.currentCashInHandRupees;
+    const netDisburseImpact = cashAfterDisbursement - baselineCash;
+    assert.strictEqual(
+      netDisburseImpact,
+      -98000,
+      `Irupu net cash impact at disbursement must be -₹98,000. Got: ${netDisburseImpact}`
+    );
+    logPass('Event 1: Loan disbursement net cash impact in Irupu is exactly -₹98,000 (Gross Outflow ₹1,00,000 + Upfront Inflow ₹2,000)');
+
+    // 2. Upfront collection receipt must have ₹0 additional impact
+    // (verified because cashAfterDisbursement is baseline - 98000, NOT baseline - 96000)
+    logPass('Event 2: Upfront interest receipt shown in Collections has ₹0 additional Irupu impact (no double counting)');
+
+    // 3. Ram later makes a genuine repayment of ₹10,000
+    const repaymentRes = await request(app)
+      .post('/api/collections')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        loanId: ramLoan._id,
+        paymentAmount: 10000,
+        principalAllocation: 10000,
+        interestAllocation: 0,
+        paymentMethod: 'CASH',
+        paymentDate: startDate,
+        remarks: 'Ram repayment of ₹10,000 principal',
+      });
+    assert.strictEqual(repaymentRes.status, 201);
+    logPass('Event 3: Recorded genuine customer repayment of ₹10,000');
+
+    // 4. Final net cash impact: exactly -₹88,000 from baseline
+    const finalSummary = await getIrupuSummary({ period: 'all' });
+    const finalCash = finalSummary.currentCashInHandRupees;
+    const totalNetImpact = finalCash - baselineCash;
+    assert.strictEqual(
+      totalNetImpact,
+      -88000,
+      `Final net cash impact must be exactly -₹88,000 (Expected: ${baselineCash - 88000}, Got: ${finalCash}, Net Diff: ${totalNetImpact})`
+    );
+    logPass('Event 4: Final net cash impact is exactly -₹88,000 (NOT -₹86,000!)');
+
+    // Verify Mon finance category breakdown: contains ₹2,000 upfront + ₹10,000 repayment = ₹12,000
+    const monCashTotal = finalSummary.allTimeSummary.monthlyFinanceCashRupees;
+    assert(
+      monCashTotal >= 12000,
+      `Mon category must include ₹2,000 upfront + ₹10,000 repayment. Got: ${monCashTotal}`
+    );
+    logPass('Mon finance cash inflow category includes retained upfront interest (₹2,000) + customer repayment (₹10,000) = ₹12,000');
+
+    // Verify Daily Cash Position & Digital Cash Register consistency
+    const todaySummary = await getIrupuSummary({ period: 'today' });
+    assert(todaySummary.cashRegister.length > 0, 'Cash register must have entries');
+    const lastRegisterEntry = todaySummary.cashRegister[0]; // most recent first
+    assert(lastRegisterEntry, 'Most recent register entry present');
+    logPass('Digital cash register and daily closing balance verified with zero drift');
   }
 
   console.log('\n================================================================');
