@@ -18,7 +18,7 @@ import api from '../api';
 export default function NewVatti({ preselectedCustomer, onNavigate }) {
   const [customers, setCustomers] = useState([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState(preselectedCustomer?._id || '');
-  const [vattiType, setVattiType] = useState('MONTHLY');
+  const [vattiType, setVattiType] = useState('DAILY_COLLECTION');
   const [principalAmount, setPrincipalAmount] = useState('');
   const [interestRatePercent, setInterestRatePercent] = useState('2.0');
   const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
@@ -258,11 +258,11 @@ export default function NewVatti({ preselectedCustomer, onNavigate }) {
       <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
         <div>
           <h2 className="text-lg font-bold text-slate-900 flex items-center space-x-2">
-            <PlusCircle className="w-5 h-5 text-amber-500" />
-            <span>New Finance / Loan Disbursement</span>
+            <PlusCircle className="w-5 h-5 text-emerald-600" />
+            <span>Daily Collection Loan Disbursement</span>
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            Disburse Monthly, Daily, or Daily Collection (70 or 100 Days Upfront Interest Deduction)
+            Disburse Daily Collection (70 or 100 Days Upfront Interest Deduction). For Monthly or Daily Finance, visit their dedicated sidebar menus.
           </p>
         </div>
       </div>
@@ -384,27 +384,35 @@ export default function NewVatti({ preselectedCustomer, onNavigate }) {
 
               {/* Finance Type Selector */}
               <div>
-                <label className="block font-semibold text-slate-700 mb-1.5">Finance Category *</label>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3">
-                  {[
-                    { id: 'MONTHLY', label: '1. Monthly Finance', desc: 'Simple interest monthly' },
-                    { id: 'DAILY', label: '2. Daily Finance', desc: 'Simple interest daily' },
-                    { id: 'DAILY_COLLECTION', label: '3. Daily Collection', desc: 'Upfront Interest (70 or 100 days)' },
-                  ].map((cat) => (
-                    <button
-                      key={cat.id}
-                      type="button"
-                      onClick={() => setVattiType(cat.id)}
-                      className={`p-3 rounded-lg border text-left transition-all cursor-pointer min-h-[50px] ${
-                        vattiType === cat.id
-                          ? 'border-blue-600 bg-blue-50/70 text-blue-900 ring-2 ring-blue-500/20 shadow-xs'
-                          : 'border-slate-200 hover:border-slate-300 bg-slate-50/50'
-                      }`}
-                    >
-                      <p className="font-bold text-xs sm:text-sm">{cat.label}</p>
-                      <p className="text-[10px] text-slate-500 mt-0.5">{cat.desc}</p>
-                    </button>
-                  ))}
+                <label className="block font-semibold text-slate-700 mb-1.5">Finance Category</label>
+                <div className="p-3 rounded-lg border border-emerald-600 bg-emerald-50/70 text-emerald-950 ring-2 ring-emerald-500/20 shadow-xs">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-bold text-xs sm:text-sm text-emerald-900">Daily Collection (தினசரி வசூல்)</p>
+                      <p className="text-[10px] text-emerald-700 mt-0.5">70 or 100 Calendar Days Upfront Interest Deduction</p>
+                    </div>
+                    <span className="px-2.5 py-0.5 bg-emerald-600 text-white rounded-full text-[10px] font-bold">
+                      Selected
+                    </span>
+                  </div>
+                </div>
+
+                <div className="mt-2.5 flex flex-wrap items-center gap-2 text-xs">
+                  <span className="text-slate-500 text-[11px]">Need Monthly or Daily Finance?</span>
+                  <button
+                    type="button"
+                    onClick={() => onNavigate('monthly-finance')}
+                    className="inline-flex items-center space-x-1 px-2.5 py-1 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-md font-semibold text-[11px] transition-colors cursor-pointer border border-blue-200"
+                  >
+                    <span>Monthly Finance (மாத வட்டி) →</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onNavigate('daily-finance')}
+                    className="inline-flex items-center space-x-1 px-2.5 py-1 bg-amber-50 text-amber-800 hover:bg-amber-100 rounded-md font-semibold text-[11px] transition-colors cursor-pointer border border-amber-200"
+                  >
+                    <span>Daily Finance (நாள் வட்டி) →</span>
+                  </button>
                 </div>
               </div>
 

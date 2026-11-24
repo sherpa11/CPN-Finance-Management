@@ -2,7 +2,9 @@ import React, { useState, useEffect } from 'react';
 import {
   LayoutDashboard,
   Users,
-  PlusCircle,
+  CalendarRange,
+  CalendarDays,
+  Layers,
   Banknote,
   CalendarCheck,
   Bell,
@@ -10,7 +12,6 @@ import {
   BarChart3,
   Settings,
   Gift,
-  Layers,
   Landmark,
   X,
 } from 'lucide-react';
@@ -38,7 +39,8 @@ export default function Sidebar({ currentTab, onNavigate, onClose }) {
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'customers', label: 'Customers', icon: Users },
-    { id: 'new-finance', label: 'New Finance / Loan', icon: PlusCircle, highlight: true },
+    { id: 'monthly-finance', label: 'Monthly Finance', icon: CalendarRange },
+    { id: 'daily-finance', label: 'Daily Finance', icon: CalendarDays },
     { id: 'daily-collection', label: 'Daily Collection', icon: Layers },
     { id: 'collections', label: 'Collections', icon: Banknote },
     { id: 'dues', label: 'Due Management', icon: CalendarCheck, badge: counts.dueToday > 0 ? `${counts.dueToday} Today` : null, badgeColor: 'bg-amber-500' },
@@ -74,7 +76,7 @@ export default function Sidebar({ currentTab, onNavigate, onClose }) {
       <div className="p-3 sm:p-4 space-y-1 sm:space-y-1.5 flex-1 overflow-y-auto">
         {navItems.map((item) => {
           const Icon = item.icon;
-          const isActive = currentTab === item.id || (item.id === 'new-finance' && currentTab === 'new-vatti');
+          const isActive = currentTab === item.id;
           return (
             <button
               key={item.id}

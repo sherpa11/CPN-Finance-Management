@@ -9,6 +9,8 @@ import Login from './pages/Login';
 // Lazy-loaded page components for instant initial bundle loading and code splitting
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Customers = lazy(() => import('./pages/Customers'));
+const MonthlyFinance = lazy(() => import('./pages/MonthlyFinance'));
+const DailyFinance = lazy(() => import('./pages/DailyFinance'));
 const NewVatti = lazy(() => import('./pages/NewVatti'));
 const Collections = lazy(() => import('./pages/Collections'));
 const DueManagement = lazy(() => import('./pages/DueManagement'));
@@ -26,6 +28,8 @@ function getTabFromPath() {
   const validTabs = [
     'dashboard',
     'customers',
+    'monthly-finance',
+    'daily-finance',
     'new-finance',
     'new-vatti',
     'daily-collection',
@@ -163,6 +167,20 @@ function AppContent() {
                 <Customers
                   onNavigate={navigateTo}
                   onSelectCustomerForLoan={handleSelectCustomerForLoan}
+                />
+              )}
+
+              {currentTab === 'monthly-finance' && (
+                <MonthlyFinance
+                  preselectedCustomer={preselectedCustomerForLoan}
+                  onNavigate={navigateTo}
+                />
+              )}
+
+              {currentTab === 'daily-finance' && (
+                <DailyFinance
+                  preselectedCustomer={preselectedCustomerForLoan}
+                  onNavigate={navigateTo}
                 />
               )}
 

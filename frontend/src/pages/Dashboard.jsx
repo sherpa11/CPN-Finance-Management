@@ -79,16 +79,22 @@ export default function Dashboard({ onNavigate, onOpenCollection }) {
           </p>
         </div>
 
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full sm:w-auto">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
           <button
-            onClick={() => onNavigate('new-finance')}
-            className="px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-lg transition-all shadow-md shadow-amber-500/20 flex items-center justify-center space-x-1.5 cursor-pointer min-h-[40px]"
+            onClick={() => onNavigate('monthly-finance')}
+            className="px-3 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-lg transition-all shadow-md shadow-blue-600/20 flex items-center justify-center space-x-1 cursor-pointer min-h-[38px]"
           >
-            <span>+ New Finance / Loan</span>
+            <span>+ Monthly Finance</span>
+          </button>
+          <button
+            onClick={() => onNavigate('daily-finance')}
+            className="px-3 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-lg transition-all shadow-md shadow-amber-500/20 flex items-center justify-center space-x-1 cursor-pointer min-h-[38px]"
+          >
+            <span>+ Daily Finance</span>
           </button>
           <button
             onClick={() => onNavigate('collections')}
-            className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-lg transition-all shadow-md shadow-emerald-600/20 flex items-center justify-center space-x-1.5 cursor-pointer min-h-[40px]"
+            className="px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-lg transition-all shadow-md shadow-emerald-600/20 flex items-center justify-center space-x-1 cursor-pointer min-h-[38px]"
           >
             <span>Record Payment</span>
           </button>
