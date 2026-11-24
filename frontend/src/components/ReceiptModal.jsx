@@ -43,7 +43,11 @@ export default function ReceiptModal({ receipt, onClose }) {
             <p className="text-[10px] sm:text-xs font-bold text-slate-600 uppercase tracking-widest">
               FINANCE MANAGEMENT SYSTEM
             </p>
-            <p className="text-xs text-slate-500 mt-1">Official Financial Collection Voucher</p>
+            <p className="text-xs text-slate-500 mt-1">
+              {(receipt.isUpfrontInterest || receipt.collectionType === 'UPFRONT_INTEREST')
+                ? 'Official Upfront Interest Collection Voucher'
+                : 'Official Financial Collection Voucher'}
+            </p>
           </div>
 
           {/* Receipt Meta */}

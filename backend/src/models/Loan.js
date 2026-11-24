@@ -88,7 +88,7 @@ const loanSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ['ACTIVE', 'SETTLED', 'OVERDUE', 'CLOSED'],
+      enum: ['ACTIVE', 'SETTLED', 'OVERDUE', 'CLOSED', 'CANCELLED', 'REVERSED'],
       default: 'ACTIVE',
       index: true,
     },
@@ -214,6 +214,14 @@ const loanSchema = new mongoose.Schema(
         type: mongoose.Schema.Types.Mixed,
         default: {},
       },
+    },
+    // Auto-recorded upfront interest collection reference
+    upfrontCollectionId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Collection',
+    },
+    upfrontReceiptNumber: {
+      type: String,
     },
   },
   {

@@ -10,5 +10,7 @@ router.post('/', loanController.createLoan);
 router.get('/', loanController.listLoans);
 router.get('/:id', loanController.getLoanById);
 router.post('/:id/amend-rate', loanController.amendInterestRate);
+router.post('/:id/reverse', loanController.reverseLoan);
+router.delete('/:id', loanController.deleteLoan);
 
 module.exports = router;

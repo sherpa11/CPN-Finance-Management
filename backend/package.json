@@ -19,7 +19,8 @@
     "test:delete": "node tests/customerDeleteTests.js",
     "test:irupu": "node tests/irupuTests.js",
     "test:penalty": "node tests/penaltyTests.js",
-    "test": "jest tests/calculationEngine.test.js && node tests/runApiTests.js && node tests/moiSeerApiTests.js && node tests/dailyCollectionApiTests.js && node tests/chitFundApiTests.js && node tests/systemAuditTests.js && node tests/customerDeleteTests.js && node tests/irupuTests.js && node tests/penaltyTests.js"
+    "test:upfront": "node tests/upfrontInterestTests.js",
+    "test": "jest tests/calculationEngine.test.js && node tests/runApiTests.js && node tests/moiSeerApiTests.js && node tests/dailyCollectionApiTests.js && node tests/chitFundApiTests.js && node tests/systemAuditTests.js && node tests/customerDeleteTests.js && node tests/irupuTests.js && node tests/penaltyTests.js && node tests/upfrontInterestTests.js"
   },
   "keywords": [],
   "author": "",

@@ -1,6 +1,7 @@
 const Loan = require('../models/Loan');
 const Customer = require('../models/Customer');
 const Transaction = require('../models/Transaction');
+const Collection = require('../models/Collection');
 const CalculationConfiguration = require('../models/CalculationConfiguration');
 const { logAuditEvent } = require('../services/auditService');
 const { runInTransaction } = require('../services/transactionHelper');
@@ -13,6 +14,10 @@ const {
   getKolkataDate,
 } = require('../services/calculationEngine');
 const { evaluateDueNotifications } = require('../services/notificationService');
+const {
+  generateCollectionId,
+  generateReceiptNumber,
+} = require('./collectionController');
 const CONSTANTS = require('../config/constants');
 const { escapeRegex } = require('../utils/sanitize');
 const { invalidateDashboardCache } = require('./dashboardController');
@@ -31,17 +36,17 @@ async function generateLoanId() {
   return `CPN-LN-${Date.now().toString().slice(-4)}`;
 }
 
-async function generateTransactionId() {
+async function generateTransactionId(offset = 0) {
   const lastTxn = await Transaction.findOne().sort({ transactionId: -1 });
   if (!lastTxn || !lastTxn.transactionId) {
-    return 'CPN-TXN-00001';
+    return `CPN-TXN-${String(1 + offset).padStart(5, '0')}`;
   }
   const match = lastTxn.transactionId.match(/CPN-TXN-(\d+)/);
   if (match) {
-    const nextSeq = parseInt(match[1], 10) + 1;
+    const nextSeq = parseInt(match[1], 10) + 1 + offset;
     return `CPN-TXN-${String(nextSeq).padStart(5, '0')}`;
   }
-  return `CPN-TXN-${Date.now().toString().slice(-5)}`;
+  return `CPN-TXN-${(Date.now() + offset).toString().slice(-5)}`;
 }
 
 /**
@@ -174,6 +179,15 @@ const createLoan = async (req, res, next) => {
     const dailyDurationDays = isDaily ? (initialCalc.eligibleDays || initialCalc.durationDays || 10) : undefined;
     const dailyInstalmentPaise = isDaily ? (initialCalc.dailyInstalmentPaise || Math.floor(principalPaise / (dailyDurationDays || 1))) : undefined;
 
+    let upfrontColId = null;
+    let upfrontReceiptNum = null;
+    let colTxnId = null;
+    if (isUpfrontDeduction && upfrontInterestPaise > 0) {
+      upfrontColId = await generateCollectionId();
+      upfrontReceiptNum = await generateReceiptNumber();
+      colTxnId = await generateTransactionId(1);
+    }
+
     const result = await runInTransaction(async (session) => {
       // 1. Create Loan Document
       const loan = new Loan({
@@ -250,6 +264,66 @@ const createLoan = async (req, res, next) => {
       });
 
       await txn.save(session ? { session } : undefined);
+
+      // 2b. Auto-Record Confirmed Upfront Interest Collection
+      if (isUpfrontDeduction && upfrontInterestPaise > 0) {
+        loan.upfrontReceiptNumber = upfrontReceiptNum;
+
+        const upfrontCollection = new Collection({
+          collectionId: upfrontColId,
+          receiptNumber: upfrontReceiptNum,
+          loanId: loan._id,
+          loanCode: loan.loanId,
+          customerId: customer._id,
+          customerName: customer.name,
+          paymentDate: new Date(startDate),
+          paymentMethod: disbursementPaymentMethod || 'CASH',
+          totalAmountPaise: upfrontInterestPaise,
+          principalAllocationPaise: 0,
+          interestAllocationPaise: upfrontInterestPaise,
+          penaltyAllocationPaise: 0,
+          isUpfrontInterest: true,
+          collectionType: 'UPFRONT_INTEREST',
+          vattiType: loan.vattiType,
+          previousOutstandingPrincipalPaise: initialOutstandingPrincipalPaise,
+          previousOutstandingInterestPaise: upfrontInterestPaise,
+          remainingPrincipalPaise: initialOutstandingPrincipalPaise,
+          remainingInterestPaise: 0,
+          status: CONSTANTS.COLLECTION_STATUS.CONFIRMED,
+          collectedBy: req.user.username,
+          remarks: 'Upfront interest deducted during disbursement',
+          idempotencyKey: `UPFRONT-${loan.loanId}`,
+        });
+
+        await upfrontCollection.save(session ? { session } : undefined);
+        loan.upfrontCollectionId = upfrontCollection._id;
+        await loan.save(session ? { session } : undefined);
+
+        // Linked collection ledger transaction
+        const colTxn = new Transaction({
+          transactionId: colTxnId,
+          customerId: customer._id,
+          loanId: loan._id,
+          collectionId: upfrontCollection._id,
+          date: new Date(startDate),
+          type: CONSTANTS.TRANSACTION_TYPES.COLLECTION,
+          principalDebitPaise: 0,
+          principalCreditPaise: 0,
+          interestDebitPaise: 0,
+          interestCreditPaise: upfrontInterestPaise,
+          penaltyDebitPaise: 0,
+          penaltyCreditPaise: 0,
+          balancePrincipalPaise: initialOutstandingPrincipalPaise,
+          balanceInterestPaise: 0,
+          balancePenaltyPaise: 0,
+          balanceTotalPaise: initialOutstandingPrincipalPaise,
+          remarks: `Collection [${upfrontReceiptNum}]: Upfront interest deducted during disbursement`,
+          referenceId: upfrontReceiptNum,
+          performedBy: req.user.username,
+        });
+
+        await colTxn.save(session ? { session } : undefined);
+      }
 
       // 3. Update Customer Financial Aggregates
       customer.totalLentPaise = (customer.totalLentPaise || 0) + netDisbursedPaise;
@@ -585,10 +659,133 @@ const amendInterestRate = async (req, res, next) => {
   }
 };
 
+/**
+ * Reverse / Cancel Loan Account and its Linked Upfront Collection
+ */
+const reverseLoan = async (req, res, next) => {
+  try {
+    const loan = await Loan.findById(req.params.id);
+    if (!loan) {
+      return res.status(404).json({ success: false, message: 'Loan account not found' });
+    }
+
+    if (loan.status === 'CANCELLED' || loan.status === 'REVERSED') {
+      return res.status(400).json({ success: false, message: 'This loan account is already cancelled/reversed.' });
+    }
+
+    const customer = await Customer.findById(loan.customerId);
+    const reason = (req.body && req.body.reason && req.body.reason.trim()) || 'Loan reversed/cancelled by admin';
+
+    const result = await runInTransaction(async (session) => {
+      // 1. If loan has an upfront interest collection, reverse it
+      if (loan.upfrontCollectionId) {
+        const upfrontCol = await Collection.findById(loan.upfrontCollectionId);
+        if (upfrontCol && upfrontCol.status !== CONSTANTS.COLLECTION_STATUS.REVERSED) {
+          upfrontCol.status = CONSTANTS.COLLECTION_STATUS.REVERSED;
+          const revTxnId = await generateTransactionId();
+          upfrontCol.reversal = {
+            reversedAt: new Date(),
+            reversedBy: req.user?.username || 'admin',
+            reason: `Loan ${loan.loanId} reversed: ${reason}`,
+            reversalTransactionId: revTxnId,
+          };
+          await upfrontCol.save(session ? { session } : undefined);
+
+          // Compensating reversal transaction for upfront collection
+          const revColTxn = new Transaction({
+            transactionId: revTxnId,
+            customerId: loan.customerId,
+            loanId: loan._id,
+            collectionId: upfrontCol._id,
+            date: new Date(),
+            type: CONSTANTS.TRANSACTION_TYPES.REVERSAL,
+            principalDebitPaise: 0,
+            principalCreditPaise: 0,
+            interestDebitPaise: upfrontCol.interestAllocationPaise,
+            interestCreditPaise: 0,
+            penaltyDebitPaise: 0,
+            penaltyCreditPaise: 0,
+            balancePrincipalPaise: loan.outstandingPrincipalPaise,
+            balanceInterestPaise: 0,
+            balanceTotalPaise: loan.outstandingPrincipalPaise,
+            remarks: `REVERSAL of Upfront Interest [${upfrontCol.receiptNumber}]: ${reason}`,
+            referenceId: upfrontCol.receiptNumber,
+            performedBy: req.user?.username || 'admin',
+          });
+          await revColTxn.save(session ? { session } : undefined);
+        }
+      }
+
+      // 2. Create Reversal Transaction for the Loan Disbursement
+      const revDisburseTxnId = await generateTransactionId();
+      const revDisburseTxn = new Transaction({
+        transactionId: revDisburseTxnId,
+        customerId: loan.customerId,
+        loanId: loan._id,
+        date: new Date(),
+        type: CONSTANTS.TRANSACTION_TYPES.REVERSAL,
+        principalDebitPaise: 0,
+        principalCreditPaise: loan.grossPrincipalPaise || loan.principalPaise,
+        interestDebitPaise: 0,
+        interestCreditPaise: 0,
+        balancePrincipalPaise: 0,
+        balanceInterestPaise: 0,
+        balanceTotalPaise: 0,
+        remarks: `REVERSAL of Loan Disbursement [${loan.loanId}]: ${reason}`,
+        referenceId: loan.loanId,
+        performedBy: req.user?.username || 'admin',
+      });
+      await revDisburseTxn.save(session ? { session } : undefined);
+
+      // 3. Mark Loan as CANCELLED
+      loan.status = 'CANCELLED';
+      loan.outstandingPrincipalPaise = 0;
+      loan.outstandingInterestPaise = 0;
+      await loan.save(session ? { session } : undefined);
+
+      // 4. Adjust Customer Financial Aggregates
+      if (customer) {
+        customer.totalLentPaise = Math.max(0, (customer.totalLentPaise || 0) - (loan.netDisbursementPaise || loan.principalPaise));
+        customer.outstandingPrincipalPaise = Math.max(0, (customer.outstandingPrincipalPaise || 0) - (loan.grossPrincipalPaise || loan.principalPaise));
+        customer.totalInterestPaidPaise = Math.max(0, (customer.totalInterestPaidPaise || 0) - (loan.upfrontInterestPaise || 0));
+        customer.activeLoanCount = Math.max(0, (customer.activeLoanCount || 1) - 1);
+        await customer.save(session ? { session } : undefined);
+      }
+
+      return loan;
+    });
+
+    invalidateDashboardCache();
+
+    await logAuditEvent({
+      action: 'REVERSE_LOAN',
+      entityType: 'LOAN',
+      entityId: loan._id,
+      performedBy: req.user?.username || 'admin',
+      ipAddress: req.ip,
+      details: `Reversed loan ${loan.loanId} and linked upfront interest collection`,
+    });
+
+    res.json({
+      success: true,
+      message: `Loan ${loan.loanId} and linked upfront collection reversed successfully`,
+      loan: result,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const deleteLoan = async (req, res, next) => {
+  return reverseLoan(req, res, next);
+};
+
 module.exports = {
   previewLoan,
   createLoan,
   listLoans,
   getLoanById,
   amendInterestRate,
+  reverseLoan,
+  deleteLoan,
 };

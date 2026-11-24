@@ -43,17 +43,17 @@ async function generateReceiptNumber() {
   return `RCP-${year}-${Date.now().toString().slice(-4)}`;
 }
 
-async function generateTransactionId() {
+async function generateTransactionId(offset = 0) {
   const lastTxn = await Transaction.findOne().sort({ transactionId: -1 });
   if (!lastTxn || !lastTxn.transactionId) {
-    return 'CPN-TXN-00001';
+    return `CPN-TXN-${String(1 + offset).padStart(5, '0')}`;
   }
   const match = lastTxn.transactionId.match(/CPN-TXN-(\d+)/);
   if (match) {
-    const nextSeq = parseInt(match[1], 10) + 1;
+    const nextSeq = parseInt(match[1], 10) + 1 + offset;
     return `CPN-TXN-${String(nextSeq).padStart(5, '0')}`;
   }
-  return `CPN-TXN-${Date.now().toString().slice(-5)}`;
+  return `CPN-TXN-${(Date.now() + offset).toString().slice(-5)}`;
 }
 
 /**
@@ -369,6 +369,14 @@ const reverseCollection = async (req, res, next) => {
       });
     }
 
+    // Guard: Prevent standalone deletion/reversal of upfront interest collections linked to loan disbursement
+    if (collection.isUpfrontInterest && !req.query?.internalLoanAction && !req.body?.internalLoanAction) {
+      return res.status(400).json({
+        success: false,
+        message: 'This upfront interest collection is linked directly to the loan disbursement and cannot be deleted or reversed independently. Reverse or cancel the loan account instead.',
+      });
+    }
+
     const loan = await Loan.findById(collection.loanId);
     if (!loan) {
       return res.status(404).json({ success: false, message: 'Associated loan account not found' });
@@ -519,6 +527,10 @@ const listCollections = async (req, res, next) => {
       totalPages: Math.ceil(total / limit),
       collections: collections.map((c) => ({
         ...c,
+        customerName: c.customerName || c.customerId?.name || 'Customer',
+        isUpfrontInterest: !!c.isUpfrontInterest,
+        collectionType: c.collectionType || (c.isUpfrontInterest ? 'UPFRONT_INTEREST' : 'REGULAR'),
+        vattiType: c.vattiType || c.loanId?.vattiType || (c.loanCode?.startsWith('CPR-DC') ? 'DAILY_COLLECTION' : 'MONTHLY'),
         totalAmountRupees: toRupees(c.totalAmountPaise),
         principalAllocationRupees: toRupees(c.principalAllocationPaise),
         interestAllocationRupees: toRupees(c.interestAllocationPaise),
@@ -586,4 +598,7 @@ module.exports = {
   deleteCollection,
   listCollections,
   getReceipt,
+  generateCollectionId,
+  generateReceiptNumber,
+  generateTransactionId,
 };

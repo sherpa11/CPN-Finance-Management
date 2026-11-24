@@ -1,12 +1,18 @@
 const { DateTime } = require('luxon');
 const Collection = require('../models/Collection');
 const DailyCollectionPayment = require('../models/DailyCollectionPayment');
+const DailyCollectionAccount = require('../models/DailyCollectionAccount');
 const Loan = require('../models/Loan');
 const IrupuInvestment = require('../models/IrupuInvestment');
 const IrupuOutflow = require('../models/IrupuOutflow');
 const IrupuOpeningBalance = require('../models/IrupuOpeningBalance');
 const AuditLog = require('../models/AuditLog');
 const { toPaise, toRupees, getKolkataDate, formatINR } = require('./calculationEngine');
+const {
+  generateCollectionId,
+  generateReceiptNumber,
+} = require('../controllers/collectionController');
+const CONSTANTS = require('../config/constants');
 
 const TIMEZONE = 'Asia/Kolkata';
 
@@ -97,9 +103,132 @@ function getLoanCashDisbursedPaise(loan) {
 }
 
 /**
+ * Safely and idempotently backfill upfront collections for existing loans with upfront interest
+ */
+async function syncHistoricalUpfrontCollections() {
+  try {
+    const loans = await Loan.find({
+      upfrontInterestPaise: { $gt: 0 },
+      status: { $nin: ['CANCELLED', 'REVERSED'] },
+    }).lean();
+
+    for (const loan of loans) {
+      const existing = await Collection.findOne({
+        $or: [
+          { idempotencyKey: `UPFRONT-${loan.loanId}` },
+          { loanId: loan._id, isUpfrontInterest: true },
+        ],
+      });
+
+      if (!existing) {
+        const upfrontColId = await generateCollectionId();
+        const upfrontReceiptNum = await generateReceiptNumber();
+
+        const newCol = new Collection({
+          collectionId: upfrontColId,
+          receiptNumber: upfrontReceiptNum,
+          loanId: loan._id,
+          loanCode: loan.loanId,
+          customerId: loan.customerId,
+          customerName: loan.customerName,
+          paymentDate: loan.startDate || loan.createdAt || new Date(),
+          paymentMethod: loan.disbursementPaymentMethod || 'CASH',
+          totalAmountPaise: loan.upfrontInterestPaise,
+          principalAllocationPaise: 0,
+          interestAllocationPaise: loan.upfrontInterestPaise,
+          penaltyAllocationPaise: 0,
+          isUpfrontInterest: true,
+          collectionType: 'UPFRONT_INTEREST',
+          vattiType: loan.vattiType || 'MONTHLY',
+          previousOutstandingPrincipalPaise: loan.grossPrincipalPaise || loan.principalPaise,
+          previousOutstandingInterestPaise: loan.upfrontInterestPaise,
+          remainingPrincipalPaise: loan.grossPrincipalPaise || loan.principalPaise,
+          remainingInterestPaise: 0,
+          status: CONSTANTS.COLLECTION_STATUS.CONFIRMED,
+          collectedBy: 'admin',
+          remarks: 'Upfront interest deducted during disbursement',
+          idempotencyKey: `UPFRONT-${loan.loanId}`,
+        });
+
+        await newCol.save();
+        await Loan.findByIdAndUpdate(loan._id, {
+          upfrontCollectionId: newCol._id,
+          upfrontReceiptNumber: upfrontReceiptNum,
+        });
+      } else if (!loan.upfrontCollectionId || !loan.upfrontReceiptNumber) {
+        await Loan.findByIdAndUpdate(loan._id, {
+          upfrontCollectionId: existing._id,
+          upfrontReceiptNumber: existing.receiptNumber,
+        });
+      }
+    }
+
+    const dcAccounts = await DailyCollectionAccount.find({
+      scheme: 'UPFRONT_DEDUCTION',
+      upfrontInterestPaise: { $gt: 0 },
+      status: { $nin: ['CANCELLED', 'REVERSED'] },
+    }).lean();
+
+    for (const dc of dcAccounts) {
+      const existing = await Collection.findOne({
+        $or: [
+          { idempotencyKey: `UPFRONT-${dc.accountId}` },
+          { loanCode: dc.loanCode, isUpfrontInterest: true },
+        ],
+      });
+
+      if (!existing) {
+        const upfrontColId = await generateCollectionId();
+        const upfrontReceiptNum = await generateReceiptNumber();
+
+        const newCol = new Collection({
+          collectionId: upfrontColId,
+          receiptNumber: upfrontReceiptNum,
+          loanId: dc.loanId,
+          loanCode: dc.loanCode,
+          customerId: dc.customerId,
+          customerName: dc.customerName,
+          paymentDate: dc.startDate || dc.createdAt || new Date(),
+          paymentMethod: 'CASH',
+          totalAmountPaise: dc.upfrontInterestPaise,
+          principalAllocationPaise: 0,
+          interestAllocationPaise: dc.upfrontInterestPaise,
+          penaltyAllocationPaise: 0,
+          isUpfrontInterest: true,
+          collectionType: 'UPFRONT_INTEREST',
+          vattiType: 'DAILY_COLLECTION',
+          previousOutstandingPrincipalPaise: dc.grossPrincipalPaise,
+          previousOutstandingInterestPaise: dc.upfrontInterestPaise,
+          remainingPrincipalPaise: dc.grossPrincipalPaise,
+          remainingInterestPaise: 0,
+          status: CONSTANTS.COLLECTION_STATUS.CONFIRMED,
+          collectedBy: 'admin',
+          remarks: 'Upfront interest deducted during disbursement',
+          idempotencyKey: `UPFRONT-${dc.accountId}`,
+        });
+
+        await newCol.save();
+        await DailyCollectionAccount.findByIdAndUpdate(dc._id, {
+          upfrontReceiptNumber: upfrontReceiptNum,
+        });
+        if (dc.loanId) {
+          await Loan.findByIdAndUpdate(dc.loanId, {
+            upfrontCollectionId: newCol._id,
+            upfrontReceiptNumber: upfrontReceiptNum,
+          });
+        }
+      }
+    }
+  } catch (err) {
+    console.error('[syncHistoricalUpfrontCollections Error]', err.message);
+  }
+}
+
+/**
  * Main Irupu Cash In Hand Financial Calculation & Reconciliation Engine
  */
 async function getIrupuSummary({ startDate, endDate, period = 'all' } = {}) {
+  await syncHistoricalUpfrontCollections();
   const currentOpb = await getCurrentOpeningBalance();
 
   // Determine date bounds in Asia/Kolkata timezone
@@ -169,20 +298,23 @@ async function getIrupuSummary({ startDate, endDate, period = 'all' } = {}) {
   // A. All-Time Lifetime Aggregation
   let allTimeMonthlyCashPaise = 0;
   let allTimeDailyFinanceCashPaise = 0;
+  let allTimeDailyCollectionCashPaise = 0;
   let allTimeOtherLoanCashPaise = 0;
 
   collections.forEach((col) => {
-    const vType = col.loanId?.vattiType || 'MONTHLY';
+    const vType = col.vattiType || col.loanId?.vattiType || (col.loanCode?.startsWith('CPR-DC') ? 'DAILY_COLLECTION' : 'MONTHLY');
     if (vType === 'MONTHLY') {
       allTimeMonthlyCashPaise += col.totalAmountPaise || 0;
     } else if (vType === 'DAILY') {
       allTimeDailyFinanceCashPaise += col.totalAmountPaise || 0;
+    } else if (vType === 'DAILY_COLLECTION') {
+      allTimeDailyCollectionCashPaise += col.totalAmountPaise || 0;
     } else {
       allTimeOtherLoanCashPaise += col.totalAmountPaise || 0;
     }
   });
 
-  const allTimeDailyCollectionCashPaise = dcPayments.reduce((acc, p) => acc + (p.amountPaise || 0), 0);
+  allTimeDailyCollectionCashPaise += dcPayments.reduce((acc, p) => acc + (p.amountPaise || 0), 0);
   const allTimeInvestmentPaise = investments.reduce((acc, i) => acc + (i.amountPaise || 0), 0);
   const allTimeLoanDisbursementCashPaise = loans.reduce((acc, l) => acc + getLoanCashDisbursedPaise(l), 0);
   const allTimeExpensePaise = outflows
@@ -276,20 +408,27 @@ async function getIrupuSummary({ startDate, endDate, period = 'all' } = {}) {
 
   collections.forEach((col) => {
     if (inPeriod(col.paymentDate)) {
-      const vType = col.loanId?.vattiType || 'MONTHLY';
+      const vType = col.vattiType || col.loanId?.vattiType || (col.loanCode?.startsWith('CPR-DC') ? 'DAILY_COLLECTION' : 'MONTHLY');
       const amt = col.totalAmountPaise || 0;
       if (vType === 'MONTHLY') {
         periodMonthlyCashPaise += amt;
       } else if (vType === 'DAILY') {
         periodDailyFinanceCashPaise += amt;
+      } else if (vType === 'DAILY_COLLECTION') {
+        periodDailyCollectionCashPaise += amt;
       }
+
+      const typeLabel = vType === 'DAILY' ? 'Daily Finance (D.I)' : vType === 'DAILY_COLLECTION' ? 'Daily Collection (D.C)' : 'Monthly Finance (Mon)';
+      const particulars = col.isUpfrontInterest
+        ? `Upfront Interest Retained (${typeLabel}) – ${col.customerName} (${col.loanCode})`
+        : `${vType === 'DAILY' ? 'Daily Finance' : vType === 'DAILY_COLLECTION' ? 'Daily Collection' : 'Monthly Finance'} Cash Collection – ${col.customerName} (${col.loanCode})`;
 
       registerEntries.push({
         id: col.receiptNumber || col.collectionId,
         date: new Date(col.paymentDate),
-        source: vType === 'DAILY' ? 'DAILY_FINANCE' : 'MONTHLY',
-        sourceLabel: vType === 'DAILY' ? 'Daily Finance (D.I)' : 'Monthly Finance (Mon)',
-        particulars: `${vType === 'DAILY' ? 'Daily Finance' : 'Monthly Finance'} Cash Collection – ${col.customerName} (${col.loanCode})`,
+        source: vType === 'DAILY' ? 'DAILY_FINANCE' : vType === 'DAILY_COLLECTION' ? 'DAILY_COLLECTION' : 'MONTHLY',
+        sourceLabel: typeLabel,
+        particulars,
         cashInflowPaise: amt,
         investmentPaise: 0,
         cashOutflowPaise: 0,
@@ -505,6 +644,8 @@ async function getIrupuSummary({ startDate, endDate, period = 'all' } = {}) {
       // Source-wise collections (Matching Handwritten Diary: Mon, D.C, D.I)
       monthlyFinanceCashRupees: toRupees(periodMonthlyCashPaise),
       monthlyFinanceCashPaise: periodMonthlyCashPaise,
+      monthlyCashRupees: toRupees(periodMonthlyCashPaise),
+      monthlyCashPaise: periodMonthlyCashPaise,
       dailyFinanceCashRupees: toRupees(periodDailyFinanceCashPaise),
       dailyFinanceCashPaise: periodDailyFinanceCashPaise,
       dailyCollectionCashRupees: toRupees(periodDailyCollectionCashPaise),

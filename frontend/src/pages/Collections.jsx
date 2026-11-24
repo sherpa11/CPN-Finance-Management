@@ -348,10 +348,24 @@ export default function Collections({ initialLoan }) {
                   const statusBadge = getStatusBadge(col.status);
                   return (
                     <tr key={col._id} className="hover:bg-slate-50 transition-colors">
-                      <td className="py-3 px-4 font-mono font-bold text-slate-900">{col.receiptNumber}</td>
+                      <td className="py-3 px-4 font-mono font-bold text-slate-900">
+                        <div className="flex items-center space-x-1.5 flex-wrap gap-y-1">
+                          <span>{col.receiptNumber}</span>
+                          {col.isUpfrontInterest && (
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-purple-100 text-purple-700 border border-purple-200">
+                              Upfront
+                            </span>
+                          )}
+                        </div>
+                      </td>
                       <td className="py-3 px-3 text-slate-600">{formatDate(col.paymentDate)}</td>
                       <td className="py-3 px-4 font-bold text-slate-900">{col.customerName}</td>
-                      <td className="py-3 px-3 font-mono text-blue-700 font-semibold">{col.loanCode}</td>
+                      <td className="py-3 px-3 font-mono text-blue-700 font-semibold">
+                        <div>{col.loanCode}</div>
+                        <div className="text-[10px] text-slate-500 font-sans font-normal">
+                          {col.vattiType === 'DAILY' ? 'Daily Finance' : col.vattiType === 'DAILY_COLLECTION' ? 'Daily Collection' : 'Monthly Finance'}
+                        </div>
+                      </td>
                       <td className="py-3 px-3 uppercase text-[11px] font-medium text-slate-600">
                         {col.paymentMethod}
                       </td>
@@ -383,28 +397,39 @@ export default function Collections({ initialLoan }) {
                           </button>
                           {col.status === 'CONFIRMED' && (
                             <>
-                              <button
-                                onClick={() => {
-                                  setReversalTarget(col);
-                                  setReversalReason('');
-                                  setReversalError('');
-                                }}
-                                className="p-1.5 text-amber-600 hover:bg-amber-50 rounded transition-colors"
-                                title="Audited Reversal"
-                              >
-                                <RotateCcw className="w-4 h-4" />
-                              </button>
-                              <button
-                                onClick={() => {
-                                  setDeleteTarget(col);
-                                  setDeleteReason('');
-                                  setDeleteError('');
-                                }}
-                                className="p-1.5 text-rose-600 hover:bg-rose-50 rounded transition-colors"
-                                title="Delete Collection"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
+                              {col.isUpfrontInterest ? (
+                                <span
+                                  className="p-1.5 text-slate-400 cursor-not-allowed inline-flex items-center"
+                                  title="Upfront interest is linked directly to loan disbursement. Reverse or cancel the loan account to revert."
+                                >
+                                  <RotateCcw className="w-4 h-4 opacity-30" />
+                                </span>
+                              ) : (
+                                <>
+                                  <button
+                                    onClick={() => {
+                                      setReversalTarget(col);
+                                      setReversalReason('');
+                                      setReversalError('');
+                                    }}
+                                    className="p-1.5 text-amber-600 hover:bg-amber-50 rounded transition-colors"
+                                    title="Audited Reversal"
+                                  >
+                                    <RotateCcw className="w-4 h-4" />
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setDeleteTarget(col);
+                                      setDeleteReason('');
+                                      setDeleteError('');
+                                    }}
+                                    className="p-1.5 text-rose-600 hover:bg-rose-50 rounded transition-colors"
+                                    title="Delete Collection"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </>
+                              )}
                             </>
                           )}
                         </div>

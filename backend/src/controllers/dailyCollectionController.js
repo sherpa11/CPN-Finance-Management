@@ -3,6 +3,11 @@ const DailyCollectionPayment = require('../models/DailyCollectionPayment');
 const Customer = require('../models/Customer');
 const Loan = require('../models/Loan');
 const Transaction = require('../models/Transaction');
+const Collection = require('../models/Collection');
+const {
+  generateCollectionId,
+  generateReceiptNumber,
+} = require('./collectionController');
 const { logAuditEvent } = require('../services/auditService');
 const { runInTransaction } = require('../services/transactionHelper');
 const {
@@ -60,17 +65,17 @@ async function generateLoanId() {
   return `CPN-LN-${Date.now().toString().slice(-4)}`;
 }
 
-async function generateTransactionId() {
+async function generateTransactionId(offset = 0) {
   const lastTxn = await Transaction.findOne().sort({ transactionId: -1 });
   if (!lastTxn || !lastTxn.transactionId) {
-    return 'CPN-TXN-00001';
+    return `CPN-TXN-${String(1 + offset).padStart(5, '0')}`;
   }
   const match = lastTxn.transactionId.match(/CPN-TXN-(\d+)/);
   if (match) {
-    const nextSeq = parseInt(match[1], 10) + 1;
+    const nextSeq = parseInt(match[1], 10) + 1 + offset;
     return `CPN-TXN-${String(nextSeq).padStart(5, '0')}`;
   }
-  return `CPN-TXN-${Date.now().toString().slice(-5)}`;
+  return `CPN-TXN-${(Date.now() + offset).toString().slice(-5)}`;
 }
 
 /**
@@ -193,6 +198,15 @@ const createDailyCollectionAccount = async (req, res, next) => {
     const loanId = await generateLoanId();
     const txnId = await generateTransactionId();
 
+    let dcUpfrontColId = null;
+    let dcUpfrontReceiptNum = null;
+    let dcColTxnId = null;
+    if (calc.scheme === 'UPFRONT_DEDUCTION' && calc.upfrontInterestPaise > 0) {
+      dcUpfrontColId = await generateCollectionId();
+      dcUpfrontReceiptNum = await generateReceiptNumber();
+      dcColTxnId = await generateTransactionId(1);
+    }
+
     const result = await runInTransaction(async (session) => {
       // 1. Create DailyCollectionAccount
       const dcAccount = new DailyCollectionAccount({
@@ -293,6 +307,68 @@ const createDailyCollectionAccount = async (req, res, next) => {
       });
 
       await txn.save(session ? { session } : undefined);
+
+      // 3b. Auto-Record Confirmed Upfront Interest Collection for Scheme A
+      if (calc.scheme === 'UPFRONT_DEDUCTION' && calc.upfrontInterestPaise > 0) {
+        dcAccount.upfrontReceiptNumber = dcUpfrontReceiptNum;
+        loan.upfrontReceiptNumber = dcUpfrontReceiptNum;
+
+        const upfrontCollection = new Collection({
+          collectionId: dcUpfrontColId,
+          receiptNumber: dcUpfrontReceiptNum,
+          loanId: loan._id,
+          loanCode: loanId,
+          customerId: customer._id,
+          customerName: customer.name,
+          paymentDate: new Date(calc.startDate),
+          paymentMethod: req.body.disbursementPaymentMethod || 'CASH',
+          totalAmountPaise: calc.upfrontInterestPaise,
+          principalAllocationPaise: 0,
+          interestAllocationPaise: calc.upfrontInterestPaise,
+          penaltyAllocationPaise: 0,
+          isUpfrontInterest: true,
+          collectionType: 'UPFRONT_INTEREST',
+          vattiType: 'DAILY_COLLECTION',
+          previousOutstandingPrincipalPaise: calc.grossPrincipalPaise,
+          previousOutstandingInterestPaise: calc.upfrontInterestPaise,
+          remainingPrincipalPaise: calc.grossPrincipalPaise,
+          remainingInterestPaise: 0,
+          status: CONSTANTS.COLLECTION_STATUS.CONFIRMED,
+          collectedBy: req.user ? req.user.username : 'system',
+          remarks: 'Upfront interest deducted during disbursement',
+          idempotencyKey: `UPFRONT-${accountId}`,
+        });
+
+        await upfrontCollection.save(session ? { session } : undefined);
+        loan.upfrontCollectionId = upfrontCollection._id;
+        await dcAccount.save(session ? { session } : undefined);
+        await loan.save(session ? { session } : undefined);
+
+        const colTxn = new Transaction({
+          transactionId: dcColTxnId,
+          customerId: customer._id,
+          loanId: loan._id,
+          collectionId: upfrontCollection._id,
+          date: new Date(calc.startDate),
+          type: CONSTANTS.TRANSACTION_TYPES.COLLECTION,
+          principalDebitPaise: 0,
+          principalCreditPaise: 0,
+          interestDebitPaise: 0,
+          interestCreditPaise: calc.upfrontInterestPaise,
+          penaltyDebitPaise: 0,
+          penaltyCreditPaise: 0,
+          balancePrincipalPaise: calc.grossPrincipalPaise,
+          balanceInterestPaise: 0,
+          balancePenaltyPaise: 0,
+          balanceTotalPaise: calc.grossPrincipalPaise,
+          remarks: `Collection [${dcUpfrontReceiptNum}]: Upfront interest deducted during disbursement for Daily Collection ${accountId}`,
+          referenceId: dcUpfrontReceiptNum,
+          performedBy: req.user ? req.user.username : 'system',
+        });
+
+        await colTxn.save(session ? { session } : undefined);
+        customer.totalInterestPaidPaise = (customer.totalInterestPaidPaise || 0) + calc.upfrontInterestPaise;
+      }
 
       // 4. Update Customer aggregates
       customer.activeLoansCount += 1;

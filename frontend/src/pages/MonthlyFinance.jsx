@@ -990,10 +990,16 @@ export default function MonthlyFinance({ onNavigate, preselectedCustomer }) {
                         {loanTransactions.map((tx) => (
                           <tr key={tx._id} className="hover:bg-slate-50">
                             <td className="px-3 py-2 text-slate-600">{formatDate(tx.date || tx.createdAt)}</td>
-                            <td className="px-3 py-2 font-mono text-blue-700 font-bold">{tx.transactionId || tx.referenceId || '—'}</td>
+                            <td className="px-3 py-2 font-mono text-blue-700 font-bold">{tx.referenceId || tx.transactionId || '—'}</td>
                             <td className="px-3 py-2 text-slate-700">{tx.remarks || tx.type}</td>
                             <td className="px-3 py-2 text-right font-bold text-emerald-600">
-                              {formatINR((tx.principalCreditPaise || 0) / 100)}
+                              {tx.principalCreditPaise > 0 ? (
+                                <span>{formatINR(tx.principalCreditPaise / 100)}</span>
+                              ) : tx.interestCreditPaise > 0 ? (
+                                <span className="text-amber-700" title="Interest Repaid">{formatINR(tx.interestCreditPaise / 100)}</span>
+                              ) : (
+                                '₹0.00'
+                              )}
                             </td>
                             <td className="px-3 py-2 text-right font-mono font-bold text-slate-900">
                               {formatINR((tx.balancePrincipalPaise || 0) / 100)}

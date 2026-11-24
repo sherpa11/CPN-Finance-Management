@@ -45,9 +45,16 @@ const getDailyReport = async (req, res, next) => {
     }).lean();
 
     const principalLentPaise = loansIssued.reduce((sum, l) => sum + (l.netDisbursementPaise !== undefined ? l.netDisbursementPaise : l.principalPaise), 0);
-    const upfrontInterestFromLoansPaise = loansIssued.reduce((sum, l) => sum + (l.upfrontInterestPaise || 0), 0);
+    const recordedUpfrontLoanIds = new Set(
+      collections
+        .filter((c) => c.isUpfrontInterest)
+        .map((c) => String(c.loanId?._id || c.loanId))
+    );
+    const unrecordedUpfrontPaise = loansIssued
+      .filter((l) => !recordedUpfrontLoanIds.has(String(l._id)))
+      .reduce((sum, l) => sum + (l.upfrontInterestPaise || 0), 0);
     const principalCollectedPaise = collections.reduce((sum, c) => sum + c.principalAllocationPaise, 0);
-    const interestCollectedPaise = collections.reduce((sum, c) => sum + c.interestAllocationPaise, 0) + upfrontInterestFromLoansPaise;
+    const interestCollectedPaise = collections.reduce((sum, c) => sum + c.interestAllocationPaise, 0) + unrecordedUpfrontPaise;
     const penaltyCollectedPaise = collections.reduce((sum, c) => sum + (c.penaltyAllocationPaise || 0), 0);
     const totalCollectionPaise = principalCollectedPaise + interestCollectedPaise + penaltyCollectedPaise;
 
@@ -135,9 +142,16 @@ const getMonthlyReport = async (req, res, next) => {
     ]);
 
     const totalPrincipalLentPaise = loans.reduce((sum, l) => sum + (l.netDisbursementPaise !== undefined ? l.netDisbursementPaise : l.principalPaise), 0);
-    const upfrontInterestFromLoansPaise = loans.reduce((sum, l) => sum + (l.upfrontInterestPaise || 0), 0);
+    const recordedMonthlyUpfrontLoanIds = new Set(
+      collections
+        .filter((c) => c.isUpfrontInterest)
+        .map((c) => String(c.loanId?._id || c.loanId))
+    );
+    const unrecordedMonthlyUpfrontPaise = loans
+      .filter((l) => !recordedMonthlyUpfrontLoanIds.has(String(l._id)))
+      .reduce((sum, l) => sum + (l.upfrontInterestPaise || 0), 0);
     const totalPrincipalCollectedPaise = collections.reduce((sum, c) => sum + c.principalAllocationPaise, 0);
-    const totalInterestCollectedPaise = collections.reduce((sum, c) => sum + c.interestAllocationPaise, 0) + upfrontInterestFromLoansPaise;
+    const totalInterestCollectedPaise = collections.reduce((sum, c) => sum + c.interestAllocationPaise, 0) + unrecordedMonthlyUpfrontPaise;
     const totalPenaltyCollectedPaise = collections.reduce((sum, c) => sum + (c.penaltyAllocationPaise || 0), 0);
     const totalCollectionPaise = totalPrincipalCollectedPaise + totalInterestCollectedPaise + totalPenaltyCollectedPaise;
 

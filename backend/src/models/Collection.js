@@ -80,6 +80,23 @@ const collectionSchema = new mongoose.Schema(
       default: 'CONFIRMED',
       index: true,
     },
+    // Upfront interest deduction tracking
+    isUpfrontInterest: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    collectionType: {
+      type: String,
+      enum: ['REGULAR', 'UPFRONT_INTEREST'],
+      default: 'REGULAR',
+      index: true,
+    },
+    vattiType: {
+      type: String,
+      enum: ['MONTHLY', 'DAILY', 'DAILY_COLLECTION', 'MEATER'],
+      default: 'MONTHLY',
+    },
     // Balance snapshots for audit accuracy
     previousOutstandingPrincipalPaise: {
       type: Number,
