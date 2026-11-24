@@ -383,7 +383,11 @@ const listLoans = async (req, res, next) => {
         query.vattiType = vattiType;
       }
     }
-    if (status && status !== 'ALL') query.status = status;
+    if (status && status !== 'ALL') {
+      query.status = status.includes(',')
+        ? { $in: status.split(',').map((s) => s.trim()) }
+        : status;
+    }
 
     if (search && search.trim()) {
       const escaped = escapeRegex(search.trim());

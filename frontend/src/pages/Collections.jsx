@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { formatINR, formatDate, formatDateTime, getStatusBadge } from '../utils/formatters';
 import ReceiptModal from '../components/ReceiptModal';
+import SearchableLoanSelect from '../components/SearchableLoanSelect';
 import api from '../api';
 
 export default function Collections({ initialLoan }) {
@@ -77,12 +78,17 @@ export default function Collections({ initialLoan }) {
 
   const loadActiveLoans = async () => {
     try {
-      const res = await api.get('/loans?status=ACTIVE&limit=200');
+      const res = await api.get('/loans?status=ACTIVE,OVERDUE&limit=500');
       if (res.data.success) {
         setActiveLoans(res.data.loans);
-        if (!selectedLoanId && res.data.loans.length > 0) {
-          setSelectedLoanId(res.data.loans[0]._id);
-          setSelectedLoanObj(res.data.loans[0]);
+        if (initialLoan) {
+          const match = res.data.loans.find(
+            (l) => l._id === initialLoan.id || l.id === initialLoan.id || l.loanId === initialLoan.id
+          );
+          if (match) {
+            setSelectedLoanId(match._id);
+            setSelectedLoanObj(match);
+          }
         }
       }
     } catch (err) {
@@ -294,9 +300,14 @@ export default function Collections({ initialLoan }) {
 
         <button
           onClick={() => {
+            if (!initialLoan) {
+              setSelectedLoanId('');
+              setSelectedLoanObj(null);
+            }
             setPaymentAmount('');
             setPrincipalAllocation('');
             setInterestAllocation('');
+            setPenaltyAllocation('');
             setRemarks('');
             setBreakdownError('');
             setIsRecordModalOpen(true);
@@ -523,22 +534,19 @@ export default function Collections({ initialLoan }) {
             )}
 
             <form onSubmit={handleRecordPayment} className="space-y-4 text-xs">
-              {/* Select Loan */}
+              {/* Select Loan with Searchable Customer / Loan Selector */}
               <div>
                 <label className="block font-semibold text-slate-700 mb-1">Select Loan Account *</label>
-                <select
-                  required
+                <SearchableLoanSelect
+                  loans={activeLoans}
                   value={selectedLoanId}
-                  onChange={(e) => setSelectedLoanId(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-900 font-medium bg-white focus:ring-2 focus:ring-emerald-500"
-                >
-                  <option value="">-- Choose Loan Account --</option>
-                  {activeLoans.map((l) => (
-                    <option key={l._id} value={l._id}>
-                      {l.customerName} - {l.loanId} ({l.financeType || (l.vattiType ? `${l.vattiType} Finance` : '')}) | Principal Due: ₹{l.outstandingPrincipalPaise / 100}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(loanId, loanObj) => {
+                    setSelectedLoanId(loanId);
+                    setSelectedLoanObj(loanObj);
+                  }}
+                  placeholder="Search customer name, mobile number, or loan ID..."
+                  required
+                />
               </div>
 
               {/* Outstanding Balance Banner */}
