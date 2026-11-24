@@ -12,6 +12,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { formatINR, formatDate, getFinanceBadge } from '../utils/formatters';
+import SearchableCustomerSelect from '../components/SearchableCustomerSelect';
 import api from '../api';
 
 export default function NewVatti({ preselectedCustomer, onNavigate }) {
@@ -362,19 +363,13 @@ export default function NewVatti({ preselectedCustomer, onNavigate }) {
               {/* Customer Selector */}
               <div>
                 <label className="block font-semibold text-slate-700 mb-1">Select Customer *</label>
-                <select
+                <SearchableCustomerSelect
                   required
                   value={selectedCustomerId}
-                  onChange={(e) => setSelectedCustomerId(e.target.value)}
-                  className="w-full px-3 py-2.5 border border-slate-300 rounded-lg font-medium text-slate-800 focus:ring-2 focus:ring-blue-500 bg-white"
-                >
-                  <option value="">-- Choose Existing Borrower --</option>
-                  {customers.map((c) => (
-                    <option key={c._id} value={c._id}>
-                      {c.name} ({c.customerId}) - {c.mobileNumber}
-                    </option>
-                  ))}
-                </select>
+                  customers={customers}
+                  onChange={(id) => setSelectedCustomerId(id)}
+                  placeholder="Search by customer name or mobile number..."
+                />
                 <div className="mt-1 text-[11px] text-slate-400">
                   Don't see borrower?{' '}
                   <button
@@ -663,13 +658,13 @@ export default function NewVatti({ preselectedCustomer, onNavigate }) {
               ) : preview ? (
                 <div className="space-y-3 font-mono text-xs">
                   <div className="flex justify-between py-1.5 border-b border-slate-200/60 font-sans">
-                    <span className="text-slate-500">Principal:</span>
+                    <span className="text-slate-500">Gross Principal:</span>
                     <span className="font-bold text-slate-900">{formatINR(preview.principalAmount)}</span>
                   </div>
 
                   <div className="flex justify-between py-1.5 border-b border-slate-200/60 font-sans">
                     <span className="text-slate-500">Interest Rate:</span>
-                    <span className="font-bold text-slate-900">{preview.interestRatePercent}%</span>
+                    <span className="font-bold text-slate-900">{preview.interestRatePercent}% {vattiType === 'MONTHLY' ? '/ Month' : '/ Day'}</span>
                   </div>
 
                   <div className="flex justify-between py-1.5 border-b border-slate-200/60 font-sans">
@@ -679,15 +674,39 @@ export default function NewVatti({ preselectedCustomer, onNavigate }) {
                     </span>
                   </div>
 
-                  <div className="flex justify-between py-1.5 border-b border-slate-200/60 font-sans text-purple-800">
-                    <span className="font-semibold">Expected Interest:</span>
-                    <span className="font-bold text-sm">{formatINR(preview.expectedInterestRupees)}</span>
-                  </div>
+                  {vattiType === 'MONTHLY' || preview.isUpfrontDeduction ? (
+                    <>
+                      <div className="flex justify-between py-1.5 border-b border-slate-200/60 font-sans text-rose-700">
+                        <span className="font-semibold">Upfront Interest Deducted:</span>
+                        <span className="font-bold text-sm">- {formatINR(preview.expectedInterestRupees)}</span>
+                      </div>
 
-                  <div className="flex justify-between py-2 border-t-2 border-slate-300 font-sans text-slate-950 font-bold">
-                    <span>Total Payable:</span>
-                    <span className="text-base text-blue-700">{formatINR(preview.expectedTotalPayableRupees)}</span>
-                  </div>
+                      <div className="flex justify-between py-1.5 border-b border-slate-200/60 font-sans text-emerald-800 font-bold bg-emerald-50 px-2 rounded">
+                        <span>Net Cash Given:</span>
+                        <span className="text-sm">{formatINR(preview.netAmountGivenRupees ?? (preview.principalAmount - preview.expectedInterestRupees))}</span>
+                      </div>
+
+                      <div className="flex justify-between py-2 border-t-2 border-slate-300 font-sans text-slate-950 font-bold">
+                        <span>Total Payable:</span>
+                        <span className="text-base text-blue-700">{formatINR(preview.expectedTotalPayableRupees)}</span>
+                      </div>
+                      <div className="text-[11px] font-sans text-slate-500 bg-slate-50 p-2 rounded border border-slate-200">
+                        ℹ️ Interest is deducted upfront at disbursement. The customer repays the net payable amount of {formatINR(preview.expectedTotalPayableRupees)}.
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex justify-between py-1.5 border-b border-slate-200/60 font-sans text-purple-800">
+                        <span className="font-semibold">Expected Interest:</span>
+                        <span className="font-bold text-sm">{formatINR(preview.expectedInterestRupees)}</span>
+                      </div>
+
+                      <div className="flex justify-between py-2 border-t-2 border-slate-300 font-sans text-slate-950 font-bold">
+                        <span>Total Payable:</span>
+                        <span className="text-base text-blue-700">{formatINR(preview.expectedTotalPayableRupees)}</span>
+                      </div>
+                    </>
+                  )}
                 </div>
               ) : (
                 <div className="p-8 text-center text-slate-400 text-xs">
@@ -758,6 +777,27 @@ export default function NewVatti({ preselectedCustomer, onNavigate }) {
                   <div className="flex justify-between font-sans">
                     <span className="text-slate-500">Total Duration:</span>
                     <span className="font-bold text-slate-900">{totalDurationDays} Calendar Days</span>
+                  </div>
+                </>
+              )}
+
+              {vattiType === 'MONTHLY' && (
+                <>
+                  <div className="flex justify-between font-sans text-rose-700">
+                    <span className="font-semibold">Upfront Interest Deducted:</span>
+                    <span className="font-bold">
+                      - {formatINR(preview?.expectedInterestRupees || 0)} ({interestRatePercent}% / month)
+                    </span>
+                  </div>
+
+                  <div className="flex justify-between font-sans text-emerald-800 font-bold bg-emerald-50 px-2 py-0.5 rounded">
+                    <span>Net Cash Given to Customer:</span>
+                    <span>{formatINR(preview?.netAmountGivenRupees ?? (Number(principalAmount) - (preview?.expectedInterestRupees || 0)))}</span>
+                  </div>
+
+                  <div className="flex justify-between font-sans font-bold text-blue-800 bg-blue-50 px-2 py-0.5 rounded">
+                    <span>Total Payable by Customer:</span>
+                    <span>{formatINR(preview?.expectedTotalPayableRupees ?? (Number(principalAmount) - (preview?.expectedInterestRupees || 0)))}</span>
                   </div>
                 </>
               )}

@@ -11,6 +11,7 @@ import {
   X,
   CreditCard,
   FileCheck,
+  Trash2,
 } from 'lucide-react';
 import { formatINR, formatDate, formatDateTime, getStatusBadge } from '../utils/formatters';
 import ReceiptModal from '../components/ReceiptModal';
@@ -48,6 +49,12 @@ export default function Collections({ initialLoan }) {
   const [reversalReason, setReversalReason] = useState('');
   const [reversalSubmitting, setReversalSubmitting] = useState(false);
   const [reversalError, setReversalError] = useState('');
+
+  // Delete Modal
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleteReason, setDeleteReason] = useState('');
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
 
   const fetchCollections = async () => {
     setLoading(true);
@@ -241,6 +248,27 @@ export default function Collections({ initialLoan }) {
     }
   };
 
+  const handleDeleteCollection = async () => {
+    setDeleteSubmitting(true);
+    setDeleteError('');
+    try {
+      const reason = deleteReason.trim() || 'Deleted by admin';
+      const res = await api.delete(`/collections/${deleteTarget._id}`, {
+        data: { reason },
+      });
+      if (res.data.success) {
+        setDeleteTarget(null);
+        setDeleteReason('');
+        fetchCollections();
+        loadActiveLoans();
+      }
+    } catch (err) {
+      setDeleteError(err.response?.data?.message || err.message || 'Failed to delete collection');
+    } finally {
+      setDeleteSubmitting(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header and Controls */}
@@ -342,17 +370,30 @@ export default function Collections({ initialLoan }) {
                             <Printer className="w-4 h-4" />
                           </button>
                           {col.status === 'CONFIRMED' && (
-                            <button
-                              onClick={() => {
-                                setReversalTarget(col);
-                                setReversalReason('');
-                                setReversalError('');
-                              }}
-                              className="p-1.5 text-rose-600 hover:bg-rose-50 rounded transition-colors"
-                              title="Audited Reversal"
-                            >
-                              <RotateCcw className="w-4 h-4" />
-                            </button>
+                            <>
+                              <button
+                                onClick={() => {
+                                  setReversalTarget(col);
+                                  setReversalReason('');
+                                  setReversalError('');
+                                }}
+                                className="p-1.5 text-amber-600 hover:bg-amber-50 rounded transition-colors"
+                                title="Audited Reversal"
+                              >
+                                <RotateCcw className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setDeleteTarget(col);
+                                  setDeleteReason('');
+                                  setDeleteError('');
+                                }}
+                                className="p-1.5 text-rose-600 hover:bg-rose-50 rounded transition-colors"
+                                title="Delete Collection"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </>
                           )}
                         </div>
                       </td>
@@ -623,9 +664,79 @@ export default function Collections({ initialLoan }) {
                 type="button"
                 disabled={reversalSubmitting}
                 onClick={handleReverse}
-                className="px-4 py-1.5 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-lg disabled:opacity-50"
+                className="px-4 py-1.5 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-lg disabled:opacity-50"
               >
                 {reversalSubmitting ? 'Reversing...' : 'Execute Reversal'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Collection Confirmation Modal */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6 border border-slate-200 space-y-4 text-xs">
+            <div className="flex items-center space-x-2 text-rose-600">
+              <Trash2 className="w-5 h-5 shrink-0" />
+              <h3 className="font-bold text-base text-slate-900">Delete Collection Record</h3>
+            </div>
+
+            <div className="bg-rose-50 border border-rose-200 rounded-lg p-3.5 space-y-2">
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-slate-600 font-medium">Receipt #:</span>
+                <span className="font-mono font-bold text-slate-900">{deleteTarget.receiptNumber}</span>
+              </div>
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-slate-600 font-medium">Customer:</span>
+                <span className="font-bold text-slate-900">{deleteTarget.customerName}</span>
+              </div>
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-slate-600 font-medium">Total Received:</span>
+                <span className="font-mono font-bold text-rose-700 text-sm">
+                  {formatINR(deleteTarget.totalAmountPaise / 100)}
+                </span>
+              </div>
+            </div>
+
+            <p className="text-slate-600 text-xs leading-relaxed">
+              Deleting this collection will safely reverse its financial effects, restore the borrower's loan balance, 
+              update customer ledgers, and maintain a permanent audit trail.
+            </p>
+
+            {deleteError && (
+              <div className="p-2.5 bg-rose-50 border border-rose-200 text-rose-700 rounded-lg text-xs">
+                {deleteError}
+              </div>
+            )}
+
+            <div>
+              <label className="block font-semibold text-slate-700 mb-1">Reason for Deletion</label>
+              <input
+                type="text"
+                value={deleteReason}
+                onChange={(e) => setDeleteReason(e.target.value)}
+                placeholder="e.g. Payment recorded in error / bounced cheque"
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs text-slate-900 focus:ring-2 focus:ring-rose-500"
+              />
+            </div>
+
+            <div className="flex justify-end space-x-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setDeleteTarget(null)}
+                className="px-3.5 py-2 border border-slate-300 rounded-lg text-slate-700 hover:bg-slate-50 font-medium cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={deleteSubmitting}
+                onClick={handleDeleteCollection}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg disabled:opacity-50 flex items-center space-x-1.5 cursor-pointer"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>{deleteSubmitting ? 'Deleting...' : 'Confirm Delete'}</span>
               </button>
             </div>
           </div>

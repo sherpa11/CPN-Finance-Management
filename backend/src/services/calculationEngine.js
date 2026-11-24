@@ -151,23 +151,31 @@ function calculateMonthlyInterest({
   // Interest (Paise) = round(PrincipalPaise * RatePercent * EligibleMonths / 100)
   // Use integer arithmetic: (principalPaise * (RatePercent * 10000) * (eligibleMonths * 10000)) / (100 * 10000 * 10000)
   const interestPaise = Math.round((principalPaise * monthlyRatePercent * eligibleMonths) / 100);
-  const totalPayablePaise = principalPaise + interestPaise;
+  // Owner Business Rule: Interest is deducted upfront from principal amount.
+  // Customer receives remaining amount (Net Amount Given = P - Interest).
+  // Total payable amount = P - Interest (upfront deducted interest is never collected again).
+  const netAmountGivenPaise = Math.max(0, principalPaise - interestPaise);
+  const totalPayablePaise = netAmountGivenPaise;
 
   return {
     principalPaise,
+    grossPrincipalPaise: principalPaise,
     monthlyRatePercent,
     fullMonths,
     partialDays,
     eligibleMonths: Number(eligibleMonths.toFixed(4)),
     interestPaise,
+    upfrontInterestPaise: interestPaise,
+    netAmountGivenPaise,
     totalPayablePaise,
     partialMonthRule,
-    isPendingOwnerConfirmation: config.isPendingOwnerConfirmation !== undefined ? config.isPendingOwnerConfirmation : true,
+    isUpfrontDeduction: true,
+    isPendingOwnerConfirmation: config.isPendingOwnerConfirmation !== undefined ? !!config.isPendingOwnerConfirmation : (partialDays > 0),
     calculationDetails: {
       startDate: start.toISODate(),
       asOfDate: target.toISODate(),
       lastFullMonthBoundary: current.toISODate(),
-      formula: 'Principal × Monthly Rate × Eligible Months / 100',
+      formula: 'Interest = P × Monthly Rate × Eligible Months / 100; Net Amount Given = P - Interest; Payable Amount = P - Interest',
     },
   };
 }

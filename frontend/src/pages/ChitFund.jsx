@@ -22,9 +22,11 @@ import {
   Clock,
   Layers,
   TrendingUp,
+  Download,
 } from 'lucide-react';
 import api from '../api';
-import { formatINR, formatDate } from '../utils/formatters';
+import { formatINR, formatDate, formatDateTime } from '../utils/formatters';
+import SearchableCustomerSelect from '../components/SearchableCustomerSelect';
 
 export default function ChitFund() {
   // Navigation & Group Selection
@@ -113,6 +115,16 @@ export default function ChitFund() {
   const [activeReportType, setActiveReportType] = useState('monthly-collection');
   const [reportData, setReportData] = useState(null);
   const [reportLoading, setReportLoading] = useState(false);
+  const [selectedReportMemberId, setSelectedReportMemberId] = useState('');
+  const [selectedReportMonth, setSelectedReportMonth] = useState('ALL');
+  const [reportSearchTerm, setReportSearchTerm] = useState('');
+
+  // Member Payment Report Modal State (accessible directly from Collections & Members)
+  const [isMemberReportModalOpen, setIsMemberReportModalOpen] = useState(false);
+  const [memberReportModalData, setMemberReportModalData] = useState(null);
+  const [loadingMemberModalReport, setLoadingMemberModalReport] = useState(false);
+  const [memberModalMonthFilter, setMemberModalMonthFilter] = useState('ALL');
+  const [activeModalMemberId, setActiveModalMemberId] = useState('');
 
   // 1. Initial Load: Summary, Groups, Customers
   useEffect(() => {
@@ -139,7 +151,7 @@ export default function ChitFund() {
         loadReport();
       }
     }
-  }, [selectedGroup, activeTab, selectedMonth, activeReportType]);
+  }, [selectedGroup, activeTab, selectedMonth, activeReportType, selectedReportMemberId, selectedReportMonth]);
 
   const loadSummary = async () => {
     try {
@@ -245,13 +257,18 @@ export default function ChitFund() {
     if (!selectedGroup) return;
     setReportLoading(true);
     try {
-      const res = await api.get('/chit-funds/reports', {
-        params: {
-          reportType: activeReportType,
-          chitId: selectedGroup.chitId,
-          month: selectedMonth,
-        },
-      });
+      const params = {
+        reportType: activeReportType,
+        chitId: selectedGroup.chitId,
+      };
+      if (selectedReportMonth !== 'ALL') {
+        params.month = selectedReportMonth;
+      }
+      if (selectedReportMemberId) {
+        params.memberId = selectedReportMemberId;
+      }
+
+      const res = await api.get('/chit-funds/reports', { params });
       if (res.data.success) {
         setReportData(res.data);
       }
@@ -262,10 +279,158 @@ export default function ChitFund() {
     }
   };
 
+  const exportActiveReportCSV = () => {
+    if (!reportData || !selectedGroup) return;
+    const groupName = selectedGroup.name || selectedGroup.chitId;
+
+    if (activeReportType === 'monthly-collection') {
+      const rows = Array.isArray(reportData.data) ? reportData.data : [];
+      let csv = `CPN RAJA FINANCE - MONTHLY COLLECTION REPORT\r\n`;
+      csv += `Chit Group:,"${groupName} (${selectedGroup.category || ''})"\r\n`;
+      csv += `Month Filter:,"${selectedReportMonth === 'ALL' ? 'All Months' : 'Month ' + selectedReportMonth}"\r\n`;
+      csv += `Total Expected:,"Rs. ${reportData.totalExpectedRupees || 0}"\r\n`;
+      csv += `Total Collected:,"Rs. ${reportData.totalCollectedRupees || 0}"\r\n`;
+      csv += `Total Balance:,"Rs. ${reportData.totalPendingRupees || 0}"\r\n\r\n`;
+      csv += `Receipt No,Month,Member Name,Slot #,Expected Amount (Rs),Amount Paid (Rs),Balance (Rs),Payment Date & Time,Payment Method,Status,Notes\r\n`;
+
+      rows.forEach((r) => {
+        csv += `"${r.receiptNumber}",Month ${r.month},"${r.memberName}",Slot ${String(r.memberNumber).padStart(2, '0')},${r.expectedRupees},${r.paidRupees},${r.balanceRupees},"${formatDateTime(r.paymentDate)}","${r.paymentMethod}","${r.status}","${(r.notes || '').replace(/"/g, '""')}"\r\n`;
+      });
+
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `Chit_Monthly_Collection_${selectedGroup.chitId}_Month_${selectedReportMonth}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } else if (activeReportType === 'monthly-payout') {
+      const rows = Array.isArray(reportData.data) ? reportData.data : [];
+      let csv = `CPN RAJA FINANCE - MONTHLY PAYOUT REPORT\r\n`;
+      csv += `Chit Group:,"${groupName} (${selectedGroup.category || ''})"\r\n`;
+      csv += `Month Filter:,"${selectedReportMonth === 'ALL' ? 'All Months' : 'Month ' + selectedReportMonth}"\r\n`;
+      csv += `Total Payouts:,"Rs. ${reportData.totalPayoutsRupees || 0}"\r\n`;
+      csv += `Total Kasar:,"Rs. ${reportData.totalKasarRupees || 0}"\r\n`;
+      csv += `Net Amount Paid:,"Rs. ${reportData.totalNetPaidRupees || 0}"\r\n\r\n`;
+      csv += `Voucher No,Month,Payout Date & Time,Member Name,Slot #,Payout Amount (Rs),Kasar / Deduction (Rs),Net Paid (Rs),Payment Method,Status,Remarks\r\n`;
+
+      rows.forEach((r) => {
+        csv += `"${r.voucherNumber}",Month ${r.month},"${formatDateTime(r.payoutDate)}","${r.memberName}",Slot ${r.memberNumber ? String(r.memberNumber).padStart(2, '0') : '—'},${r.payoutAmountRupees},${r.kasarRupees},${r.netPaidRupees},"${r.paymentMethod}","${r.status}","${(r.remarks || '').replace(/"/g, '""')}"\r\n`;
+      });
+
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `Chit_Monthly_Payout_${selectedGroup.chitId}_Month_${selectedReportMonth}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } else if (activeReportType === 'member-payment-report') {
+      const rep = Array.isArray(reportData?.data) ? reportData.data[0] : reportData?.data;
+      if (rep) exportMemberPaymentCSV(rep);
+    } else {
+      const rows = Array.isArray(reportData.data) ? reportData.data : [];
+      if (rows.length === 0) return;
+      const headers = Object.keys(rows[0]);
+      let csv = headers.join(',') + '\r\n';
+      rows.forEach((r) => {
+        csv += headers.map((h) => `"${String(r[h] ?? '').replace(/"/g, '""')}"`).join(',') + '\r\n';
+      });
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `Chit_${activeReportType}_${selectedGroup.chitId}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  };
+
+  const handleOpenMemberPaymentReport = async (memberId, monthFilter = 'ALL') => {
+    if (!memberId) return;
+    setActiveModalMemberId(memberId);
+    setMemberModalMonthFilter(monthFilter);
+    setIsMemberReportModalOpen(true);
+    setLoadingMemberModalReport(true);
+    try {
+      const params = {
+        reportType: 'member-payment-report',
+        memberId,
+      };
+      if (monthFilter !== 'ALL') params.month = monthFilter;
+      const res = await api.get('/chit-funds/reports', { params });
+      if (res.data.success) {
+        setMemberReportModalData(res.data.data);
+      }
+    } catch (err) {
+      console.error('Failed to load member payment report', err);
+    } finally {
+      setLoadingMemberModalReport(false);
+    }
+  };
+
+  const handleModalMonthFilterChange = async (newMonth) => {
+    setMemberModalMonthFilter(newMonth);
+    if (!activeModalMemberId) return;
+    setLoadingMemberModalReport(true);
+    try {
+      const params = {
+        reportType: 'member-payment-report',
+        memberId: activeModalMemberId,
+      };
+      if (newMonth !== 'ALL') params.month = newMonth;
+      const res = await api.get('/chit-funds/reports', { params });
+      if (res.data.success) {
+        setMemberReportModalData(res.data.data);
+      }
+    } catch (err) {
+      console.error('Failed to update month filter', err);
+    } finally {
+      setLoadingMemberModalReport(false);
+    }
+  };
+
+  const exportMemberPaymentCSV = (report) => {
+    if (!report || !report.member) return;
+    const { member, group: grp, summary, monthBreakdown } = report;
+    let csv = `CPN RAJA FINANCE - CHIT FUND MEMBER PAYMENT REPORT\r\n`;
+    csv += `Chit Group:,"${grp?.name || grp?.chitId || ''} (${grp?.category || ''})"\r\n`;
+    csv += `Member Name:,"${member.name}"\r\n`;
+    csv += `Slot #:,"Slot ${String(member.memberNumber).padStart(2, '0')}"\r\n`;
+    csv += `Mobile:,"${member.mobile || ''}"\r\n`;
+    csv += `Total Expected:,"Rs. ${summary?.totalExpectedRupees || 0}"\r\n`;
+    csv += `Total Received:,"Rs. ${summary?.totalReceivedRupees || 0}"\r\n`;
+    csv += `Total Balance:,"Rs. ${summary?.totalBalanceRupees || 0}"\r\n`;
+    csv += `Overall Status:,"${summary?.status || ''}"\r\n\r\n`;
+    csv += `Month,Due/Instalment Expected (Rs),Total Received (Rs),Balance (Rs),Status,Receipt #,Payment Date,Payment Amount (Rs),Method,Notes\r\n`;
+
+    (monthBreakdown || []).forEach((m) => {
+      if (m.payments && m.payments.length > 0) {
+        m.payments.forEach((p, idx) => {
+          csv += `Month ${m.month},${idx === 0 ? m.expectedRupees : ''},${idx === 0 ? m.receivedRupees : ''},${idx === 0 ? m.balanceRupees : ''},${idx === 0 ? m.status : ''},"${p.receiptNumber}","${formatDate(p.paymentDate)}",${p.amountPaidRupees},"${p.paymentMethod}","${(p.notes || '').replace(/"/g, '""')}"\r\n`;
+        });
+      } else {
+        csv += `Month ${m.month},${m.expectedRupees},${m.receivedRupees},${m.balanceRupees},${m.status},"None","—",0,"—","No payments recorded"\r\n`;
+      }
+    });
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `Chit_Payment_Report_Slot_${member.memberNumber}_${member.name.replace(/\s+/g, '_')}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   // Handle Customer Auto-Fill for Add Member
-  const handleSelectCustomerForSlot = (custId) => {
+  const handleSelectCustomerForSlot = (custId, customerObj) => {
     setSelectedCustomerId(custId);
-    const found = existingCustomers.find((c) => c._id === custId);
+    const found = customerObj || existingCustomers.find((c) => c._id === custId);
     if (found) {
       setMemberFormName(found.name);
       setMemberFormMobile(found.mobileNumber);
@@ -956,19 +1121,30 @@ export default function ChitFund() {
                             </td>
                             <td className="py-3 px-3 text-center font-sans">
                               {m.isOccupied ? (
-                                m.remainingRupees > 0 ? (
+                                <div className="flex items-center justify-center space-x-1.5">
+                                  {m.remainingRupees > 0 ? (
+                                    <button
+                                      onClick={() => handleOpenPaymentModal(m)}
+                                      className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded text-xs transition-all shadow-sm cursor-pointer whitespace-nowrap"
+                                    >
+                                      + வசூல் (Pay)
+                                    </button>
+                                  ) : (
+                                    <span className="text-emerald-600 text-xs font-bold flex items-center space-x-1 px-1">
+                                      <CheckCircle className="w-3.5 h-3.5" />
+                                      <span>Cleared</span>
+                                    </span>
+                                  )}
                                   <button
-                                    onClick={() => handleOpenPaymentModal(m)}
-                                    className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded text-xs transition-all shadow-sm cursor-pointer"
+                                    type="button"
+                                    onClick={() => handleOpenMemberPaymentReport(m.memberId || m._id)}
+                                    title="View Individual Member Payment Report & Receipts"
+                                    className="px-2 py-1 bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-700 font-bold rounded text-xs border border-slate-200 hover:border-blue-300 flex items-center space-x-1 transition-all cursor-pointer whitespace-nowrap"
                                   >
-                                    + வசூல் (Pay)
+                                    <FileText className="w-3 h-3 text-blue-600" />
+                                    <span>அறிக்கை</span>
                                   </button>
-                                ) : (
-                                  <span className="text-emerald-600 text-xs font-bold flex items-center justify-center space-x-1">
-                                    <CheckCircle className="w-3.5 h-3.5" />
-                                    <span>Cleared</span>
-                                  </span>
-                                )
+                                </div>
                               ) : (
                                 <button
                                   onClick={() => handleOpenAddMember(m.memberNumber)}
@@ -1296,6 +1472,7 @@ export default function ChitFund() {
                   { id: 'chit-group', label: '4. Chit Group Summary' },
                   { id: 'outstanding', label: '5. Outstanding Defaulters' },
                   { id: 'category-wise', label: '6. Category-wise' },
+                  { id: 'member-payment-report', label: '7. Member Payment Report (தவணை வசூல் அறிக்கை)' },
                 ].map((rep) => (
                   <button
                     key={rep.id}
@@ -1311,31 +1488,914 @@ export default function ChitFund() {
                 ))}
               </div>
 
-              {/* Report Content */}
-              {reportLoading ? (
-                <div className="p-12 text-center text-slate-400">Loading report...</div>
-              ) : !reportData || !reportData.data ? (
-                <div className="p-12 text-center text-slate-400">No report records found.</div>
-              ) : (
-                <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-                  <div className="p-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
-                    <span className="font-bold text-xs uppercase text-slate-700 font-mono">
-                      Report: {activeReportType} ({reportData.data.length} records)
-                    </span>
-                    <button
-                      onClick={() => window.print()}
-                      className="px-3 py-1 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 font-bold rounded text-xs flex items-center space-x-1 cursor-pointer"
+              {/* Universal Report Filter & Action Controls */}
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 p-4 bg-slate-50 border border-slate-200 rounded-xl text-xs print:hidden">
+                <div className="flex flex-wrap items-center gap-3">
+                  {/* Chit Group Selector */}
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Chit Group:</label>
+                    <select
+                      value={selectedGroupId}
+                      onChange={(e) => setSelectedGroupId(e.target.value)}
+                      className="px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 bg-white min-w-[180px] focus:ring-2 focus:ring-blue-500"
                     >
-                      <Printer className="w-3.5 h-3.5" />
-                      <span>Print Report</span>
-                    </button>
+                      {groups.map((g) => (
+                        <option key={g._id} value={g._id}>
+                          {g.chitId} - {g.name}
+                        </option>
+                      ))}
+                    </select>
                   </div>
 
-                  <div className="p-4 overflow-x-auto text-xs">
-                    <pre className="font-mono text-xs bg-slate-50 p-4 rounded-lg overflow-x-auto border border-slate-200">
-                      {JSON.stringify(reportData.data, null, 2)}
-                    </pre>
+                  {/* Month Filter */}
+                  {(activeReportType === 'monthly-collection' ||
+                    activeReportType === 'monthly-payout' ||
+                    activeReportType === 'member-payment-report') && (
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">தவணை (Filter Month):</label>
+                      <select
+                        value={selectedReportMonth}
+                        onChange={(e) => setSelectedReportMonth(e.target.value)}
+                        className="px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 bg-white min-w-[150px] focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="ALL">All Months (அனைத்தும்)</option>
+                        {Array.from({ length: selectedGroup?.durationMonths || 20 }, (_, i) => i + 1).map((m) => (
+                          <option key={m} value={m}>
+                            Month {m} (தவணை {m})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {/* Member Filter */}
+                  {(activeReportType === 'monthly-collection' ||
+                    activeReportType === 'monthly-payout' ||
+                    activeReportType === 'member-wise' ||
+                    activeReportType === 'member-payment-report') && (
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">உறுப்பினர் (Filter Member):</label>
+                      <select
+                        value={selectedReportMemberId}
+                        onChange={(e) => setSelectedReportMemberId(e.target.value)}
+                        className="px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 bg-white min-w-[200px] focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="">-- All Members / அனைவரும் --</option>
+                        {memberSlots.filter((s) => s.isOccupied).map((slot) => (
+                          <option key={slot._id || slot.memberNumber} value={slot._id}>
+                            Slot {String(slot.memberNumber).padStart(2, '0')} - {slot.name} ({slot.mobile})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {/* Search Box */}
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Search Records:</label>
+                    <div className="relative">
+                      <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
+                      <input
+                        type="text"
+                        value={reportSearchTerm}
+                        onChange={(e) => setReportSearchTerm(e.target.value)}
+                        placeholder="Search member, receipt #, voucher #..."
+                        className="pl-8 pr-3 py-1.5 border border-slate-300 rounded-lg text-xs text-slate-900 bg-white w-full sm:w-56 focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
                   </div>
+                </div>
+
+                {/* Export & Print */}
+                <div className="flex items-center space-x-2 self-end lg:self-auto pt-2 lg:pt-0">
+                  <button
+                    type="button"
+                    onClick={exportActiveReportCSV}
+                    className="px-3.5 py-1.5 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 font-bold rounded-lg text-xs flex items-center space-x-1.5 cursor-pointer shadow-sm min-h-[34px]"
+                  >
+                    <Download className="w-3.5 h-3.5 text-blue-600" />
+                    <span>Export CSV</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => window.print()}
+                    className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg text-xs flex items-center space-x-1.5 cursor-pointer shadow-sm min-h-[34px]"
+                  >
+                    <Printer className="w-3.5 h-3.5" />
+                    <span>Print Report</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Report Content Loading / Empty / Tables */}
+              {reportLoading ? (
+                <div className="p-16 text-center text-slate-400 text-xs">
+                  <Clock className="w-8 h-8 mx-auto mb-2 animate-spin text-blue-500" />
+                  <span>Loading report data...</span>
+                </div>
+              ) : !reportData || !reportData.data ? (
+                <div className="p-16 text-center text-slate-400 text-xs bg-slate-50 border border-slate-200 rounded-xl">
+                  <FileText className="w-8 h-8 mx-auto mb-2 text-slate-300" />
+                  <span>No report records found for the selected criteria.</span>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {/* REPORT 1: MONTHLY COLLECTION REPORT */}
+                  {activeReportType === 'monthly-collection' && (() => {
+                    const allRows = Array.isArray(reportData.data) ? reportData.data : [];
+                    const rows = allRows.filter((r) => {
+                      if (!reportSearchTerm.trim()) return true;
+                      const q = reportSearchTerm.toLowerCase();
+                      return (
+                        (r.receiptNumber || '').toLowerCase().includes(q) ||
+                        (r.memberName || '').toLowerCase().includes(q) ||
+                        (r.paymentMethod || '').toLowerCase().includes(q) ||
+                        (r.status || '').toLowerCase().includes(q) ||
+                        (r.notes || '').toLowerCase().includes(q) ||
+                        `slot ${r.memberNumber}`.toLowerCase().includes(q)
+                      );
+                    });
+
+                    const totalCollected = rows.reduce((acc, r) => acc + (r.paidRupees || 0), 0);
+                    const totalExpected = reportData.totalExpectedRupees || rows.reduce((acc, r) => acc + (r.expectedRupees || 0), 0);
+                    const totalPending = reportData.totalPendingRupees !== undefined ? reportData.totalPendingRupees : Math.max(0, totalExpected - totalCollected);
+
+                    return (
+                      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden space-y-4 p-4 sm:p-6 print:border-none print:shadow-none print:p-0">
+                        {/* Report Heading */}
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-200 gap-2">
+                          <div>
+                            <h3 className="text-base font-bold text-slate-900 flex items-center space-x-2">
+                              <Coins className="w-5 h-5 text-emerald-600" />
+                              <span>Monthly Collection Report (மாத தவணை வசூல் அறிக்கை)</span>
+                            </h3>
+                            <p className="text-xs text-slate-500 mt-0.5">
+                              {selectedGroup?.name} ({selectedGroup?.chitId}) • {selectedReportMonth === 'ALL' ? 'All Months' : `Month ${selectedReportMonth}`}
+                            </p>
+                          </div>
+                          <span className="font-mono text-xs font-bold px-2.5 py-1 bg-slate-100 text-slate-700 rounded-lg self-start sm:self-auto">
+                            {rows.length} Receipts Found
+                          </span>
+                        </div>
+
+                        {/* KPI Summary Cards */}
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs font-mono">
+                          <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+                            <p className="text-[10px] text-slate-500 uppercase font-sans">Total Expected</p>
+                            <p className="text-base font-bold text-slate-900">{formatINR(totalExpected)}</p>
+                          </div>
+                          <div className="p-3 bg-emerald-50 rounded-lg border border-emerald-200">
+                            <p className="text-[10px] text-emerald-700 uppercase font-sans">Total Amount Collected</p>
+                            <p className="text-base font-bold text-emerald-800">{formatINR(totalCollected)}</p>
+                          </div>
+                          <div className="p-3 bg-rose-50 rounded-lg border border-rose-200">
+                            <p className="text-[10px] text-rose-700 uppercase font-sans">Total Pending Balance</p>
+                            <p className="text-base font-bold text-rose-800">{formatINR(totalPending)}</p>
+                          </div>
+                          <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
+                            <p className="text-[10px] text-blue-700 uppercase font-sans">Total Payment Records</p>
+                            <p className="text-base font-bold text-blue-800">{rows.length} Transactions</p>
+                          </div>
+                        </div>
+
+                        {/* Table */}
+                        {rows.length === 0 ? (
+                          <div className="p-12 text-center text-slate-400 text-xs">
+                            No collection records found matching your filters.
+                          </div>
+                        ) : (
+                          <div className="overflow-x-auto rounded-lg border border-slate-200">
+                            <table className="w-full text-left text-xs min-w-[850px]">
+                              <thead className="bg-slate-100 text-[11px] font-bold text-slate-700 uppercase border-b border-slate-200">
+                                <tr>
+                                  <th className="py-2.5 px-3">Receipt No.</th>
+                                  <th className="py-2.5 px-3">Month / Instalment</th>
+                                  <th className="py-2.5 px-3">Member Name</th>
+                                  <th className="py-2.5 px-3 text-right">Expected Amount (₹)</th>
+                                  <th className="py-2.5 px-3 text-right">Amount Paid (₹)</th>
+                                  <th className="py-2.5 px-3 text-right">Balance (₹)</th>
+                                  <th className="py-2.5 px-3">Payment Date & Time</th>
+                                  <th className="py-2.5 px-3">Payment Method</th>
+                                  <th className="py-2.5 px-3 text-center">Status</th>
+                                  <th className="py-2.5 px-3">Notes</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100 font-mono">
+                                {rows.map((r, idx) => (
+                                  <tr key={r.receiptNumber || idx} className="hover:bg-slate-50/80 transition-colors">
+                                    <td className="py-2.5 px-3 font-bold text-blue-700">
+                                      {r.receiptNumber}
+                                    </td>
+                                    <td className="py-2.5 px-3 font-sans font-medium text-slate-800">
+                                      Month {r.month} (தவணை {r.month})
+                                    </td>
+                                    <td className="py-2.5 px-3 font-sans">
+                                      <span className="font-bold text-slate-900">{r.memberName}</span>
+                                      <span className="ml-1 text-[11px] text-slate-500 font-mono">
+                                        (Slot {String(r.memberNumber).padStart(2, '0')})
+                                      </span>
+                                    </td>
+                                    <td className="py-2.5 px-3 text-right font-medium text-slate-800">
+                                      {formatINR(r.expectedRupees)}
+                                    </td>
+                                    <td className="py-2.5 px-3 text-right font-bold text-emerald-700">
+                                      {formatINR(r.paidRupees)}
+                                    </td>
+                                    <td className="py-2.5 px-3 text-right font-bold text-rose-600">
+                                      {formatINR(r.balanceRupees !== undefined ? r.balanceRupees : Math.max(0, (r.expectedRupees || 0) - (r.paidRupees || 0)))}
+                                    </td>
+                                    <td className="py-2.5 px-3 text-slate-700 font-sans text-[11px]">
+                                      {formatDateTime(r.paymentDate)}
+                                    </td>
+                                    <td className="py-2.5 px-3 font-sans">
+                                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                                        {r.paymentMethod}
+                                      </span>
+                                    </td>
+                                    <td className="py-2.5 px-3 text-center font-sans">
+                                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                                        r.status === 'PAID'
+                                          ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                          : 'bg-amber-100 text-amber-800 border-amber-300'
+                                      }`}>
+                                        {r.status}
+                                      </span>
+                                    </td>
+                                    <td className="py-2.5 px-3 font-sans text-slate-500 text-[11px] max-w-[150px] truncate">
+                                      {r.notes || '—'}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                              <tfoot className="bg-slate-50 font-bold border-t-2 border-slate-300 text-slate-900 font-mono">
+                                <tr>
+                                  <td colSpan="3" className="py-3 px-3 font-sans text-right">
+                                    TOTALS (சுருக்கம்):
+                                  </td>
+                                  <td className="py-3 px-3 text-right text-slate-900">
+                                    {formatINR(totalExpected)}
+                                  </td>
+                                  <td className="py-3 px-3 text-right text-emerald-800">
+                                    {formatINR(totalCollected)}
+                                  </td>
+                                  <td className="py-3 px-3 text-right text-rose-700">
+                                    {formatINR(totalPending)}
+                                  </td>
+                                  <td colSpan="4" className="py-3 px-3 font-sans text-slate-500 font-normal">
+                                    {rows.length} collections recorded
+                                  </td>
+                                </tr>
+                              </tfoot>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+
+                  {/* REPORT 2: MONTHLY PAYOUT REPORT */}
+                  {activeReportType === 'monthly-payout' && (() => {
+                    const allRows = Array.isArray(reportData.data) ? reportData.data : [];
+                    const rows = allRows.filter((r) => {
+                      if (!reportSearchTerm.trim()) return true;
+                      const q = reportSearchTerm.toLowerCase();
+                      return (
+                        (r.voucherNumber || '').toLowerCase().includes(q) ||
+                        (r.memberName || '').toLowerCase().includes(q) ||
+                        (r.paymentMethod || '').toLowerCase().includes(q) ||
+                        (r.remarks || '').toLowerCase().includes(q)
+                      );
+                    });
+
+                    const totalPayouts = rows.reduce((acc, r) => acc + (r.payoutAmountRupees || 0), 0);
+                    const totalKasar = rows.reduce((acc, r) => acc + (r.kasarRupees || 0), 0);
+                    const totalNetPaid = rows.reduce((acc, r) => acc + (r.netPaidRupees || 0), 0);
+
+                    return (
+                      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden space-y-4 p-4 sm:p-6 print:border-none print:shadow-none print:p-0">
+                        {/* Report Heading */}
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-200 gap-2">
+                          <div>
+                            <h3 className="text-base font-bold text-slate-900 flex items-center space-x-2">
+                              <Trophy className="w-5 h-5 text-purple-600" />
+                              <span>Monthly Payout Report (மாத பட்டுவாடா அறிக்கை)</span>
+                            </h3>
+                            <p className="text-xs text-slate-500 mt-0.5">
+                              {selectedGroup?.name} ({selectedGroup?.chitId}) • {selectedReportMonth === 'ALL' ? 'All Months' : `Month ${selectedReportMonth}`}
+                            </p>
+                          </div>
+                          <span className="font-mono text-xs font-bold px-2.5 py-1 bg-slate-100 text-slate-700 rounded-lg self-start sm:self-auto">
+                            {rows.length} Payout Records
+                          </span>
+                        </div>
+
+                        {/* KPI Summary Cards */}
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs font-mono">
+                          <div className="p-3 bg-purple-50 rounded-lg border border-purple-200">
+                            <p className="text-[10px] text-purple-700 uppercase font-sans">Total Payouts Disbursed</p>
+                            <p className="text-base font-bold text-purple-900">{formatINR(totalPayouts)}</p>
+                          </div>
+                          <div className="p-3 bg-amber-50 rounded-lg border border-amber-200">
+                            <p className="text-[10px] text-amber-700 uppercase font-sans">Total Kasar / Deduction</p>
+                            <p className="text-base font-bold text-amber-900">{formatINR(totalKasar)}</p>
+                          </div>
+                          <div className="p-3 bg-emerald-50 rounded-lg border border-emerald-200">
+                            <p className="text-[10px] text-emerald-700 uppercase font-sans">Net Disbursed Amount</p>
+                            <p className="text-base font-bold text-emerald-800">{formatINR(totalNetPaid)}</p>
+                          </div>
+                          <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+                            <p className="text-[10px] text-slate-500 uppercase font-sans">Disbursed Records</p>
+                            <p className="text-base font-bold text-slate-800">{rows.length} Months</p>
+                          </div>
+                        </div>
+
+                        {/* Table or Empty State */}
+                        {rows.length === 0 ? (
+                          <div className="p-12 text-center text-slate-400 text-xs bg-slate-50 rounded-xl border border-slate-200 space-y-1">
+                            <Trophy className="w-8 h-8 text-slate-300 mx-auto" />
+                            <p className="font-bold text-slate-600">No payout records found for the selected criteria.</p>
+                            <p className="text-[11px] text-slate-400">Record a payout in the பட்டுவாடா (Payouts) tab to view disbursement vouchers here.</p>
+                          </div>
+                        ) : (
+                          <div className="overflow-x-auto rounded-lg border border-slate-200">
+                            <table className="w-full text-left text-xs min-w-[850px]">
+                              <thead className="bg-slate-100 text-[11px] font-bold text-slate-700 uppercase border-b border-slate-200">
+                                <tr>
+                                  <th className="py-2.5 px-3">Voucher No.</th>
+                                  <th className="py-2.5 px-3">Month / Instalment</th>
+                                  <th className="py-2.5 px-3">Payout Date & Time</th>
+                                  <th className="py-2.5 px-3">Member Name & Slot</th>
+                                  <th className="py-2.5 px-3 text-right">Payout Amount (₹)</th>
+                                  <th className="py-2.5 px-3 text-right">Kasar / Deduction (₹)</th>
+                                  <th className="py-2.5 px-3 text-right">Net Amount Paid (₹)</th>
+                                  <th className="py-2.5 px-3">Payment Method</th>
+                                  <th className="py-2.5 px-3 text-center">Status</th>
+                                  <th className="py-2.5 px-3">Remarks</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100 font-mono">
+                                {rows.map((r, idx) => (
+                                  <tr key={r.voucherNumber || idx} className="hover:bg-slate-50/80 transition-colors">
+                                    <td className="py-2.5 px-3 font-bold text-purple-700">
+                                      {r.voucherNumber}
+                                    </td>
+                                    <td className="py-2.5 px-3 font-sans font-medium text-slate-800">
+                                      Month {r.month} (தவணை {r.month})
+                                    </td>
+                                    <td className="py-2.5 px-3 text-slate-700 font-sans text-[11px]">
+                                      {formatDateTime(r.payoutDate)}
+                                    </td>
+                                    <td className="py-2.5 px-3 font-sans">
+                                      {r.hasPayout ? (
+                                        <>
+                                          <span className="font-bold text-slate-900">{r.memberName}</span>
+                                          {r.memberNumber && (
+                                            <span className="ml-1 text-[11px] text-slate-500 font-mono">
+                                              (Slot {String(r.memberNumber).padStart(2, '0')})
+                                            </span>
+                                          )}
+                                        </>
+                                      ) : (
+                                        <span className="text-slate-400 italic">No Payout Disbursed</span>
+                                      )}
+                                    </td>
+                                    <td className="py-2.5 px-3 text-right font-bold text-purple-900">
+                                      {formatINR(r.payoutAmountRupees)}
+                                    </td>
+                                    <td className="py-2.5 px-3 text-right font-medium text-amber-700">
+                                      {formatINR(r.kasarRupees)}
+                                    </td>
+                                    <td className="py-2.5 px-3 text-right font-bold text-emerald-700">
+                                      {formatINR(r.netPaidRupees)}
+                                    </td>
+                                    <td className="py-2.5 px-3 font-sans">
+                                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                                        {r.paymentMethod}
+                                      </span>
+                                    </td>
+                                    <td className="py-2.5 px-3 text-center font-sans">
+                                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                                        r.hasPayout
+                                          ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                          : 'bg-slate-100 text-slate-600 border-slate-300'
+                                      }`}>
+                                        {r.hasPayout ? 'COMPLETED' : 'NO_PAYOUT'}
+                                      </span>
+                                    </td>
+                                    <td className="py-2.5 px-3 font-sans text-slate-500 text-[11px] max-w-[150px] truncate">
+                                      {r.remarks || '—'}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                              <tfoot className="bg-slate-50 font-bold border-t-2 border-slate-300 text-slate-900 font-mono">
+                                <tr>
+                                  <td colSpan="4" className="py-3 px-3 font-sans text-right">
+                                    TOTALS (சுருக்கம்):
+                                  </td>
+                                  <td className="py-3 px-3 text-right text-purple-900">
+                                    {formatINR(totalPayouts)}
+                                  </td>
+                                  <td className="py-3 px-3 text-right text-amber-800">
+                                    {formatINR(totalKasar)}
+                                  </td>
+                                  <td className="py-3 px-3 text-right text-emerald-800">
+                                    {formatINR(totalNetPaid)}
+                                  </td>
+                                  <td colSpan="3" className="py-3 px-3 font-sans text-slate-500 font-normal">
+                                    {rows.length} payout records
+                                  </td>
+                                </tr>
+                              </tfoot>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+
+                  {/* REPORT 3: MEMBER-WISE LEDGER */}
+                  {activeReportType === 'member-wise' && (() => {
+                    const allRows = Array.isArray(reportData.data) ? reportData.data : [];
+                    const rows = allRows.filter((r) => {
+                      if (!reportSearchTerm.trim()) return true;
+                      const q = reportSearchTerm.toLowerCase();
+                      return (
+                        (r.name || '').toLowerCase().includes(q) ||
+                        (r.mobile || '').includes(q) ||
+                        (r.village || '').toLowerCase().includes(q) ||
+                        (r.district || '').toLowerCase().includes(q) ||
+                        `slot ${r.memberNumber}`.toLowerCase().includes(q)
+                      );
+                    });
+
+                    const totalExpected = rows.reduce((acc, r) => acc + (r.expectedRupees || 0), 0);
+                    const totalPaid = rows.reduce((acc, r) => acc + (r.paidRupees || 0), 0);
+                    const totalPending = rows.reduce((acc, r) => acc + (r.pendingRupees || 0), 0);
+
+                    return (
+                      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden space-y-4 p-4 sm:p-6 print:border-none print:shadow-none print:p-0">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-200 gap-2">
+                          <div>
+                            <h3 className="text-base font-bold text-slate-900 flex items-center space-x-2">
+                              <Users className="w-5 h-5 text-blue-600" />
+                              <span>Member-wise Ledger (உறுப்பினர் கணக்கு அறிக்கை)</span>
+                            </h3>
+                            <p className="text-xs text-slate-500 mt-0.5">
+                              {selectedGroup?.name} ({selectedGroup?.chitId}) • Total {rows.length} Enrolled Members
+                            </p>
+                          </div>
+                          <span className="font-mono text-xs font-bold px-2.5 py-1 bg-slate-100 text-slate-700 rounded-lg self-start sm:self-auto">
+                            {rows.length} Members Listed
+                          </span>
+                        </div>
+
+                        {/* KPI Summary Cards */}
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs font-mono">
+                          <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+                            <p className="text-[10px] text-slate-500 uppercase font-sans">Total Expected</p>
+                            <p className="text-base font-bold text-slate-900">{formatINR(totalExpected)}</p>
+                          </div>
+                          <div className="p-3 bg-emerald-50 rounded-lg border border-emerald-200">
+                            <p className="text-[10px] text-emerald-700 uppercase font-sans">Total Paid</p>
+                            <p className="text-base font-bold text-emerald-800">{formatINR(totalPaid)}</p>
+                          </div>
+                          <div className="p-3 bg-rose-50 rounded-lg border border-rose-200">
+                            <p className="text-[10px] text-rose-700 uppercase font-sans">Total Pending Balance</p>
+                            <p className="text-base font-bold text-rose-800">{formatINR(totalPending)}</p>
+                          </div>
+                          <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
+                            <p className="text-[10px] text-blue-700 uppercase font-sans">Enrolled Count</p>
+                            <p className="text-base font-bold text-blue-800">{rows.length} / 20 Slots</p>
+                          </div>
+                        </div>
+
+                        {rows.length === 0 ? (
+                          <div className="p-12 text-center text-slate-400 text-xs">
+                            No member records found matching your filters.
+                          </div>
+                        ) : (
+                          <div className="overflow-x-auto rounded-lg border border-slate-200">
+                            <table className="w-full text-left text-xs min-w-[750px]">
+                              <thead className="bg-slate-100 text-[11px] font-bold text-slate-700 uppercase border-b border-slate-200">
+                                <tr>
+                                  <th className="py-2.5 px-3">Slot #</th>
+                                  <th className="py-2.5 px-3">Member Name</th>
+                                  <th className="py-2.5 px-3">Mobile</th>
+                                  <th className="py-2.5 px-3">Location</th>
+                                  <th className="py-2.5 px-3 text-right">Total Expected (₹)</th>
+                                  <th className="py-2.5 px-3 text-right">Total Paid (₹)</th>
+                                  <th className="py-2.5 px-3 text-right">Pending Balance (₹)</th>
+                                  <th className="py-2.5 px-3 text-center">Payout Status</th>
+                                  <th className="py-2.5 px-3 text-center">Actions</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100 font-mono">
+                                {rows.map((r) => (
+                                  <tr key={r.memberNumber} className="hover:bg-slate-50/80 transition-colors">
+                                    <td className="py-2.5 px-3 font-bold text-slate-800">
+                                      Slot {String(r.memberNumber).padStart(2, '0')}
+                                    </td>
+                                    <td className="py-2.5 px-3 font-sans font-bold text-slate-900">
+                                      {r.name}
+                                    </td>
+                                    <td className="py-2.5 px-3 text-slate-600 font-sans">
+                                      {r.mobile || '—'}
+                                    </td>
+                                    <td className="py-2.5 px-3 text-slate-500 font-sans text-[11px]">
+                                      {r.village ? `${r.village}` : ''} {r.district ? `(${r.district})` : ''}
+                                    </td>
+                                    <td className="py-2.5 px-3 text-right font-medium text-slate-800">
+                                      {formatINR(r.expectedRupees)}
+                                    </td>
+                                    <td className="py-2.5 px-3 text-right font-bold text-emerald-700">
+                                      {formatINR(r.paidRupees)}
+                                    </td>
+                                    <td className="py-2.5 px-3 text-right font-bold text-rose-600">
+                                      {formatINR(r.pendingRupees)}
+                                    </td>
+                                    <td className="py-2.5 px-3 text-center font-sans">
+                                      {r.hasReceivedPayout ? (
+                                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-800 border border-purple-200">
+                                          M{r.payoutMonth} Won ({formatINR(r.payoutAmountRupees)})
+                                        </span>
+                                      ) : (
+                                        <span className="text-slate-400 text-[11px]">Pending</span>
+                                      )}
+                                    </td>
+                                    <td className="py-2.5 px-3 text-center font-sans">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleOpenMemberPaymentReport(r.memberId)}
+                                        className="px-2.5 py-1 bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-700 font-bold rounded text-xs border border-slate-200 hover:border-blue-300 transition-all cursor-pointer whitespace-nowrap"
+                                      >
+                                        அறிக்கை (Report)
+                                      </button>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                              <tfoot className="bg-slate-50 font-bold border-t-2 border-slate-300 text-slate-900 font-mono">
+                                <tr>
+                                  <td colSpan="4" className="py-3 px-3 font-sans text-right">
+                                    TOTALS:
+                                  </td>
+                                  <td className="py-3 px-3 text-right text-slate-900">
+                                    {formatINR(totalExpected)}
+                                  </td>
+                                  <td className="py-3 px-3 text-right text-emerald-800">
+                                    {formatINR(totalPaid)}
+                                  </td>
+                                  <td className="py-3 px-3 text-right text-rose-700">
+                                    {formatINR(totalPending)}
+                                  </td>
+                                  <td colSpan="2"></td>
+                                </tr>
+                              </tfoot>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+
+                  {/* REPORT 4: CHIT GROUP SUMMARY */}
+                  {activeReportType === 'chit-group' && (() => {
+                    const rows = Array.isArray(reportData.data) ? reportData.data : [];
+                    return (
+                      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden space-y-4 p-4 sm:p-6 print:border-none print:shadow-none print:p-0">
+                        <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+                          <h3 className="text-base font-bold text-slate-900 flex items-center space-x-2">
+                            <Layers className="w-5 h-5 text-blue-600" />
+                            <span>Chit Group Performance Summary (சீட்டு குழு விபரம்)</span>
+                          </h3>
+                          <span className="font-mono text-xs font-bold px-2.5 py-1 bg-slate-100 text-slate-700 rounded-lg">
+                            {rows.length} Groups
+                          </span>
+                        </div>
+
+                        <div className="overflow-x-auto rounded-lg border border-slate-200">
+                          <table className="w-full text-left text-xs min-w-[800px]">
+                            <thead className="bg-slate-100 text-[11px] font-bold text-slate-700 uppercase border-b border-slate-200">
+                              <tr>
+                                <th className="py-2.5 px-3">Chit ID</th>
+                                <th className="py-2.5 px-3">Group Name</th>
+                                <th className="py-2.5 px-3">Category</th>
+                                <th className="py-2.5 px-3 text-center">Status</th>
+                                <th className="py-2.5 px-3 text-right">Total Value (₹)</th>
+                                <th className="py-2.5 px-3 text-center">Members</th>
+                                <th className="py-2.5 px-3 text-center">Month</th>
+                                <th className="py-2.5 px-3 text-right">Expected (₹)</th>
+                                <th className="py-2.5 px-3 text-right">Collected (₹)</th>
+                                <th className="py-2.5 px-3 text-right">Payouts (₹)</th>
+                                <th className="py-2.5 px-3 text-right">Outstanding (₹)</th>
+                                <th className="py-2.5 px-3 text-center">Progress</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100 font-mono">
+                              {rows.map((g) => (
+                                <tr key={g.chitId} className="hover:bg-slate-50/80">
+                                  <td className="py-2.5 px-3 font-bold text-blue-700">{g.chitId}</td>
+                                  <td className="py-2.5 px-3 font-sans font-bold text-slate-900">{g.name}</td>
+                                  <td className="py-2.5 px-3 font-sans">{g.category}</td>
+                                  <td className="py-2.5 px-3 text-center font-sans">
+                                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                                      g.status === 'ACTIVE'
+                                        ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                        : 'bg-amber-100 text-amber-800 border-amber-300'
+                                    }`}>
+                                      {g.status}
+                                    </span>
+                                  </td>
+                                  <td className="py-2.5 px-3 text-right font-bold text-slate-900">{formatINR(g.totalValueRupees)}</td>
+                                  <td className="py-2.5 px-3 text-center font-sans">{g.memberCount} / 20</td>
+                                  <td className="py-2.5 px-3 text-center font-sans">Month {g.currentMonth || 1}</td>
+                                  <td className="py-2.5 px-3 text-right text-slate-700">{formatINR(g.expectedRupees)}</td>
+                                  <td className="py-2.5 px-3 text-right font-bold text-emerald-700">{formatINR(g.collectedRupees)}</td>
+                                  <td className="py-2.5 px-3 text-right font-bold text-purple-700">{formatINR(g.payoutsRupees)}</td>
+                                  <td className="py-2.5 px-3 text-right font-bold text-rose-600">{formatINR(g.outstandingRupees)}</td>
+                                  <td className="py-2.5 px-3 text-center font-sans">
+                                    <span className="font-bold text-slate-700">{g.progressPercent}%</span>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* REPORT 5: OUTSTANDING / DEFAULTERS */}
+                  {activeReportType === 'outstanding' && (() => {
+                    const rows = Array.isArray(reportData.data) ? reportData.data : [];
+                    return (
+                      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden space-y-4 p-4 sm:p-6 print:border-none print:shadow-none print:p-0">
+                        <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+                          <div>
+                            <h3 className="text-base font-bold text-slate-900 flex items-center space-x-2">
+                              <AlertCircle className="w-5 h-5 text-rose-600" />
+                              <span>Outstanding Defaulters Report (நிலுவை அறிக்கை)</span>
+                            </h3>
+                            <p className="text-xs text-slate-500 mt-0.5">
+                              Members with overdue instalments as of Month {selectedGroup?.currentMonth || 1}
+                            </p>
+                          </div>
+                          <span className="font-mono text-xs font-bold px-2.5 py-1 bg-rose-50 text-rose-700 border border-rose-200 rounded-lg">
+                            {rows.length} Defaulters
+                          </span>
+                        </div>
+
+                        {rows.length === 0 ? (
+                          <div className="p-12 text-center text-slate-400 text-xs bg-emerald-50/50 rounded-xl border border-emerald-100">
+                            <CheckCircle className="w-8 h-8 text-emerald-500 mx-auto mb-2" />
+                            <p className="font-bold text-emerald-800">Excellent! No overdue defaulters in this chit group.</p>
+                            <p className="text-[11px] text-emerald-600">All members have cleared payments up to Month {selectedGroup?.currentMonth || 1}.</p>
+                          </div>
+                        ) : (
+                          <div className="overflow-x-auto rounded-lg border border-slate-200">
+                            <table className="w-full text-left text-xs min-w-[700px]">
+                              <thead className="bg-slate-100 text-[11px] font-bold text-slate-700 uppercase border-b border-slate-200">
+                                <tr>
+                                  <th className="py-2.5 px-3">Slot #</th>
+                                  <th className="py-2.5 px-3">Member Name</th>
+                                  <th className="py-2.5 px-3">Mobile</th>
+                                  <th className="py-2.5 px-3 text-center">Current Month</th>
+                                  <th className="py-2.5 px-3 text-right">Expected to Date (₹)</th>
+                                  <th className="py-2.5 px-3 text-right">Paid to Date (₹)</th>
+                                  <th className="py-2.5 px-3 text-right">Overdue Balance (₹)</th>
+                                  <th className="py-2.5 px-3 text-center">Payout Status</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100 font-mono">
+                                {rows.map((r) => (
+                                  <tr key={r.memberNumber} className="hover:bg-rose-50/30">
+                                    <td className="py-2.5 px-3 font-bold text-slate-800">
+                                      Slot {String(r.memberNumber).padStart(2, '0')}
+                                    </td>
+                                    <td className="py-2.5 px-3 font-sans font-bold text-slate-900">
+                                      {r.name}
+                                    </td>
+                                    <td className="py-2.5 px-3 text-slate-600 font-sans">
+                                      {r.mobile || '—'}
+                                    </td>
+                                    <td className="py-2.5 px-3 text-center font-sans">
+                                      Month {r.currentMonth}
+                                    </td>
+                                    <td className="py-2.5 px-3 text-right text-slate-700">
+                                      {formatINR(r.expectedToCurrentMonthRupees)}
+                                    </td>
+                                    <td className="py-2.5 px-3 text-right font-bold text-emerald-700">
+                                      {formatINR(r.paidRupees)}
+                                    </td>
+                                    <td className="py-2.5 px-3 text-right font-bold text-rose-600 bg-rose-50/50">
+                                      {formatINR(r.overdueRupees)}
+                                    </td>
+                                    <td className="py-2.5 px-3 text-center font-sans">
+                                      {r.hasReceivedPayout ? (
+                                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-800">
+                                          Prize Won
+                                        </span>
+                                      ) : (
+                                        <span className="text-slate-400 text-[11px]">Pending</span>
+                                      )}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+
+                  {/* REPORT 6: CATEGORY-WISE */}
+                  {activeReportType === 'category-wise' && (() => {
+                    const rows = Array.isArray(reportData.data) ? reportData.data : [];
+                    return (
+                      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden space-y-4 p-4 sm:p-6 print:border-none print:shadow-none print:p-0">
+                        <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+                          <h3 className="text-base font-bold text-slate-900 flex items-center space-x-2">
+                            <TrendingUp className="w-5 h-5 text-indigo-600" />
+                            <span>Category-wise Portfolio (பிரிவு வாரியாக சுருக்கம்)</span>
+                          </h3>
+                        </div>
+
+                        <div className="overflow-x-auto rounded-lg border border-slate-200">
+                          <table className="w-full text-left text-xs min-w-[750px]">
+                            <thead className="bg-slate-100 text-[11px] font-bold text-slate-700 uppercase border-b border-slate-200">
+                              <tr>
+                                <th className="py-2.5 px-3">Category</th>
+                                <th className="py-2.5 px-3 text-center">Total Groups</th>
+                                <th className="py-2.5 px-3 text-center">Active Groups</th>
+                                <th className="py-2.5 px-3 text-right">Total Chit Value (₹)</th>
+                                <th className="py-2.5 px-3 text-right">Total Expected (₹)</th>
+                                <th className="py-2.5 px-3 text-right">Total Collected (₹)</th>
+                                <th className="py-2.5 px-3 text-right">Total Payouts (₹)</th>
+                                <th className="py-2.5 px-3 text-right">Outstanding (₹)</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100 font-mono">
+                              {rows.map((cat) => (
+                                <tr key={cat.category} className="hover:bg-slate-50/80">
+                                  <td className="py-2.5 px-3 font-sans font-bold text-slate-900">
+                                    {cat.label}
+                                  </td>
+                                  <td className="py-2.5 px-3 text-center font-sans">{cat.totalGroups}</td>
+                                  <td className="py-2.5 px-3 text-center font-sans font-bold text-emerald-700">{cat.activeGroups}</td>
+                                  <td className="py-2.5 px-3 text-right font-bold text-slate-900">{formatINR(cat.totalChitValueRupees)}</td>
+                                  <td className="py-2.5 px-3 text-right text-slate-700">{formatINR(cat.totalExpectedRupees)}</td>
+                                  <td className="py-2.5 px-3 text-right font-bold text-emerald-700">{formatINR(cat.totalCollectedRupees)}</td>
+                                  <td className="py-2.5 px-3 text-right font-bold text-purple-700">{formatINR(cat.totalPayoutsRupees)}</td>
+                                  <td className="py-2.5 px-3 text-right font-bold text-rose-600">{formatINR(cat.outstandingRupees)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* REPORT 7: INDIVIDUAL MEMBER PAYMENT REPORT */}
+                  {activeReportType === 'member-payment-report' && (
+                    <div className="space-y-6">
+                      {(Array.isArray(reportData.data) ? reportData.data : [reportData.data]).map((mr, idx) => (
+                        <div
+                          key={mr.member?._id || mr.member?.memberNumber || idx}
+                          className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm space-y-4 p-4 sm:p-6 print:border-none print:shadow-none print:p-0"
+                        >
+                          {/* Member Header */}
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-200 gap-2">
+                            <div>
+                              <div className="flex items-center space-x-2">
+                                <span className="w-8 h-8 rounded-lg bg-blue-600 text-white font-black text-xs flex items-center justify-center font-mono">
+                                  {String(mr.member?.memberNumber).padStart(2, '0')}
+                                </span>
+                                <h3 className="text-base font-bold text-slate-900">{mr.member?.name}</h3>
+                                {mr.member?.hasReceivedPayout && (
+                                  <span className="px-2 py-0.5 bg-purple-100 text-purple-800 font-bold text-xs rounded">
+                                    Prize Won (Month {mr.member?.payoutMonth})
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-xs text-slate-500 mt-1 font-mono">
+                                Mobile: {mr.member?.mobile || '—'} {mr.member?.village ? `• ${mr.member.village}` : ''} {mr.member?.district ? `, ${mr.member.district}` : ''}
+                              </p>
+                            </div>
+
+                            <div className="text-right text-xs">
+                              <span className="font-bold text-slate-700">{mr.group?.name || selectedGroup?.name}</span>
+                              <p className="text-[11px] text-slate-500 font-mono">Chit Value: {formatINR(mr.group?.totalValueRupees || selectedGroup?.totalValueRupees)}</p>
+                            </div>
+                          </div>
+
+                          {/* KPI Cards */}
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs font-mono">
+                            <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+                              <p className="text-[10px] text-slate-500 uppercase font-sans">Total Expected</p>
+                              <p className="text-sm font-bold text-slate-900">{formatINR(mr.summary?.totalExpectedRupees)}</p>
+                            </div>
+                            <div className="p-3 bg-emerald-50 rounded-lg border border-emerald-200">
+                              <p className="text-[10px] text-emerald-700 uppercase font-sans">Total Received</p>
+                              <p className="text-sm font-bold text-emerald-800">{formatINR(mr.summary?.totalReceivedRupees)}</p>
+                            </div>
+                            <div className="p-3 bg-rose-50 rounded-lg border border-rose-200">
+                              <p className="text-[10px] text-rose-700 uppercase font-sans">Balance Pending</p>
+                              <p className="text-sm font-bold text-rose-800">{formatINR(mr.summary?.totalBalanceRupees)}</p>
+                            </div>
+                            <div className="p-3 bg-indigo-50 rounded-lg border border-indigo-200">
+                              <p className="text-[10px] text-indigo-700 uppercase font-sans">Status & Receipts</p>
+                              <div className="flex items-center space-x-1.5 mt-0.5">
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                  mr.summary?.status === 'PAID' ? 'bg-emerald-200 text-emerald-900' :
+                                  mr.summary?.status === 'PARTIAL' ? 'bg-amber-200 text-amber-900' : 'bg-rose-200 text-rose-900'
+                                }`}>
+                                  {mr.summary?.status}
+                                </span>
+                                <span className="text-[11px] text-slate-600">({mr.summary?.totalPaymentsCount || 0} Receipts)</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Month Breakdown & Multiple Partial Payments */}
+                          <div className="space-y-3 pt-2">
+                            <h4 className="font-bold text-xs text-slate-800 uppercase tracking-wide">
+                              Month-by-Month Payment History & Partial Collections
+                            </h4>
+
+                            <div className="overflow-x-auto rounded-lg border border-slate-200">
+                              <table className="w-full text-left text-xs min-w-[700px]">
+                                <thead className="bg-slate-100 text-[11px] font-bold text-slate-700 uppercase border-b border-slate-200">
+                                  <tr>
+                                    <th className="py-2.5 px-3">Month (தவணை)</th>
+                                    <th className="py-2.5 px-3 text-right">Expected (₹)</th>
+                                    <th className="py-2.5 px-3 text-right">Total Received (₹)</th>
+                                    <th className="py-2.5 px-3 text-right">Balance (₹)</th>
+                                    <th className="py-2.5 px-3 text-center">Status</th>
+                                    <th className="py-2.5 px-3">Payment Receipts & Partial Payments</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100 font-mono">
+                                  {mr.monthBreakdown?.map((m) => (
+                                    <tr key={m.month} className="hover:bg-slate-50/80 align-top">
+                                      <td className="py-3 px-3 font-bold text-slate-900">
+                                        Month {m.month}
+                                      </td>
+                                      <td className="py-3 px-3 text-right font-bold text-slate-800">
+                                        {formatINR(m.expectedRupees)}
+                                      </td>
+                                      <td className="py-3 px-3 text-right font-bold text-emerald-700">
+                                        {formatINR(m.receivedRupees)}
+                                      </td>
+                                      <td className="py-3 px-3 text-right font-bold text-rose-600">
+                                        {formatINR(m.balanceRupees)}
+                                      </td>
+                                      <td className="py-3 px-3 text-center font-sans">
+                                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                                          m.status === 'PAID' ? 'bg-emerald-100 text-emerald-800 border-emerald-300' :
+                                          m.status === 'PARTIAL' ? 'bg-amber-100 text-amber-800 border-amber-300' :
+                                          'bg-rose-50 text-rose-700 border-rose-200'
+                                        }`}>
+                                          {m.status}
+                                        </span>
+                                      </td>
+                                      <td className="py-3 px-3 font-sans">
+                                        {m.payments && m.payments.length > 0 ? (
+                                          <div className="space-y-1.5">
+                                            {m.payments.map((p, pIdx) => (
+                                              <div key={p._id || pIdx} className="bg-slate-50 p-2 rounded border border-slate-200 text-[11px] font-mono space-y-0.5">
+                                                <div className="flex justify-between items-center text-slate-800 font-bold">
+                                                  <span className="text-blue-700">{p.receiptNumber}</span>
+                                                  <span className="text-emerald-700 font-bold">{formatINR(p.amountPaidRupees)}</span>
+                                                </div>
+                                                <div className="flex justify-between text-slate-500 text-[10px]">
+                                                  <span>{formatDateTime(p.paymentDate)} • {p.paymentMethod}</span>
+                                                  {p.recordedBy && <span>By: {p.recordedBy}</span>}
+                                                </div>
+                                                {p.notes && (
+                                                  <div className="text-[10px] text-slate-600 italic">
+                                                    Note: {p.notes}
+                                                  </div>
+                                                )}
+                                              </div>
+                                            ))}
+                                          </div>
+                                        ) : (
+                                          <span className="text-slate-400 text-[11px] italic">No payment recorded</span>
+                                        )}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -1510,18 +2570,12 @@ export default function ChitFund() {
                   <label className="block font-semibold text-slate-700 mb-1">
                     Choose from Existing Borrowers (விருப்பத்தேர்வு)
                   </label>
-                  <select
+                  <SearchableCustomerSelect
                     value={selectedCustomerId}
-                    onChange={(e) => handleSelectCustomerForSlot(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg font-medium text-slate-800 bg-white"
-                  >
-                    <option value="">-- Or enter new person below --</option>
-                    {existingCustomers.map((c) => (
-                      <option key={c._id} value={c._id}>
-                        {c.name} ({c.customerId}) - {c.mobileNumber}
-                      </option>
-                    ))}
-                  </select>
+                    customers={existingCustomers}
+                    onChange={(id, cust) => handleSelectCustomerForSlot(id, cust)}
+                    placeholder="Search borrower by name or mobile..."
+                  />
                 </div>
               )}
 
@@ -1806,6 +2860,186 @@ export default function ChitFund() {
                 </table>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 5: DEDICATED MEMBER PAYMENT REPORT MODAL (Direct access from Collections/Members) */}
+      {isMemberReportModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full p-4 sm:p-6 border border-slate-200 space-y-4 max-h-[90vh] overflow-y-auto">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+              <div className="flex items-center space-x-2">
+                <FileText className="w-5 h-5 text-blue-600 shrink-0" />
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">
+                    Member Payment Statement (உறுப்பினர் தவணை அறிக்கை)
+                  </h3>
+                  {memberReportModalData?.member && (
+                    <p className="text-xs text-slate-500 font-mono">
+                      Slot {String(memberReportModalData.member.memberNumber).padStart(2, '0')} • {memberReportModalData.member.name} ({memberReportModalData.member.mobile})
+                    </p>
+                  )}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsMemberReportModalOpen(false);
+                  setMemberReportModalData(null);
+                }}
+                className="text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {loadingMemberModalReport ? (
+              <div className="py-12 text-center text-slate-400 text-xs">
+                Loading payment records...
+              </div>
+            ) : !memberReportModalData ? (
+              <div className="py-12 text-center text-slate-400 text-xs">
+                No payment history available for this member.
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {/* Filter and Actions Bar */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs">
+                  <div className="flex items-center space-x-2">
+                    <label className="font-bold text-slate-700">Filter Month:</label>
+                    <select
+                      value={memberModalMonthFilter}
+                      onChange={(e) => handleModalMonthFilterChange(e.target.value)}
+                      className="px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 bg-white"
+                    >
+                      <option value="ALL">All Months (அனைத்து தவணைகளும்)</option>
+                      {Array.from({ length: memberReportModalData.group?.durationMonths || 20 }, (_, i) => i + 1).map((m) => (
+                        <option key={m} value={m}>
+                          Month {m} (தவணை {m})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="flex items-center space-x-2">
+                    <button
+                      type="button"
+                      onClick={() => exportMemberPaymentCSV(memberReportModalData)}
+                      className="px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 font-bold rounded-lg text-xs flex items-center space-x-1.5 cursor-pointer shadow-sm"
+                    >
+                      <Download className="w-3.5 h-3.5 text-blue-600" />
+                      <span>Export CSV</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => window.print()}
+                      className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg text-xs flex items-center space-x-1.5 cursor-pointer shadow-sm"
+                    >
+                      <Printer className="w-3.5 h-3.5" />
+                      <span>Print</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Summary KPI Cards */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs font-mono">
+                  <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+                    <p className="text-[10px] text-slate-500 uppercase font-sans">Total Expected</p>
+                    <p className="text-sm font-bold text-slate-900">{formatINR(memberReportModalData.summary?.totalExpectedRupees)}</p>
+                  </div>
+                  <div className="p-3 bg-emerald-50 rounded-lg border border-emerald-200">
+                    <p className="text-[10px] text-emerald-700 uppercase font-sans">Total Received</p>
+                    <p className="text-sm font-bold text-emerald-800">{formatINR(memberReportModalData.summary?.totalReceivedRupees)}</p>
+                  </div>
+                  <div className="p-3 bg-rose-50 rounded-lg border border-rose-200">
+                    <p className="text-[10px] text-rose-700 uppercase font-sans">Balance Pending</p>
+                    <p className="text-sm font-bold text-rose-800">{formatINR(memberReportModalData.summary?.totalBalanceRupees)}</p>
+                  </div>
+                  <div className="p-3 bg-indigo-50 rounded-lg border border-indigo-200">
+                    <p className="text-[10px] text-indigo-700 uppercase font-sans">Status & Receipts</p>
+                    <div className="flex items-center space-x-1 mt-0.5">
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                        memberReportModalData.summary?.status === 'PAID' ? 'bg-emerald-200 text-emerald-900' :
+                        memberReportModalData.summary?.status === 'PARTIAL' ? 'bg-amber-200 text-amber-900' : 'bg-rose-200 text-rose-900'
+                      }`}>
+                        {memberReportModalData.summary?.status}
+                      </span>
+                      <span className="text-[11px] text-slate-600 font-sans">({memberReportModalData.summary?.totalPaymentsCount || 0} Receipts)</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Detailed Table */}
+                <div className="overflow-x-auto rounded-xl border border-slate-200">
+                  <table className="w-full text-left text-xs min-w-[650px]">
+                    <thead className="bg-slate-100 text-[11px] font-bold text-slate-700 uppercase border-b border-slate-200">
+                      <tr>
+                        <th className="py-2.5 px-3">Month</th>
+                        <th className="py-2.5 px-3 text-right">Expected (₹)</th>
+                        <th className="py-2.5 px-3 text-right">Total Received (₹)</th>
+                        <th className="py-2.5 px-3 text-right">Balance (₹)</th>
+                        <th className="py-2.5 px-3 text-center">Status</th>
+                        <th className="py-2.5 px-3">Partial Payments Breakdown</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-mono">
+                      {memberReportModalData.monthBreakdown?.map((m) => (
+                        <tr key={m.month} className="hover:bg-slate-50/80 align-top">
+                          <td className="py-3 px-3 font-bold text-slate-900">
+                            Month {m.month}
+                          </td>
+                          <td className="py-3 px-3 text-right font-bold text-slate-800">
+                            {formatINR(m.expectedRupees)}
+                          </td>
+                          <td className="py-3 px-3 text-right font-bold text-emerald-700">
+                            {formatINR(m.receivedRupees)}
+                          </td>
+                          <td className="py-3 px-3 text-right font-bold text-rose-600">
+                            {formatINR(m.balanceRupees)}
+                          </td>
+                          <td className="py-3 px-3 text-center font-sans">
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                              m.status === 'PAID' ? 'bg-emerald-100 text-emerald-800 border-emerald-300' :
+                              m.status === 'PARTIAL' ? 'bg-amber-100 text-amber-800 border-amber-300' :
+                              'bg-rose-50 text-rose-700 border-rose-200'
+                            }`}>
+                              {m.status}
+                            </span>
+                          </td>
+                          <td className="py-3 px-3 font-sans">
+                            {m.payments && m.payments.length > 0 ? (
+                              <div className="space-y-1.5">
+                                {m.payments.map((p, pIdx) => (
+                                  <div key={p._id || pIdx} className="bg-slate-50 p-2 rounded border border-slate-200 text-[11px] font-mono space-y-0.5">
+                                    <div className="flex justify-between items-center text-slate-800 font-bold">
+                                      <span className="text-blue-700">{p.receiptNumber}</span>
+                                      <span className="text-emerald-700 font-bold">{formatINR(p.amountPaidRupees)}</span>
+                                    </div>
+                                    <div className="flex justify-between text-slate-500 text-[10px]">
+                                      <span>{formatDate(p.paymentDate)} • {p.paymentMethod}</span>
+                                      {p.recordedBy && <span>By: {p.recordedBy}</span>}
+                                    </div>
+                                    {p.notes && (
+                                      <div className="text-[10px] text-slate-600 italic">
+                                        Note: {p.notes}
+                                      </div>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <span className="text-slate-400 text-[11px] italic">No payment recorded</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

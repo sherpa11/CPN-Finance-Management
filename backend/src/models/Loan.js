@@ -140,6 +140,11 @@ const loanSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.Mixed,
       default: undefined,
     },
+    // For Monthly Finance Upfront Interest Deduction snapshot
+    monthlyFinanceDetails: {
+      type: mongoose.Schema.Types.Mixed,
+      default: undefined,
+    },
     // For MEATER Finance status and formula parameters
     meaterConfig: {
       status: {

@@ -292,13 +292,16 @@ const recordCollection = async (req, res, next) => {
 };
 
 /**
- * Reverse Collection
- * Requirement: Confirmed payment records must NEVER be silently edited or deleted.
- * Use reversal entries with full audit history for corrections!
+ * Reverse or Delete Collection
+ * Requirement: Confirmed payment records must NEVER be silently deleted.
+ * Reversing/deleting atomically restores loan balances, customer balances, 
+ * inserts compensatory ledger entries, and logs full audit history.
  */
 const reverseCollection = async (req, res, next) => {
   try {
-    const { reason } = req.body;
+    const isDelete = req.method === 'DELETE' || req.query.action === 'delete';
+    const reason = (req.body && req.body.reason && req.body.reason.trim()) || 
+      (isDelete ? `Deleted by admin (${req.user?.username || 'admin'})` : 'Payment reversed by admin');
     const collection = await Collection.findById(req.params.id);
 
     if (!collection) {
@@ -308,14 +311,7 @@ const reverseCollection = async (req, res, next) => {
     if (collection.status === CONSTANTS.COLLECTION_STATUS.REVERSED) {
       return res.status(400).json({
         success: false,
-        message: 'This collection receipt is already reversed.',
-      });
-    }
-
-    if (!reason || !reason.trim()) {
-      return res.status(400).json({
-        success: false,
-        message: 'A formal reason is required to execute a financial collection reversal.',
+        message: 'This collection receipt is already reversed/deleted.',
       });
     }
 
@@ -383,7 +379,7 @@ const reverseCollection = async (req, res, next) => {
         balancePrincipalPaise: loan.outstandingPrincipalPaise,
         balanceInterestPaise: loan.outstandingInterestPaise,
         balanceTotalPaise: loan.outstandingPrincipalPaise + loan.outstandingInterestPaise,
-        remarks: `Reversal of Receipt [${collection.receiptNumber}]. Reason: ${reason}`,
+        remarks: `${isDelete ? 'Deletion / Reversal' : 'Reversal'} of Receipt [${collection.receiptNumber}]. Reason: ${reason}`,
         referenceId: collection.receiptNumber,
         performedBy: req.user.username,
       });
@@ -395,12 +391,12 @@ const reverseCollection = async (req, res, next) => {
 
     // 5. Audit Log
     await logAuditEvent({
-      action: 'REVERSE_COLLECTION',
+      action: isDelete ? 'DELETE_COLLECTION' : 'REVERSE_COLLECTION',
       entityType: 'COLLECTION',
       entityId: result._id,
       performedBy: req.user.username,
       ipAddress: req.ip,
-      details: `Reversed collection receipt ${result.receiptNumber} of ₹${toRupees(result.totalAmountPaise)}. Reason: ${reason}`,
+      details: `${isDelete ? 'Deleted' : 'Reversed'} collection receipt ${result.receiptNumber} of ₹${toRupees(result.totalAmountPaise)}. Reason: ${reason}`,
     });
 
     // 6. Trigger Notification Recalculation
@@ -412,12 +408,17 @@ const reverseCollection = async (req, res, next) => {
 
     res.json({
       success: true,
-      message: `Collection ${result.receiptNumber} successfully reversed with compensating audit ledger entries`,
+      message: `Collection ${result.receiptNumber} successfully ${isDelete ? 'deleted and reversed' : 'reversed'} with compensating audit ledger entries`,
       collection: result,
+      deleted: isDelete,
     });
   } catch (error) {
     next(error);
   }
+};
+
+const deleteCollection = async (req, res, next) => {
+  return reverseCollection(req, res, next);
 };
 
 /**
@@ -517,6 +518,7 @@ module.exports = {
   previewCollection,
   recordCollection,
   reverseCollection,
+  deleteCollection,
   listCollections,
   getReceipt,
 };

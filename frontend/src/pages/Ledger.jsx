@@ -10,6 +10,7 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import { formatINR, formatDate, formatDateTime } from '../utils/formatters';
+import SearchableCustomerSelect from '../components/SearchableCustomerSelect';
 import api from '../api';
 
 export default function Ledger() {
@@ -99,20 +100,15 @@ export default function Ledger() {
         {/* Customer Select */}
         <div>
           <label className="block font-semibold text-slate-700 mb-1">Select Customer</label>
-          <select
+          <SearchableCustomerSelect
             value={selectedCustomerId}
-            onChange={(e) => {
-              setSelectedCustomerId(e.target.value);
+            customers={customers}
+            onChange={(id) => {
+              setSelectedCustomerId(id);
               setSelectedLoanId('ALL');
             }}
-            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-900 bg-white"
-          >
-            {customers.map((c) => (
-              <option key={c._id} value={c._id}>
-                {c.name} ({c.customerId})
-              </option>
-            ))}
-          </select>
+            placeholder="Search customer by name or mobile..."
+          />
         </div>
 
         {/* Loan Select */}

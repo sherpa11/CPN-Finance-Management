@@ -48,9 +48,10 @@ describe('CPN RAJA – Centralized Financial Calculation Engine', () => {
       expect(res.fullMonths).toBe(1);
       expect(res.partialDays).toBe(0);
       expect(res.eligibleMonths).toBe(1);
-      // 50,000 * 2% * 1 = 1,000 INR = 100,000 paise
+      // 50,000 * 2% * 1 = 1,000 INR = 100,000 paise (Upfront deduction)
       expect(res.interestPaise).toBe(100000);
-      expect(res.totalPayablePaise).toBe(5100000);
+      expect(res.netAmountGivenPaise).toBe(4900000);
+      expect(res.totalPayablePaise).toBe(4900000);
     });
 
     test('calculates multiple months with individual customer rates (e.g. 3% on ₹1,00,000 for 3 months)', () => {

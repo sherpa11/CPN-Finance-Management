@@ -78,7 +78,8 @@ async function run() {
 
   assert(prevRes.status === 200, 'POST /api/loans/preview returns status 200');
   assert(prevRes.body.preview.expectedInterestRupees === 4000, 'Expected interest is exactly ₹4,000 for ₹1,00,000 @ 2% for 2 months');
-  assert(prevRes.body.preview.expectedTotalPayableRupees === 104000, 'Total payable is ₹1,04,000');
+  assert(prevRes.body.preview.netAmountGivenRupees === 96000, 'Net amount given is ₹96,000 (after upfront ₹4,000 deduction)');
+  assert(prevRes.body.preview.expectedTotalPayableRupees === 96000, 'Total payable is ₹96,000 (upfront deducted)');
 
   // 4. Create Loan
   console.log('\n[4] Loan Disbursement & Snapshot');
@@ -90,8 +91,8 @@ async function run() {
       vattiType: 'MONTHLY',
       principalAmount: 100000,
       interestRatePercent: 2.0,
-      startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
-      dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+      startDate: '2026-01-01',
+      dueDate: '2026-03-01',
       remarks: 'Wholesale inventory expansion',
     });
 
@@ -120,7 +121,7 @@ async function run() {
 
   assert(colRes.status === 201, 'POST /api/collections returns status 201');
   assert(colRes.body.collection.receiptNumber.startsWith('RCP-'), 'Unique printable receipt number generated');
-  assert(colRes.body.remainingSummary.remainingPrincipalRupees === 90000, 'Principal reduced accurately from ₹1,00,000 to ₹90,000');
+  assert(colRes.body.remainingSummary.remainingPrincipalRupees === 86000, 'Principal reduced accurately from ₹96,000 net payable to ₹86,000');
   const collectionId = colRes.body.collection._id;
 
   // Duplicate submission check

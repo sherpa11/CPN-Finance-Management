@@ -1235,7 +1235,7 @@ const reverseMonthlyPayout = async (req, res, next) => {
  */
 const getChitReports = async (req, res, next) => {
   try {
-    const { reportType, chitId, month, category, startDate, endDate } = req.query;
+    const { reportType, chitId, month, category, startDate, endDate, memberId, memberNumber } = req.query;
 
     let group = null;
     if (chitId) {
@@ -1247,7 +1247,9 @@ const getChitReports = async (req, res, next) => {
       case 'monthly-collection': {
         const query = { isReversed: false };
         if (chitId) query.chitId = chitId;
-        if (month) query.month = Number(month);
+        if (month && month !== 'ALL') query.month = Number(month);
+        if (memberId) query.memberId = memberId;
+        if (memberNumber) query.memberNumber = Number(memberNumber);
         if (startDate || endDate) {
           query.paymentDate = {};
           if (startDate) query.paymentDate.$gte = new Date(startDate);
@@ -1255,26 +1257,66 @@ const getChitReports = async (req, res, next) => {
         }
 
         const collections = await ChitCollection.find(query).sort({ month: 1, paymentDate: -1 });
-        const rows = collections.map((c) => ({
-          receiptNumber: c.receiptNumber,
-          chitId: c.chitId,
-          month: c.month,
-          memberNumber: c.memberNumber,
-          memberName: c.memberName,
-          expectedRupees: toRupees(c.expectedAmountPaise),
-          paidRupees: toRupees(c.amountPaidPaise),
-          paymentDate: c.paymentDate,
-          paymentMethod: c.paymentMethod,
-          status: c.status,
-          notes: c.notes,
-        }));
+
+        // Precompute total paid per member-month to calculate remaining balance accurately
+        const groupColsQuery = { isReversed: false };
+        if (chitId) groupColsQuery.chitId = chitId;
+        const allGroupCollections = await ChitCollection.find(groupColsQuery);
+
+        const memberMonthTotals = {};
+        for (const col of allGroupCollections) {
+          const key = `${col.chitId}-${col.memberNumber}-${col.month}`;
+          memberMonthTotals[key] = (memberMonthTotals[key] || 0) + (col.amountPaidPaise || 0);
+        }
+
+        const rows = collections.map((c) => {
+          const key = `${c.chitId}-${c.memberNumber}-${c.month}`;
+          const totalPaidForMonthPaise = memberMonthTotals[key] || c.amountPaidPaise;
+          const balancePaise = Math.max(0, (c.expectedAmountPaise || 0) - totalPaidForMonthPaise);
+
+          return {
+            receiptNumber: c.receiptNumber,
+            chitId: c.chitId,
+            month: c.month,
+            memberId: c.memberId,
+            memberNumber: c.memberNumber,
+            memberName: c.memberName,
+            expectedRupees: toRupees(c.expectedAmountPaise),
+            expectedPaise: c.expectedAmountPaise,
+            paidRupees: toRupees(c.amountPaidPaise),
+            paidPaise: c.amountPaidPaise,
+            balanceRupees: toRupees(balancePaise),
+            balancePaise,
+            totalPaidForMonthRupees: toRupees(totalPaidForMonthPaise),
+            paymentDate: c.paymentDate,
+            paymentMethod: c.paymentMethod,
+            status: c.status,
+            notes: c.notes || '',
+            recordedBy: c.recordedBy || '',
+          };
+        });
+
+        // Compute unique expected sum across member-months so multiple partial payments don't duplicate expected amount
+        const uniqueMemberMonths = new Set();
+        let totalExpectedPaise = 0;
+        for (const c of collections) {
+          const key = `${c.chitId}-${c.memberNumber}-${c.month}`;
+          if (!uniqueMemberMonths.has(key)) {
+            uniqueMemberMonths.add(key);
+            totalExpectedPaise += (c.expectedAmountPaise || 0);
+          }
+        }
 
         const totalCollectedRupees = rows.reduce((acc, r) => acc + r.paidRupees, 0);
+        const totalExpectedRupees = toRupees(totalExpectedPaise);
+        const totalPendingRupees = Math.max(0, totalExpectedRupees - totalCollectedRupees);
 
         return res.json({
           success: true,
           reportType,
+          totalExpectedRupees,
           totalCollectedRupees,
+          totalPendingRupees,
           recordsCount: rows.length,
           data: rows,
         });
@@ -1284,29 +1326,44 @@ const getChitReports = async (req, res, next) => {
       case 'monthly-payout': {
         const query = { isReversed: false };
         if (chitId) query.chitId = chitId;
-        if (month) query.month = Number(month);
+        if (month && month !== 'ALL') query.month = Number(month);
+        if (memberId) query.memberId = memberId;
+        if (memberNumber) query.memberNumber = Number(memberNumber);
 
         const payouts = await ChitPayout.find(query).sort({ month: 1, payoutDate: -1 });
-        const rows = payouts.map((p) => ({
-          voucherNumber: p.payoutVoucherNumber,
-          chitId: p.chitId,
-          month: p.month,
-          hasPayout: p.hasPayout,
-          memberNumber: p.memberNumber,
-          memberName: p.memberName || (p.hasPayout ? '' : 'No Payout'),
-          payoutAmountRupees: toRupees(p.payoutAmountPaise),
-          kasarRupees: toRupees(p.kasarPaise),
-          payoutDate: p.payoutDate,
-          paymentMethod: p.paymentMethod,
-          remarks: p.remarks,
-        }));
+        const rows = payouts.map((p) => {
+          const payoutAmountRupees = toRupees(p.payoutAmountPaise);
+          const kasarRupees = toRupees(p.kasarPaise);
+          const netPaidRupees = toRupees(Math.max(0, p.payoutAmountPaise - (p.kasarPaise || 0)));
+
+          return {
+            voucherNumber: p.payoutVoucherNumber,
+            chitId: p.chitId,
+            month: p.month,
+            hasPayout: p.hasPayout,
+            memberId: p.memberId,
+            memberNumber: p.memberNumber,
+            memberName: p.memberName || (p.hasPayout ? '' : 'No Payout'),
+            payoutAmountRupees,
+            kasarRupees,
+            netPaidRupees,
+            payoutDate: p.payoutDate,
+            paymentMethod: p.paymentMethod,
+            status: p.hasPayout ? 'COMPLETED' : 'NO_PAYOUT',
+            remarks: p.remarks || '',
+          };
+        });
 
         const totalPayoutsRupees = rows.reduce((acc, r) => acc + r.payoutAmountRupees, 0);
+        const totalKasarRupees = rows.reduce((acc, r) => acc + r.kasarRupees, 0);
+        const totalNetPaidRupees = rows.reduce((acc, r) => acc + r.netPaidRupees, 0);
 
         return res.json({
           success: true,
           reportType,
           totalPayoutsRupees,
+          totalKasarRupees,
+          totalNetPaidRupees,
           recordsCount: rows.length,
           data: rows,
         });
@@ -1316,6 +1373,8 @@ const getChitReports = async (req, res, next) => {
       case 'member-wise': {
         const query = {};
         if (chitId) query.chitId = chitId;
+        if (memberId) query._id = memberId;
+        if (memberNumber) query.memberNumber = Number(memberNumber);
 
         const members = await ChitMember.find(query).sort({ chitId: 1, memberNumber: 1 });
         const allGroups = await ChitGroup.find();
@@ -1458,6 +1517,155 @@ const getChitReports = async (req, res, next) => {
           success: true,
           reportType,
           data: summary,
+        });
+      }
+
+      // Report G: Individual Member Payment Report (with multiple partial payments breakdown)
+      case 'member-payment-report':
+      case 'individual-member-payment': {
+        const { memberId, memberNumber } = req.query;
+        let member = null;
+
+        if (memberId) {
+          member = await ChitMember.findById(memberId);
+          if (member && !group) {
+            group = await ChitGroup.findById(member.chitGroupId);
+          }
+        } else if (memberNumber && group) {
+          member = await ChitMember.findOne({ chitGroupId: group._id, memberNumber: Number(memberNumber) });
+        }
+
+        // Helper to format a single member's breakdown
+        const buildMemberBreakdown = async (m, g) => {
+          const collections = await ChitCollection.find({
+            memberId: m._id,
+            isReversed: false,
+          }).sort({ paymentDate: -1 });
+
+          const durationMonths = g?.durationMonths || 20;
+          let monthsList = [];
+          if (month && month !== 'ALL') {
+            monthsList = [Number(month)];
+          } else {
+            monthsList = Array.from({ length: durationMonths }, (_, i) => i + 1);
+          }
+
+          let totalExpectedPaise = 0;
+          let totalReceivedPaise = 0;
+
+          const monthBreakdown = monthsList.map((mNum) => {
+            const sched = g?.schedule?.find((s) => s.month === mNum);
+            const expectedPaise = sched ? sched.instalmentPaise : 0;
+            totalExpectedPaise += expectedPaise;
+
+            const monthCols = collections.filter((c) => c.month === mNum);
+            const receivedPaise = monthCols.reduce((sum, c) => sum + (c.amountPaidPaise || 0), 0);
+            totalReceivedPaise += receivedPaise;
+            const balancePaise = Math.max(0, expectedPaise - receivedPaise);
+
+            let status = 'UNPAID';
+            if (receivedPaise >= expectedPaise && expectedPaise > 0) {
+              status = 'PAID';
+            } else if (receivedPaise > 0) {
+              status = 'PARTIAL';
+            }
+
+            return {
+              month: mNum,
+              expectedRupees: toRupees(expectedPaise),
+              expectedPaise,
+              receivedRupees: toRupees(receivedPaise),
+              receivedPaise,
+              balanceRupees: toRupees(balancePaise),
+              balancePaise,
+              status,
+              paymentsCount: monthCols.length,
+              payments: monthCols.map((c) => ({
+                _id: c._id,
+                receiptNumber: c.receiptNumber,
+                paymentDate: c.paymentDate,
+                amountPaidRupees: toRupees(c.amountPaidPaise),
+                amountPaidPaise: c.amountPaidPaise,
+                paymentMethod: c.paymentMethod,
+                notes: c.notes || '',
+                recordedBy: c.recordedBy || '',
+                status: c.status,
+              })),
+            };
+          });
+
+          const totalBalancePaise = Math.max(0, totalExpectedPaise - totalReceivedPaise);
+          let overallStatus = 'UNPAID';
+          if (totalReceivedPaise >= totalExpectedPaise && totalExpectedPaise > 0) {
+            overallStatus = 'PAID';
+          } else if (totalReceivedPaise > 0) {
+            overallStatus = 'PARTIAL';
+          }
+
+          return {
+            member: {
+              _id: m._id,
+              memberNumber: m.memberNumber,
+              name: m.name,
+              mobile: m.mobile,
+              district: m.district,
+              village: m.village,
+              status: m.status,
+              hasReceivedPayout: m.hasReceivedPayout,
+              payoutMonth: m.payoutMonth,
+              payoutAmountRupees: toRupees(m.payoutAmountPaise),
+            },
+            group: g ? {
+              _id: g._id,
+              chitId: g.chitId,
+              name: g.name,
+              category: g.category,
+              totalValueRupees: toRupees(g.totalValuePaise),
+              durationMonths: g.durationMonths,
+              currentMonth: g.currentMonth,
+            } : null,
+            summary: {
+              totalExpectedRupees: toRupees(totalExpectedPaise),
+              totalReceivedRupees: toRupees(totalReceivedPaise),
+              totalBalanceRupees: toRupees(totalBalancePaise),
+              totalPaymentsCount: collections.filter((c) => monthsList.includes(c.month)).length,
+              status: overallStatus,
+            },
+            monthBreakdown,
+          };
+        };
+
+        if (member) {
+          const singleReport = await buildMemberBreakdown(member, group);
+          return res.json({
+            success: true,
+            reportType,
+            data: singleReport,
+          });
+        }
+
+        // If no single member specified, fetch all members of this group
+        if (group) {
+          const groupMembers = await ChitMember.find({ chitGroupId: group._id }).sort({ memberNumber: 1 });
+          const allMemberBreakdowns = await Promise.all(groupMembers.map((m) => buildMemberBreakdown(m, group)));
+          return res.json({
+            success: true,
+            reportType,
+            group: {
+              _id: group._id,
+              chitId: group.chitId,
+              name: group.name,
+              category: group.category,
+              totalValueRupees: toRupees(group.totalValuePaise),
+            },
+            membersCount: groupMembers.length,
+            data: allMemberBreakdowns,
+          });
+        }
+
+        return res.status(400).json({
+          success: false,
+          message: 'Please provide either chitId or memberId to generate the Member Payment Report.',
         });
       }
 
