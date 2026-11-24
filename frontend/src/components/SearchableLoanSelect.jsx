@@ -135,18 +135,7 @@ export default function SearchableLoanSelect({
       >
         <div className="flex items-center space-x-2 flex-1 overflow-hidden min-w-0">
           <Search className="w-4 h-4 text-slate-400 shrink-0" />
-          {isOpen ? (
-            <input
-              ref={inputRef}
-              type="text"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder={placeholder}
-              className="w-full bg-transparent border-none outline-none text-xs text-slate-900 placeholder:text-slate-400"
-              autoFocus
-            />
-          ) : selectedLoan ? (
+          {selectedLoan ? (
             <div className="flex items-center space-x-2 truncate flex-1 min-w-0">
               <span className="font-bold text-slate-900 text-xs truncate">
                 {selectedLoan.customerName || selectedLoan.customerId?.name}
@@ -164,7 +153,20 @@ export default function SearchableLoanSelect({
               </span>
             </div>
           ) : (
-            <span className="text-xs text-slate-400 select-none truncate">{placeholder}</span>
+            <input
+              ref={inputRef}
+              type="text"
+              value={searchTerm}
+              onFocus={() => setIsOpen(true)}
+              onChange={(e) => {
+                setSearchTerm(e.target.value);
+                setIsOpen(true);
+              }}
+              onKeyDown={handleKeyDown}
+              placeholder={placeholder}
+              className="w-full bg-transparent border-none outline-none text-xs text-slate-900 placeholder:text-slate-400 font-sans"
+              disabled={disabled}
+            />
           )}
         </div>
 

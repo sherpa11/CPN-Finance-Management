@@ -536,7 +536,9 @@ export default function Collections({ initialLoan }) {
             <form onSubmit={handleRecordPayment} className="space-y-4 text-xs">
               {/* Select Loan with Searchable Customer / Loan Selector */}
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Select Loan Account *</label>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Search Customer / Loan Account *
+                </label>
                 <SearchableLoanSelect
                   loans={activeLoans}
                   value={selectedLoanId}
