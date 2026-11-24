@@ -417,23 +417,33 @@ export default function Collections({ initialLoan }) {
                           <div>
                             {col.isUpfrontInterest || col.collectionType === 'UPFRONT_INTEREST' ? (
                               <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-purple-100 text-purple-700 border border-purple-200">
-                                Upfront Interest
+                                Upfront Interest (Retained)
                               </span>
                             ) : (
                               <span className="text-[10px] text-slate-400 font-sans font-normal">
-                                Regular Repayment
+                                Customer Repayment
                               </span>
                             )}
                           </div>
                         </div>
                       </td>
                       <td className="py-3 px-3 text-slate-600">{formatDate(col.paymentDate)}</td>
-                      <td className="py-3 px-4 font-bold text-slate-900">{col.customerName}</td>
+                      <td className="py-3 px-4 font-bold text-slate-900">
+                        <div>{col.customerName}</div>
+                        {col.customerMobile && (
+                          <div className="text-[10px] text-slate-400 font-normal font-mono">{col.customerMobile}</div>
+                        )}
+                      </td>
                       <td className="py-3 px-3 font-mono text-blue-700 font-semibold">
                         <div>{col.loanCode}</div>
                         <div className="text-[10px] text-slate-500 font-sans font-normal">
                           {col.vattiType === 'DAILY' ? 'Daily Finance' : col.vattiType === 'DAILY_COLLECTION' ? 'Daily Collection' : 'Monthly Finance'}
                         </div>
+                        {col.isUpfrontInterest && col.grossPrincipalRupees > 0 && (
+                          <div className="text-[9px] text-slate-500 font-sans font-normal">
+                            Gross: ₹{col.grossPrincipalRupees} · Net: ₹{col.netDisbursedRupees}
+                          </div>
+                        )}
                       </td>
                       <td className="py-3 px-3 uppercase text-[11px] font-medium text-slate-600">
                         {col.paymentMethod}
@@ -442,7 +452,10 @@ export default function Collections({ initialLoan }) {
                         {formatINR(col.principalAllocationPaise / 100)}
                       </td>
                       <td className="py-3 px-3 text-right font-mono font-medium text-emerald-700">
-                        {formatINR(col.interestAllocationPaise / 100)}
+                        <div>{formatINR(col.interestAllocationPaise / 100)}</div>
+                        {col.isUpfrontInterest && (
+                          <div className="text-[9px] text-purple-600 font-sans font-normal">Retained at Disb.</div>
+                        )}
                       </td>
                       <td className="py-3 px-3 text-right font-mono font-medium text-rose-700">
                         {col.penaltyAllocationPaise > 0 ? formatINR(col.penaltyAllocationPaise / 100) : '—'}

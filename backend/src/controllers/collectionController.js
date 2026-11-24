@@ -520,7 +520,7 @@ const listCollections = async (req, res, next) => {
     const total = await Collection.countDocuments(query);
     const collections = await Collection.find(query)
       .populate('customerId', 'name customerId mobileNumber')
-      .populate('loanId', 'loanId vattiType')
+      .populate('loanId', 'loanId vattiType grossPrincipalPaise principalPaise upfrontInterestPaise netDisbursementPaise upfrontReceiptNumber')
       .sort({ paymentDate: -1, createdAt: -1 })
       .skip((page - 1) * limit)
       .limit(Number(limit))
@@ -531,17 +531,38 @@ const listCollections = async (req, res, next) => {
       total,
       page: Number(page),
       totalPages: Math.ceil(total / limit),
-      collections: collections.map((c) => ({
-        ...c,
-        customerName: c.customerName || c.customerId?.name || 'Customer',
-        isUpfrontInterest: !!c.isUpfrontInterest,
-        collectionType: c.collectionType || (c.isUpfrontInterest ? 'UPFRONT_INTEREST' : 'REGULAR'),
-        vattiType: c.vattiType || c.loanId?.vattiType || (c.loanCode?.startsWith('CPR-DC') ? 'DAILY_COLLECTION' : 'MONTHLY'),
-        totalAmountRupees: toRupees(c.totalAmountPaise),
-        principalAllocationRupees: toRupees(c.principalAllocationPaise),
-        interestAllocationRupees: toRupees(c.interestAllocationPaise),
-        penaltyAllocationRupees: toRupees(c.penaltyAllocationPaise || 0),
-      })),
+      collections: collections.map((c) => {
+        const isUpfront =
+          c.isUpfrontInterest === true ||
+          c.collectionType === 'UPFRONT_INTEREST' ||
+          c.accountedInDisbursement === true ||
+          (c.idempotencyKey && String(c.idempotencyKey).startsWith('UPFRONT-')) ||
+          (c.loanId?.upfrontReceiptNumber && c.receiptNumber === c.loanId.upfrontReceiptNumber) ||
+          ((c.principalAllocationPaise === 0 || !c.principalAllocationPaise) &&
+            c.interestAllocationPaise > 0 &&
+            c.loanId?.upfrontInterestPaise > 0 &&
+            c.interestAllocationPaise === c.loanId.upfrontInterestPaise);
+
+        const grossP = c.loanId?.grossPrincipalPaise || c.loanId?.principalPaise || c.previousOutstandingPrincipalPaise || 0;
+        const upfI = c.loanId?.upfrontInterestPaise || (isUpfront ? c.totalAmountPaise : 0);
+        const netD = c.loanId?.netDisbursementPaise || (grossP > upfI ? grossP - upfI : 0);
+
+        return {
+          ...c,
+          customerName: c.customerName || c.customerId?.name || 'Customer',
+          customerMobile: c.customerMobile || c.customerId?.mobileNumber || '',
+          isUpfrontInterest: isUpfront,
+          collectionType: isUpfront ? 'UPFRONT_INTEREST' : 'REGULAR',
+          vattiType: c.vattiType || c.loanId?.vattiType || (c.loanCode?.startsWith('CPR-DC') ? 'DAILY_COLLECTION' : 'MONTHLY'),
+          totalAmountRupees: toRupees(c.totalAmountPaise),
+          principalAllocationRupees: toRupees(c.principalAllocationPaise),
+          interestAllocationRupees: toRupees(c.interestAllocationPaise),
+          penaltyAllocationRupees: toRupees(c.penaltyAllocationPaise || 0),
+          grossPrincipalRupees: toRupees(grossP),
+          upfrontInterestRupees: toRupees(upfI),
+          netDisbursedRupees: toRupees(netD),
+        };
+      }),
     });
   } catch (error) {
     next(error);

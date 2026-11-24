@@ -250,23 +250,58 @@ async function getIrupuSummary({ startDate, endDate, period = 'all' } = {}) {
     ],
   };
 
-  // Pre-load reference maps for 100% accurate vattiType mapping
+  // Pre-load reference maps for 100% accurate vattiType mapping and upfront interest tracking
   const [allLoansLookup, allDcAccountsLookup] = await Promise.all([
-    Loan.find({}, '_id loanId vattiType').lean(),
-    DailyCollectionAccount.find({}, '_id accountId').lean(),
+    Loan.find({}, '_id loanId vattiType upfrontReceiptNumber upfrontCollectionId upfrontInterestPaise').lean(),
+    DailyCollectionAccount.find({}, '_id accountId upfrontReceiptNumber upfrontInterestPaise').lean(),
   ]);
 
   const loanTypeMap = new Map();
+  const upfrontReceiptSet = new Set();
+  const upfrontColIdSet = new Set();
+  const loanUpfrontMap = new Map();
+
   allLoansLookup.forEach((l) => {
     if (l._id) loanTypeMap.set(l._id.toString(), l.vattiType);
     if (l.loanId) loanTypeMap.set(l.loanId.toUpperCase(), l.vattiType);
+    if (l.upfrontReceiptNumber) upfrontReceiptSet.add(l.upfrontReceiptNumber);
+    if (l.upfrontCollectionId) upfrontColIdSet.add(l.upfrontCollectionId.toString());
+    const upf = l.upfrontInterestPaise || 0;
+    if (upf > 0) {
+      if (l._id) loanUpfrontMap.set(l._id.toString(), upf);
+      if (l.loanId) loanUpfrontMap.set(l.loanId.toUpperCase(), upf);
+    }
   });
 
   const dcAccountSet = new Set();
   allDcAccountsLookup.forEach((dc) => {
     if (dc._id) dcAccountSet.add(dc._id.toString());
     if (dc.accountId) dcAccountSet.add(dc.accountId.toUpperCase());
+    if (dc.upfrontReceiptNumber) upfrontReceiptSet.add(dc.upfrontReceiptNumber);
+    const upf = dc.upfrontInterestPaise || 0;
+    if (upf > 0) {
+      if (dc._id) loanUpfrontMap.set(dc._id.toString(), upf);
+      if (dc.accountId) loanUpfrontMap.set(dc.accountId.toUpperCase(), upf);
+    }
   });
+
+  // Multi-layered upfront interest detection helper
+  const checkIsUpfront = (col) => {
+    if (col.isUpfrontInterest === true) return true;
+    if (col.collectionType === 'UPFRONT_INTEREST') return true;
+    if (col.accountedInDisbursement === true) return true;
+    if (col.idempotencyKey && String(col.idempotencyKey).startsWith('UPFRONT-')) return true;
+    if (col.receiptNumber && upfrontReceiptSet.has(col.receiptNumber)) return true;
+    const colIdStr = col._id ? col._id.toString() : '';
+    if (colIdStr && upfrontColIdSet.has(colIdStr)) return true;
+    const lid = col.loanId ? (col.loanId._id || col.loanId).toString() : null;
+    const lcode = (col.loanCode || '').toUpperCase();
+    const upf = (lid && loanUpfrontMap.get(lid)) || (lcode && loanUpfrontMap.get(lcode)) || 0;
+    if (upf > 0 && col.interestAllocationPaise === upf && (col.principalAllocationPaise === 0 || !col.principalAllocationPaise)) {
+      return true;
+    }
+    return false;
+  };
 
   // 1. Fetch all confirmed collections (CASH only)
   const collectionsPromise = Collection.find(collectionCashFilter)
@@ -323,7 +358,7 @@ async function getIrupuSummary({ startDate, endDate, period = 'all' } = {}) {
 
   // 2. Genuine customer collections (Exclude upfront interest collections to avoid duplicate cash inflow)
   collections.forEach((col) => {
-    const isUpfront = col.isUpfrontInterest === true || col.collectionType === 'UPFRONT_INTEREST' || col.accountedInDisbursement === true;
+    const isUpfront = checkIsUpfront(col);
     if (!isUpfront) {
       const vType = resolveVattiType(col, loanTypeMap, dcAccountSet);
       if (vType === 'MONTHLY') {
@@ -376,7 +411,7 @@ async function getIrupuSummary({ startDate, endDate, period = 'all' } = {}) {
     let priorOutflowsPaise = 0;
 
     collections.forEach((col) => {
-      const isUpfront = col.isUpfrontInterest === true || col.collectionType === 'UPFRONT_INTEREST' || col.accountedInDisbursement === true;
+      const isUpfront = checkIsUpfront(col);
       if (!isUpfront && new Date(col.paymentDate) < startBound) {
         priorInflowsPaise += col.totalAmountPaise || 0;
       }
@@ -433,7 +468,7 @@ async function getIrupuSummary({ startDate, endDate, period = 'all' } = {}) {
   const registerEntries = [];
 
   collections.forEach((col) => {
-    const isUpfront = col.isUpfrontInterest === true || col.collectionType === 'UPFRONT_INTEREST' || col.accountedInDisbursement === true;
+    const isUpfront = checkIsUpfront(col);
     if (!isUpfront && inPeriod(col.paymentDate)) {
       const vType = resolveVattiType(col, loanTypeMap, dcAccountSet);
       const amt = col.totalAmountPaise || 0;

@@ -12,6 +12,9 @@ const Collection = require('../src/models/Collection');
 const DailyCollectionAccount = require('../src/models/DailyCollectionAccount');
 const DailyCollectionPayment = require('../src/models/DailyCollectionPayment');
 const Transaction = require('../src/models/Transaction');
+const IrupuInvestment = require('../src/models/IrupuInvestment');
+const IrupuOutflow = require('../src/models/IrupuOutflow');
+const IrupuOpeningBalance = require('../src/models/IrupuOpeningBalance');
 const connectDB = require('../src/config/db');
 const { getIrupuSummary } = require('../src/services/irupuService');
 const { toPaise, toRupees } = require('../src/services/calculationEngine');
@@ -393,6 +396,122 @@ async function runUpfrontInterestTests() {
     const lastRegisterEntry = todaySummary.cashRegister[0]; // most recent first
     assert(lastRegisterEntry, 'Most recent register entry present');
     logPass('Digital cash register and daily closing balance verified with zero drift');
+  }
+
+  console.log('\n[TEST 7] Client Murugan Scenario: ₹100 Loan with ₹2 Upfront & ₹50 Repayment Reconciles Exactly to -₹48');
+  {
+    // Clean slate for isolated precision check
+    await Customer.deleteMany({});
+    await Loan.deleteMany({});
+    await Collection.deleteMany({});
+    await Transaction.deleteMany({});
+    await IrupuInvestment.deleteMany({});
+    await IrupuOutflow.deleteMany({});
+    await IrupuOpeningBalance.deleteMany({});
+
+    // 1. Create Customer Murugan
+    const muruganCustRes = await request(app)
+      .post('/api/customers')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        name: 'murugan',
+        mobileNumber: '963256325',
+        address: 'Bazaar Street',
+      });
+    assert.strictEqual(muruganCustRes.status, 201);
+    const murugan = muruganCustRes.body.customer;
+
+    // 2. Disburse ₹100 loan with 2% upfront interest (₹2) yesterday (24 Nov 2026)
+    const yesterdayDate = DateTime.now().setZone(TIMEZONE).minus({ days: 1 }).toISODate();
+    const dueDate = DateTime.fromISO(yesterdayDate).plus({ months: 1 }).toISODate();
+
+    const loanRes = await request(app)
+      .post('/api/loans')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        customerId: murugan._id,
+        financeType: 'MONTHLY',
+        principalAmount: 100,
+        interestRatePercent: 2.0,
+        startDate: yesterdayDate,
+        dueDate,
+        remarks: 'Murugan Monthly Finance ₹100',
+        disbursementPaymentMethod: 'CASH',
+      });
+    assert.strictEqual(loanRes.status, 201);
+    const muruganLoan = loanRes.body.loan;
+
+    // 3. Murugan makes a repayment of ₹50 on yesterday (24 Nov 2026)
+    const repayRes = await request(app)
+      .post('/api/collections')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        loanId: muruganLoan._id,
+        paymentAmount: 50,
+        principalAllocation: 50,
+        interestAllocation: 0,
+        paymentMethod: 'CASH',
+        paymentDate: yesterdayDate,
+        remarks: 'Murugan ₹50 principal repayment',
+      });
+    assert.strictEqual(repayRes.status, 201);
+
+    // 4. Test un-healed legacy record scenario:
+    // Strip isUpfrontInterest from the upfront collection to simulate an older un-migrated record
+    await Collection.findByIdAndUpdate(muruganLoan.upfrontCollectionId, {
+      $set: { isUpfrontInterest: false, collectionType: 'REGULAR', accountedInDisbursement: false },
+    });
+
+    // 5. Query Irupu summary for ALL-TIME: Must be EXACTLY -₹48.00 (NOT -₹46.00!)
+    const allSummary = await getIrupuSummary({ period: 'all' });
+    assert.strictEqual(
+      allSummary.currentCashInHandRupees,
+      -48,
+      `All-time cash in hand must be exactly -₹48.00. Got: ${allSummary.currentCashInHandRupees}`
+    );
+    logPass('Murugan All-Time Cash in Hand is exactly -₹48.00 (Net cash given -₹98 + Repayment +₹50 = -₹48)');
+
+    // 6. Query Irupu summary for TODAY:
+    // Yesterday closing was -₹48.00. Today opening must be -₹48.00, today inflows 0, today outflows 0, closing -₹48.00!
+    const todayMuruganSummary = await getIrupuSummary({ period: 'today' });
+    assert.strictEqual(
+      todayMuruganSummary.periodSummary.openingBalanceRupees,
+      -48,
+      `Today Opening Balance must be exactly -₹48.00. Got: ${todayMuruganSummary.periodSummary.openingBalanceRupees}`
+    );
+    assert.strictEqual(
+      todayMuruganSummary.periodSummary.openingBalanceRupees,
+      -48,
+      `Daily Cash Position Opening must be -₹48.00`
+    );
+    assert.strictEqual(
+      todayMuruganSummary.periodSummary.closingBalanceRupees,
+      -48,
+      `Daily Cash Position Closing must be -₹48.00`
+    );
+    assert.strictEqual(
+      todayMuruganSummary.currentCashInHandRupees,
+      -48,
+      `Current Cash in Hand must be -₹48.00`
+    );
+    logPass('Today Opening Balance carried forward from yesterday is exactly -₹48.00 (NOT -₹46.00)');
+    logPass('Daily Cash Position Opening (-₹48) and Closing (-₹48) match perfectly with 0 drift');
+
+    // 7. Verify Collections API:
+    // Upfront collection must be identified as upfront interest and include financial metadata
+    const colListRes = await request(app)
+      .get('/api/collections')
+      .set('Authorization', `Bearer ${token}`);
+    assert.strictEqual(colListRes.status, 200);
+    const collections = colListRes.body.collections;
+    const upfCol = collections.find((c) => c.receiptNumber === muruganLoan.upfrontReceiptNumber);
+    assert(upfCol, 'Upfront collection must be returned in Collections API');
+    assert.strictEqual(upfCol.isUpfrontInterest, true, 'Upfront collection must have isUpfrontInterest: true');
+    assert.strictEqual(upfCol.collectionType, 'UPFRONT_INTEREST', 'collectionType must be UPFRONT_INTEREST');
+    assert.strictEqual(upfCol.grossPrincipalRupees, 100, 'Gross principal must be ₹100');
+    assert.strictEqual(upfCol.upfrontInterestRupees, 2, 'Upfront interest must be ₹2');
+    assert.strictEqual(upfCol.netDisbursedRupees, 98, 'Net disbursed must be ₹98');
+    logPass('Collections API properly returns Upfront Interest voucher with Gross ₹100, Upfront ₹2, Net ₹98');
   }
 
   console.log('\n================================================================');

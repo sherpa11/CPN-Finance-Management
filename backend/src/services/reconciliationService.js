@@ -34,24 +34,16 @@ async function syncHistoricalUpfrontCollections({ dryRun = false } = {}) {
   };
 
   try {
-    // Quick pre-flight check: Are there ANY loans or DC accounts that might be missing an upfront collection?
+    // Quick pre-flight check: Are there ANY loans or DC accounts that might have unhealed upfront collections?
     if (!dryRun) {
       const hasUnsyncedLoan = await Loan.exists({
         upfrontInterestPaise: { $gt: 0 },
         status: { $nin: ['CANCELLED', 'REVERSED'] },
-        $or: [
-          { upfrontCollectionId: { $exists: false } },
-          { upfrontCollectionId: null },
-        ],
       });
       const hasUnsyncedDc = await DailyCollectionAccount.exists({
         scheme: 'UPFRONT_DEDUCTION',
         upfrontInterestPaise: { $gt: 0 },
         status: { $nin: ['CANCELLED', 'REVERSED'] },
-        $or: [
-          { upfrontReceiptNumber: { $exists: false } },
-          { upfrontReceiptNumber: null },
-        ],
       });
 
       if (!hasUnsyncedLoan && !hasUnsyncedDc) {
@@ -69,12 +61,36 @@ async function syncHistoricalUpfrontCollections({ dryRun = false } = {}) {
     for (const loan of loans) {
       const existing = await Collection.findOne({
         $or: [
+          ...(loan.upfrontCollectionId ? [{ _id: loan.upfrontCollectionId }] : []),
+          ...(loan.upfrontReceiptNumber ? [{ receiptNumber: loan.upfrontReceiptNumber }] : []),
           { idempotencyKey: `UPFRONT-${loan.loanId}` },
           { loanId: loan._id, isUpfrontInterest: true },
+          { loanId: loan._id, principalAllocationPaise: 0, interestAllocationPaise: loan.upfrontInterestPaise },
+          { loanCode: loan.loanId, principalAllocationPaise: 0, interestAllocationPaise: loan.upfrontInterestPaise },
         ],
       });
 
-      if (!existing) {
+      if (existing) {
+        if (!existing.isUpfrontInterest || !existing.accountedInDisbursement || existing.collectionType !== 'UPFRONT_INTEREST') {
+          if (!dryRun) {
+            await Collection.findByIdAndUpdate(existing._id, {
+              isUpfrontInterest: true,
+              accountedInDisbursement: true,
+              collectionType: 'UPFRONT_INTEREST',
+              vattiType: loan.vattiType || existing.vattiType || 'MONTHLY',
+              idempotencyKey: existing.idempotencyKey || `UPFRONT-${loan.loanId}`,
+            });
+          }
+          report.loansFixed += 1;
+        }
+
+        if (!dryRun && (!loan.upfrontCollectionId || !loan.upfrontReceiptNumber)) {
+          await Loan.findByIdAndUpdate(loan._id, {
+            upfrontCollectionId: existing._id,
+            upfrontReceiptNumber: existing.receiptNumber,
+          });
+        }
+      } else {
         if (dryRun) {
           report.loansFixed += 1;
           report.createdCollections.push({
@@ -173,13 +189,6 @@ async function syncHistoricalUpfrontCollections({ dryRun = false } = {}) {
           upfrontInterestRupees: toRupees(loan.upfrontInterestPaise),
           action: 'CREATED_UPFRONT_COLLECTION',
         });
-      } else if (!loan.upfrontCollectionId || !loan.upfrontReceiptNumber) {
-        if (!dryRun) {
-          await Loan.findByIdAndUpdate(loan._id, {
-            upfrontCollectionId: existing._id,
-            upfrontReceiptNumber: existing.receiptNumber,
-          });
-        }
       }
     }
 
@@ -196,13 +205,43 @@ async function syncHistoricalUpfrontCollections({ dryRun = false } = {}) {
       const targetLoanCode = dc.accountId || dc.loanCode || `CPN-DC-${dc._id.toString().slice(-4)}`;
       const existing = await Collection.findOne({
         $or: [
+          ...(dc.upfrontReceiptNumber ? [{ receiptNumber: dc.upfrontReceiptNumber }] : []),
           { idempotencyKey: `UPFRONT-${dc.accountId}` },
           { loanCode: targetLoanCode, isUpfrontInterest: true },
           ...(dc.loanId ? [{ loanId: dc.loanId, isUpfrontInterest: true }] : []),
+          { loanCode: targetLoanCode, principalAllocationPaise: 0, interestAllocationPaise: dc.upfrontInterestPaise },
+          ...(dc.loanId ? [{ loanId: dc.loanId, principalAllocationPaise: 0, interestAllocationPaise: dc.upfrontInterestPaise }] : []),
         ],
       });
 
-      if (!existing) {
+      if (existing) {
+        if (!existing.isUpfrontInterest || !existing.accountedInDisbursement || existing.collectionType !== 'UPFRONT_INTEREST') {
+          if (!dryRun) {
+            await Collection.findByIdAndUpdate(existing._id, {
+              isUpfrontInterest: true,
+              accountedInDisbursement: true,
+              collectionType: 'UPFRONT_INTEREST',
+              vattiType: 'DAILY_COLLECTION',
+              idempotencyKey: existing.idempotencyKey || `UPFRONT-${dc.accountId}`,
+            });
+          }
+          report.dcAccountsFixed += 1;
+        }
+
+        if (!dryRun) {
+          if (!dc.upfrontReceiptNumber) {
+            await DailyCollectionAccount.findByIdAndUpdate(dc._id, {
+              upfrontReceiptNumber: existing.receiptNumber,
+            });
+          }
+          if (dc.loanId) {
+            await Loan.findByIdAndUpdate(dc.loanId, {
+              upfrontCollectionId: existing._id,
+              upfrontReceiptNumber: existing.receiptNumber,
+            });
+          }
+        }
+      } else {
         if (dryRun) {
           report.dcAccountsFixed += 1;
           report.createdCollections.push({
@@ -305,18 +344,6 @@ async function syncHistoricalUpfrontCollections({ dryRun = false } = {}) {
           upfrontInterestRupees: toRupees(dc.upfrontInterestPaise),
           action: 'CREATED_UPFRONT_COLLECTION',
         });
-      } else if (!dc.upfrontReceiptNumber) {
-        if (!dryRun) {
-          await DailyCollectionAccount.findByIdAndUpdate(dc._id, {
-            upfrontReceiptNumber: existing.receiptNumber,
-          });
-          if (dc.loanId) {
-            await Loan.findByIdAndUpdate(dc.loanId, {
-              upfrontCollectionId: existing._id,
-              upfrontReceiptNumber: existing.receiptNumber,
-            });
-          }
-        }
       }
     }
   } catch (err) {
