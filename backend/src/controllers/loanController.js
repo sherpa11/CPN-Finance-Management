@@ -283,6 +283,7 @@ const createLoan = async (req, res, next) => {
           interestAllocationPaise: upfrontInterestPaise,
           penaltyAllocationPaise: 0,
           isUpfrontInterest: true,
+          accountedInDisbursement: true,
           collectionType: 'UPFRONT_INTEREST',
           vattiType: loan.vattiType,
           previousOutstandingPrincipalPaise: initialOutstandingPrincipalPaise,
