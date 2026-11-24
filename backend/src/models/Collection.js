@@ -25,7 +25,7 @@ const collectionSchema = new mongoose.Schema(
     loanId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Loan',
-      required: true,
+      required: false,
       index: true,
     },
     loanCode: {

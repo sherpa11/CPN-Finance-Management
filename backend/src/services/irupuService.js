@@ -170,10 +170,12 @@ async function syncHistoricalUpfrontCollections() {
     }).lean();
 
     for (const dc of dcAccounts) {
+      const targetLoanCode = dc.accountId || dc.loanCode || `CPN-DC-${dc._id.toString().slice(-4)}`;
       const existing = await Collection.findOne({
         $or: [
           { idempotencyKey: `UPFRONT-${dc.accountId}` },
-          { loanCode: dc.loanCode, isUpfrontInterest: true },
+          { loanCode: targetLoanCode, isUpfrontInterest: true },
+          ...(dc.loanId ? [{ loanId: dc.loanId, isUpfrontInterest: true }] : []),
         ],
       });
 
@@ -184,8 +186,8 @@ async function syncHistoricalUpfrontCollections() {
         const newCol = new Collection({
           collectionId: upfrontColId,
           receiptNumber: upfrontReceiptNum,
-          loanId: dc.loanId,
-          loanCode: dc.loanCode,
+          loanId: dc.loanId || null,
+          loanCode: targetLoanCode,
           customerId: dc.customerId,
           customerName: dc.customerName,
           paymentDate: dc.startDate || dc.createdAt || new Date(),
@@ -197,9 +199,9 @@ async function syncHistoricalUpfrontCollections() {
           isUpfrontInterest: true,
           collectionType: 'UPFRONT_INTEREST',
           vattiType: 'DAILY_COLLECTION',
-          previousOutstandingPrincipalPaise: dc.grossPrincipalPaise,
-          previousOutstandingInterestPaise: dc.upfrontInterestPaise,
-          remainingPrincipalPaise: dc.grossPrincipalPaise,
+          previousOutstandingPrincipalPaise: dc.grossPrincipalPaise || 0,
+          previousOutstandingInterestPaise: dc.upfrontInterestPaise || 0,
+          remainingPrincipalPaise: dc.grossPrincipalPaise || 0,
           remainingInterestPaise: 0,
           status: CONSTANTS.COLLECTION_STATUS.CONFIRMED,
           collectedBy: 'admin',
@@ -222,6 +224,59 @@ async function syncHistoricalUpfrontCollections() {
   } catch (err) {
     console.error('[syncHistoricalUpfrontCollections Error]', err.message);
   }
+}
+
+/**
+ * Helper to accurately resolve collection vattiType across models and legacy codes
+ */
+function resolveVattiType(col, loanTypeMap, dcAccountSet) {
+  // 1. Explicit vattiType on Collection
+  if (col.vattiType) {
+    const vt = String(col.vattiType).toUpperCase();
+    if (vt === 'DAILY' || vt === 'DAILY_FINANCE') return 'DAILY';
+    if (vt === 'DAILY_COLLECTION' || vt === 'DC') return 'DAILY_COLLECTION';
+    if (vt === 'MONTHLY') return 'MONTHLY';
+  }
+
+  // 2. Populated loanId object with vattiType
+  if (col.loanId && typeof col.loanId === 'object' && col.loanId.vattiType) {
+    const vt = String(col.loanId.vattiType).toUpperCase();
+    if (vt === 'DAILY' || vt === 'DAILY_FINANCE') return 'DAILY';
+    if (vt === 'DAILY_COLLECTION' || vt === 'DC') return 'DAILY_COLLECTION';
+    return 'MONTHLY';
+  }
+
+  // 3. loanCode / account code patterns
+  const code = (col.loanCode || '').toUpperCase();
+  if (code.includes('DC') || code.startsWith('CPN-DC') || code.startsWith('CPR-DC')) {
+    return 'DAILY_COLLECTION';
+  }
+
+  // 4. Look up loanTypeMap by loanId ObjectId or loanCode
+  const loanIdStr = col.loanId ? (col.loanId._id || col.loanId).toString() : null;
+  if (loanIdStr && loanTypeMap.has(loanIdStr)) {
+    const vt = String(loanTypeMap.get(loanIdStr)).toUpperCase();
+    if (vt === 'DAILY' || vt === 'DAILY_FINANCE') return 'DAILY';
+    if (vt === 'DAILY_COLLECTION' || vt === 'DC') return 'DAILY_COLLECTION';
+    return 'MONTHLY';
+  }
+  if (code && loanTypeMap.has(code)) {
+    const vt = String(loanTypeMap.get(code)).toUpperCase();
+    if (vt === 'DAILY' || vt === 'DAILY_FINANCE') return 'DAILY';
+    if (vt === 'DAILY_COLLECTION' || vt === 'DC') return 'DAILY_COLLECTION';
+    return 'MONTHLY';
+  }
+
+  // 5. Check if code or loanId is a known Daily Collection Account
+  if (code && dcAccountSet.has(code)) {
+    return 'DAILY_COLLECTION';
+  }
+  if (loanIdStr && dcAccountSet.has(loanIdStr)) {
+    return 'DAILY_COLLECTION';
+  }
+
+  // Default to MONTHLY
+  return 'MONTHLY';
 }
 
 /**
@@ -255,19 +310,73 @@ async function getIrupuSummary({ startDate, endDate, period = 'all' } = {}) {
     }
   }
 
+  // Build resilient queries:
+  // Exclude reversed and cancelled transactions.
+  // Match CASH payment method (case-insensitive, or missing/default cash).
+  const cashMethodCondition = {
+    $or: [
+      { paymentMethod: 'CASH' },
+      { paymentMethod: /^cash$/i },
+      { paymentMethod: { $exists: false } },
+      { paymentMethod: null },
+      { paymentMethod: '' },
+    ],
+  };
+
+  const confirmedStatusCondition = {
+    status: { $nin: ['REVERSED', 'reversed', 'CANCELLED', 'cancelled'] },
+    $or: [
+      { status: 'CONFIRMED' },
+      { status: /^confirmed$/i },
+      { status: { $exists: false } },
+      { status: null },
+    ],
+  };
+
+  const collectionCashFilter = {
+    $and: [confirmedStatusCondition, cashMethodCondition],
+  };
+
+  const dcPaymentCashFilter = {
+    $and: [confirmedStatusCondition, cashMethodCondition],
+  };
+
+  const loanDisbursementFilter = {
+    status: { $nin: ['CANCELLED', 'cancelled', 'REVERSED', 'reversed'] },
+    $or: [
+      { disbursementPaymentMethod: 'CASH' },
+      { disbursementPaymentMethod: /^cash$/i },
+      { disbursementPaymentMethod: { $exists: false } },
+      { disbursementPaymentMethod: null },
+      { disbursementPaymentMethod: '' },
+    ],
+  };
+
+  // Pre-load reference maps for 100% accurate vattiType mapping
+  const [allLoansLookup, allDcAccountsLookup] = await Promise.all([
+    Loan.find({}, '_id loanId vattiType').lean(),
+    DailyCollectionAccount.find({}, '_id accountId').lean(),
+  ]);
+
+  const loanTypeMap = new Map();
+  allLoansLookup.forEach((l) => {
+    if (l._id) loanTypeMap.set(l._id.toString(), l.vattiType);
+    if (l.loanId) loanTypeMap.set(l.loanId.toUpperCase(), l.vattiType);
+  });
+
+  const dcAccountSet = new Set();
+  allDcAccountsLookup.forEach((dc) => {
+    if (dc._id) dcAccountSet.add(dc._id.toString());
+    if (dc.accountId) dcAccountSet.add(dc.accountId.toUpperCase());
+  });
+
   // 1. Fetch all confirmed collections (CASH only)
-  const collectionsPromise = Collection.find({
-    status: 'CONFIRMED',
-    paymentMethod: 'CASH',
-  })
+  const collectionsPromise = Collection.find(collectionCashFilter)
     .populate('loanId', 'vattiType loanId customerName')
     .lean();
 
   // 2. Fetch all daily collection payments (CASH only)
-  const dcPaymentsPromise = DailyCollectionPayment.find({
-    status: 'CONFIRMED',
-    paymentMethod: 'CASH',
-  }).lean();
+  const dcPaymentsPromise = DailyCollectionPayment.find(dcPaymentCashFilter).lean();
 
   // 3. Fetch all active investments
   const investmentsPromise = IrupuInvestment.find({
@@ -275,12 +384,7 @@ async function getIrupuSummary({ startDate, endDate, period = 'all' } = {}) {
   }).lean();
 
   // 4. Fetch all cash loan disbursements
-  const loansPromise = Loan.find({
-    $or: [
-      { disbursementPaymentMethod: 'CASH' },
-      { disbursementPaymentMethod: { $exists: false } },
-    ],
-  }).lean();
+  const loansPromise = Loan.find(loanDisbursementFilter).lean();
 
   // 5. Fetch all active cash outflows
   const outflowsPromise = IrupuOutflow.find({
@@ -302,7 +406,7 @@ async function getIrupuSummary({ startDate, endDate, period = 'all' } = {}) {
   let allTimeOtherLoanCashPaise = 0;
 
   collections.forEach((col) => {
-    const vType = col.vattiType || col.loanId?.vattiType || (col.loanCode?.startsWith('CPR-DC') ? 'DAILY_COLLECTION' : 'MONTHLY');
+    const vType = resolveVattiType(col, loanTypeMap, dcAccountSet);
     if (vType === 'MONTHLY') {
       allTimeMonthlyCashPaise += col.totalAmountPaise || 0;
     } else if (vType === 'DAILY') {
@@ -408,7 +512,7 @@ async function getIrupuSummary({ startDate, endDate, period = 'all' } = {}) {
 
   collections.forEach((col) => {
     if (inPeriod(col.paymentDate)) {
-      const vType = col.vattiType || col.loanId?.vattiType || (col.loanCode?.startsWith('CPR-DC') ? 'DAILY_COLLECTION' : 'MONTHLY');
+      const vType = resolveVattiType(col, loanTypeMap, dcAccountSet);
       const amt = col.totalAmountPaise || 0;
       if (vType === 'MONTHLY') {
         periodMonthlyCashPaise += amt;
@@ -635,6 +739,28 @@ async function getIrupuSummary({ startDate, endDate, period = 'all' } = {}) {
     allTimeTotalCollectedRupees: toRupees(allTimeMonthlyCashPaise + allTimeDailyFinanceCashPaise + allTimeDailyCollectionCashPaise),
     allTimeTotalInvestmentRupees: toRupees(allTimeInvestmentPaise),
     allTimeTotalOutflowRupees: toRupees(allTimeTotalOutflowsPaise),
+
+    // Lifetime Source-Wise Cash Collections Breakdown
+    allTimeSummary: {
+      monthlyFinanceCashRupees: toRupees(allTimeMonthlyCashPaise),
+      monthlyFinanceCashPaise: allTimeMonthlyCashPaise,
+      dailyFinanceCashRupees: toRupees(allTimeDailyFinanceCashPaise),
+      dailyFinanceCashPaise: allTimeDailyFinanceCashPaise,
+      dailyCollectionCashRupees: toRupees(allTimeDailyCollectionCashPaise),
+      dailyCollectionCashPaise: allTimeDailyCollectionCashPaise,
+      investmentRupees: toRupees(allTimeInvestmentPaise),
+      investmentPaise: allTimeInvestmentPaise,
+      totalFinanceCollectionsRupees: toRupees(allTimeMonthlyCashPaise + allTimeDailyFinanceCashPaise + allTimeDailyCollectionCashPaise),
+      totalFinanceCollectionsPaise: allTimeMonthlyCashPaise + allTimeDailyFinanceCashPaise + allTimeDailyCollectionCashPaise,
+      totalInflowsRupees: toRupees(allTimeTotalInflowsPaise),
+      totalInflowsPaise: allTimeTotalInflowsPaise,
+      disbursementRupees: toRupees(allTimeLoanDisbursementCashPaise),
+      disbursementPaise: allTimeLoanDisbursementCashPaise,
+      totalOutflowsRupees: toRupees(allTimeTotalOutflowsPaise),
+      totalOutflowsPaise: allTimeTotalOutflowsPaise,
+      currentCashInHandRupees: toRupees(currentCashInHandPaise),
+      currentCashInHandPaise,
+    },
 
     // Period Summary
     periodSummary: {

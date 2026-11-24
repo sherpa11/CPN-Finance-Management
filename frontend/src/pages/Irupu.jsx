@@ -539,9 +539,33 @@ export default function Irupu({ onNavigate }) {
             </div>
           </div>
           <div className="text-xs font-mono font-bold text-slate-300 bg-slate-800/80 px-3 py-1.5 rounded-lg border border-slate-700">
-            {period === 'today' ? 'Today · ' + new Date().toLocaleDateString('en-IN') : `Selected Period: ${period.toUpperCase()}`}
+            {period === 'today'
+              ? 'Today · ' + new Date().toLocaleDateString('en-IN')
+              : period === 'this_month'
+              ? 'This Month · ' + new Date().toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })
+              : period === 'this_year'
+              ? 'This Year · ' + new Date().getFullYear()
+              : period === 'all'
+              ? 'All Time (மொத்தம்)'
+              : `Custom: ${startDate || 'Start'} to ${endDate || 'End'}`}
           </div>
         </div>
+
+        {/* Helpful Banner when viewing Today with 0 transactions */}
+        {period === 'today' && (data?.periodSummary?.totalInflowsRupees || 0) === 0 && (
+          <div className="mt-3 p-2.5 bg-amber-500/15 border border-amber-500/30 rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-amber-200">
+            <span className="flex items-center space-x-1.5">
+              <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+              <span>இன்று (Today) புதிய வசூல் எதுவும் இன்னும் பதிவாகவில்லை. முந்தைய அனைத்து வசூல்களையும் பார்க்க <strong>All Time (மொத்தம்)</strong> அல்லது <strong>This Month</strong> தேர்ந்தெடுக்கவும்.</span>
+            </span>
+            <button
+              onClick={() => setPeriod('all')}
+              className="px-2.5 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded text-[11px] whitespace-nowrap cursor-pointer transition-colors self-start sm:self-auto"
+            >
+              View All Time
+            </button>
+          </div>
+        )}
 
         {/* Handwritten Diary Matrix */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4 mt-4 text-xs font-mono">
@@ -606,13 +630,24 @@ export default function Irupu({ onNavigate }) {
           </div>
         </div>
 
-        <div className="mt-3 pt-2 border-t border-slate-700/60 flex flex-wrap items-center justify-between text-[11px] text-slate-400">
-          <span>
-            Total Confirmed Finance Cash Inflow: <strong className="text-white">{formatINR(data?.periodSummary?.totalFinanceCollectionsRupees || 0)}</strong>
-          </span>
-          <span>
-            Cash Disbursed & Expenses: <strong className="text-rose-400">− {formatINR(data?.periodSummary?.totalOutflowsRupees || 0)}</strong>
-          </span>
+        <div className="mt-3 pt-2.5 border-t border-slate-700/60 flex flex-col md:flex-row md:items-center justify-between text-[11px] text-slate-400 gap-2">
+          <div className="flex flex-wrap items-center gap-x-4">
+            <span>
+              Period Confirmed Cash Inflow: <strong className="text-white">{formatINR(data?.periodSummary?.totalFinanceCollectionsRupees || 0)}</strong>
+            </span>
+            <span>
+              Period Outflows: <strong className="text-rose-400">− {formatINR(data?.periodSummary?.totalOutflowsRupees || 0)}</strong>
+            </span>
+          </div>
+          {data?.allTimeSummary && (
+            <div className="flex flex-wrap items-center gap-x-3 text-slate-300 font-mono text-[10px] bg-slate-800/80 px-2.5 py-1 rounded border border-slate-700/80">
+              <span className="text-amber-400 font-bold uppercase font-sans">Lifetime Collections:</span>
+              <span>Mon: <strong className="text-blue-300">{formatINR(data.allTimeSummary.monthlyFinanceCashRupees)}</strong></span>
+              <span>D.C: <strong className="text-emerald-300">{formatINR(data.allTimeSummary.dailyCollectionCashRupees)}</strong></span>
+              <span>D.I: <strong className="text-amber-300">{formatINR(data.allTimeSummary.dailyFinanceCashRupees)}</strong></span>
+              <span>Inv: <strong className="text-purple-300">{formatINR(data.allTimeSummary.investmentRupees)}</strong></span>
+            </div>
+          )}
         </div>
       </div>
 
