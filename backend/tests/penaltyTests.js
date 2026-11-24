@@ -219,7 +219,20 @@ async function runPenaltyTests() {
     .set('Authorization', authHeader);
   assert.strictEqual(getMonthlyRes.body.loan.penaltyBreakdown.isPenaltyApplicable, false, 'Monthly Finance must have isPenaltyApplicable = false');
   assert.strictEqual(getMonthlyRes.body.loan.penaltyBreakdown.penaltyOutstandingRupees, 0, 'Monthly Finance must have ₹0 penalty');
-  logPass('Requirement 1: Monthly Finance strictly has no penalty under any condition.');
+
+  // Verify Due Management for Monthly Finance: Tracking due date, overdue days, with ZERO penalty
+  const duesRes = await request(app)
+    .get('/api/dues?financeType=MONTHLY')
+    .set('Authorization', authHeader);
+  assert.strictEqual(duesRes.status, 200);
+  const monthlyDue = duesRes.body.dues.find((d) => d.loanId === monthlyLoanRes.body.loan.loanId);
+  assert(monthlyDue, 'Monthly Finance loan must appear in Due Management');
+  assert.strictEqual(monthlyDue.penaltyBreakdown.isPenaltyApplicable, false, 'Due Management: Monthly Finance must not have penalty applicable');
+  assert.strictEqual(monthlyDue.penaltyOutstandingRupees, 0, 'Due Management: Monthly Finance penalty must be ₹0');
+  assert(monthlyDue.dueDate, 'Due Management: Monthly Finance must have dueDate');
+  assert(monthlyDue.dueStatus, 'Due Management: Monthly Finance must have dueStatus');
+
+  logPass('Requirement 1: Monthly Finance strictly has no penalty under any condition (Due Management & Notifications active without penalty).');
 
   // Requirement 7 & 10: Daily Finance with Upfront Interest
   // Principal: ₹1,00,000, Rate: 2%, Duration: 100 days

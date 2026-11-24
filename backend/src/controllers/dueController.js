@@ -93,10 +93,14 @@ const getDuesList = async (req, res, next) => {
     const formatted = loans.map((l) => {
       const dueKolkata = DateTime.fromJSDate(l.dueDate, { zone: TIMEZONE }).startOf('day');
       const diffDays = Math.round(dueKolkata.diff(today, 'days').days);
+      // Confirmed Business Rule:
+      // Monthly Finance strictly has NO penalty under any circumstances.
+      // Only Due Management (maturity schedule, days overdue, tracking) and Notifications apply to Monthly Finance.
+      // Daily Finance & Daily Collection apply 2% daily repayment penalty starting on Day D+1.
       const isDailyOrDc = l.vattiType === 'DAILY' || l.vattiType === 'DAILY_COLLECTION' || l.vattiType === 'MEATER';
 
       let penaltyCalc = null;
-      if (isDailyOrDc) {
+      if (isDailyOrDc && l.vattiType !== 'MONTHLY') {
         const dailyInstalmentPaise = l.dailyInstalmentPaise || (l.totalDurationDays ? Math.floor((l.principalPaise || 0) / l.totalDurationDays) : Math.floor((l.principalPaise || 0) / 10));
         penaltyCalc = calculateDailyPenalty({
           dailyRepaymentAmountPaise: dailyInstalmentPaise,
