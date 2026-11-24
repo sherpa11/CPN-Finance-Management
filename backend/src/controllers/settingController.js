@@ -15,6 +15,9 @@ const ChitPayout = require('../models/ChitPayout');
 const ChitAuditLog = require('../models/ChitAuditLog');
 const MoiSeerPerson = require('../models/MoiSeerPerson');
 const MoiSeerContribution = require('../models/MoiSeerContribution');
+const IrupuInvestment = require('../models/IrupuInvestment');
+const IrupuOutflow = require('../models/IrupuOutflow');
+const IrupuOpeningBalance = require('../models/IrupuOpeningBalance');
 const { invalidateDashboardCache } = require('./dashboardController');
 const { logAuditEvent } = require('../services/auditService');
 const CONSTANTS = require('../config/constants');
@@ -259,6 +262,9 @@ const resetDemoData = async (req, res, next) => {
       ChitAuditLog.deleteMany({}),
       MoiSeerPerson.deleteMany({}),
       MoiSeerContribution.deleteMany({}),
+      IrupuInvestment.deleteMany({}),
+      IrupuOutflow.deleteMany({}),
+      IrupuOpeningBalance.deleteMany({}),
       AuditLog.deleteMany({}),
     ]);
 

@@ -21,6 +21,7 @@ const Settings = lazy(() => import('./pages/Settings'));
 const MoiSeer = lazy(() => import('./pages/MoiSeer'));
 const DailyCollection = lazy(() => import('./pages/DailyCollection'));
 const ChitFund = lazy(() => import('./pages/ChitFund'));
+const Irupu = lazy(() => import('./pages/Irupu'));
 
 // Helper to resolve route tab from URL pathname
 function getTabFromPath() {
@@ -34,6 +35,7 @@ function getTabFromPath() {
     'new-vatti',
     'daily-collection',
     'collections',
+    'irupu',
     'dues',
     'notifications',
     'ledgers',
@@ -200,6 +202,12 @@ function AppContent() {
               {currentTab === 'collections' && (
                 <Collections
                   initialLoan={preselectedLoanForCollection}
+                />
+              )}
+
+              {currentTab === 'irupu' && (
+                <Irupu
+                  onNavigate={navigateTo}
                 />
               )}
 

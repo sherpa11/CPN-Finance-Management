@@ -120,6 +120,7 @@ const createLoan = async (req, res, next) => {
       startDate,
       dueDate,
       remarks,
+      disbursementPaymentMethod,
     } = req.body;
 
     if (!customerId || !vattiType || !principalAmount || interestRatePercent === undefined || !startDate || !dueDate) {
@@ -197,6 +198,7 @@ const createLoan = async (req, res, next) => {
         netDisbursementPaise: isUpfrontDeduction ? netDisbursedPaise : principalPaise,
         dailyInstalmentPaise: isDaily ? dailyInstalmentPaise : undefined,
         totalDurationDays: isDaily ? dailyDurationDays : undefined,
+        disbursementPaymentMethod: disbursementPaymentMethod || 'CASH',
         remarks: remarks || '',
         monthlyFinanceDetails: isMonthly ? {
           grossPrincipalPaise: principalPaise,

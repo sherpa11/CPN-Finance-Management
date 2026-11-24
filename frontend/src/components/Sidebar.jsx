@@ -13,6 +13,7 @@ import {
   Settings,
   Gift,
   Landmark,
+  Wallet,
   X,
 } from 'lucide-react';
 import api from '../api';
@@ -43,6 +44,7 @@ export default function Sidebar({ currentTab, onNavigate, onClose }) {
     { id: 'daily-finance', label: 'Daily Finance', icon: CalendarDays },
     { id: 'daily-collection', label: 'Daily Collection', icon: Layers },
     { id: 'collections', label: 'Collections', icon: Banknote },
+    { id: 'irupu', label: 'இருப்பு (Cash in Hand)', icon: Wallet },
     { id: 'dues', label: 'Due Management', icon: CalendarCheck, badge: counts.dueToday > 0 ? `${counts.dueToday} Today` : null, badgeColor: 'bg-amber-500' },
     { id: 'notifications', label: 'Notifications', icon: Bell, badge: counts.totalActive > 0 ? counts.totalActive : null, badgeColor: 'bg-rose-500' },
     { id: 'ledgers', label: 'Customer Ledgers', icon: BookOpen },

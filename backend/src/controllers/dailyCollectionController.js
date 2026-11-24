@@ -254,6 +254,8 @@ const createDailyCollectionAccount = async (req, res, next) => {
         outstandingInterestPaise: calc.additionalInterestPaise || 0,
         totalPrincipalPaidPaise: 0,
         totalInterestPaidPaise: 0,
+        netDisbursementPaise: calc.netDisbursementPaise,
+        disbursementPaymentMethod: req.body.disbursementPaymentMethod || 'CASH',
         remarks: `Daily Collection [${calc.scheme}] account ${accountId}: ${remarks || ''}`,
         dailyCollectionDetails: {
           collectionAccountId: dcAccount._id,

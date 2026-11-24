@@ -171,6 +171,12 @@ const loanSchema = new mongoose.Schema(
       type: Number,
       default: undefined,
     },
+    disbursementPaymentMethod: {
+      type: String,
+      enum: ['CASH', 'UPI', 'BANK_TRANSFER', 'OTHER'],
+      default: 'CASH',
+      index: true,
+    },
     // For MEATER Finance status and formula parameters
     meaterConfig: {
       status: {

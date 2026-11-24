@@ -18,6 +18,7 @@ const settingRoutes = require('./routes/settingRoutes');
 const moiSeerRoutes = require('./routes/moiSeerRoutes');
 const dailyCollectionRoutes = require('./routes/dailyCollectionRoutes');
 const chitFundRoutes = require('./routes/chitFundRoutes');
+const irupuRoutes = require('./routes/irupuRoutes');
 const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
@@ -97,6 +98,7 @@ app.use('/api/settings', settingRoutes);
 app.use('/api/moi-seer', moiSeerRoutes);
 app.use('/api/daily-collections', dailyCollectionRoutes);
 app.use('/api/chit-funds', chitFundRoutes);
+app.use('/api/irupu', irupuRoutes);
 
 // Static frontend build serving if available
 const path = require('path');
