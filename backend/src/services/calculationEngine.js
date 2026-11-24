@@ -152,10 +152,10 @@ function calculateMonthlyInterest({
   // Use integer arithmetic: (principalPaise * (RatePercent * 10000) * (eligibleMonths * 10000)) / (100 * 10000 * 10000)
   const interestPaise = Math.round((principalPaise * monthlyRatePercent * eligibleMonths) / 100);
   // Owner Business Rule: Interest is deducted upfront from principal amount.
-  // Customer receives remaining amount (Net Amount Given = P - Interest).
-  // Total payable amount = P - Interest (upfront deducted interest is never collected again).
+  // Customer receives net cash (Net Cash Given = P - Interest).
+  // Customer repays the full original principal (Total Repayable Cash = Full Principal P, e.g. 5L).
   const netAmountGivenPaise = Math.max(0, principalPaise - interestPaise);
-  const totalPayablePaise = netAmountGivenPaise;
+  const totalPayablePaise = principalPaise;
 
   return {
     principalPaise,
@@ -175,7 +175,7 @@ function calculateMonthlyInterest({
       startDate: start.toISODate(),
       asOfDate: target.toISODate(),
       lastFullMonthBoundary: current.toISODate(),
-      formula: 'Interest = P × Monthly Rate × Eligible Months / 100; Net Amount Given = P - Interest; Payable Amount = P - Interest',
+      formula: 'Interest = P × Monthly Rate × Eligible Months / 100; Net Amount Given = P - Interest; Total Repayable Cash = Principal (P)',
     },
   };
 }

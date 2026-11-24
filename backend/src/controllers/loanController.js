@@ -167,9 +167,8 @@ const createLoan = async (req, res, next) => {
     const upfrontInterestPaise = isUpfrontDeduction ? (initialCalc.upfrontInterestPaise || initialCalc.interestPaise || 0) : 0;
     const netDisbursedPaise = isUpfrontDeduction ? Math.max(0, principalPaise - upfrontInterestPaise) : principalPaise;
 
-    // For Monthly: customer repays remaining balance P - I
-    // For Daily: customer repays full original principal P
-    const initialOutstandingPrincipalPaise = isMonthly ? netDisbursedPaise : principalPaise;
+    // For both Monthly and Daily: customer repays the full original principal P (e.g. 5L)
+    const initialOutstandingPrincipalPaise = principalPaise;
     const dailyDurationDays = isDaily ? (initialCalc.eligibleDays || initialCalc.durationDays || 10) : undefined;
     const dailyInstalmentPaise = isDaily ? (initialCalc.dailyInstalmentPaise || Math.floor(principalPaise / (dailyDurationDays || 1))) : undefined;
 
@@ -234,14 +233,14 @@ const createLoan = async (req, res, next) => {
         principalDebitPaise: initialOutstandingPrincipalPaise,
         principalCreditPaise: 0,
         interestDebitPaise: 0,
-        interestCreditPaise: isDaily ? upfrontInterestPaise : 0,
+        interestCreditPaise: isUpfrontDeduction ? upfrontInterestPaise : 0,
         balancePrincipalPaise: initialOutstandingPrincipalPaise,
         balanceInterestPaise: 0,
         balanceTotalPaise: initialOutstandingPrincipalPaise,
         remarks: isDaily
-          ? `Disbursed Daily loan ${loan.loanId} to ${customer.name} (Loan Principal: ₹${toRupees(principalPaise)}, Cash Disbursed: ₹${toRupees(netDisbursedPaise)}, Upfront Interest Received: ₹${toRupees(upfrontInterestPaise)}, Daily Repayment Target: ₹${toRupees(principalPaise)}, Daily Instalment: ₹${toRupees(dailyInstalmentPaise)}/day for ${dailyDurationDays} days)`
+          ? `Disbursed Daily loan ${loan.loanId} to ${customer.name} (Gross Principal: ₹${toRupees(principalPaise)}, Upfront Interest Received: ₹${toRupees(upfrontInterestPaise)}, Net Cash Given: ₹${toRupees(netDisbursedPaise)}, Daily Repayment Target: ₹${toRupees(principalPaise)}, Daily Instalment: ₹${toRupees(dailyInstalmentPaise)}/day for ${dailyDurationDays} days)`
           : isMonthly
-          ? `Disbursed Monthly loan ${loan.loanId} to ${customer.name} (Gross: ₹${toRupees(principalPaise)}, Upfront Interest Deducted: ₹${toRupees(upfrontInterestPaise)}, Net Given: ₹${toRupees(netDisbursedPaise)}, Payable: ₹${toRupees(netDisbursedPaise)})`
+          ? `Disbursed Monthly loan ${loan.loanId} to ${customer.name} (Gross Principal: ₹${toRupees(principalPaise)}, Upfront Interest Deducted: ₹${toRupees(upfrontInterestPaise)}, Net Cash Given: ₹${toRupees(netDisbursedPaise)}, Total Repayable Cash: ₹${toRupees(principalPaise)})`
           : `Disbursed ${vattiType} loan ${loan.loanId} to ${customer.name}`,
         referenceId: loan.loanId,
         performedBy: req.user.username,

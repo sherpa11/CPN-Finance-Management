@@ -695,11 +695,11 @@ export default function NewVatti({ preselectedCustomer, onNavigate }) {
                       </div>
 
                       <div className="flex justify-between py-2 border-t-2 border-slate-300 font-sans text-slate-950 font-bold">
-                        <span>Total Payable:</span>
+                        <span>Total Repayable Cash:</span>
                         <span className="text-base text-blue-700">{formatINR(preview.expectedTotalPayableRupees)}</span>
                       </div>
                       <div className="text-[11px] font-sans text-slate-500 bg-slate-50 p-2 rounded border border-slate-200">
-                        ℹ️ Interest is deducted upfront at disbursement. The customer repays the net payable amount of {formatINR(preview.expectedTotalPayableRupees)}.
+                        ℹ️ Interest is deducted upfront at disbursement. The customer repays the full original principal of {formatINR(preview.expectedTotalPayableRupees)}.
                       </div>
                     </>
                   ) : (
@@ -804,8 +804,8 @@ export default function NewVatti({ preselectedCustomer, onNavigate }) {
                   </div>
 
                   <div className="flex justify-between font-sans font-bold text-blue-800 bg-blue-50 px-2 py-0.5 rounded">
-                    <span>Total Payable by Customer:</span>
-                    <span>{formatINR(preview?.expectedTotalPayableRupees ?? (Number(principalAmount) - (preview?.expectedInterestRupees || 0)))}</span>
+                    <span>Total Repayable Cash by Customer:</span>
+                    <span>{formatINR(preview?.expectedTotalPayableRupees ?? Number(principalAmount))}</span>
                   </div>
                 </>
               )}

@@ -216,10 +216,10 @@ async function runAuditTests() {
     // 2.5 Verify complete isolation:
     // Check that Moi contribution did NOT alter loan outstanding balance
     const loanCheck1 = await apiRequest(`/loans/${loan._id}`);
-    if (loanCheck1.data.loan.principalPaise === 5000000 && loanCheck1.data.loan.outstandingPrincipalPaise === 4900000) {
-      logPass('Loan principal strictly unaffected by Moi/Seer records (Gross: ₹50,000, Net Payable: ₹49,000)');
+    if (loanCheck1.data.loan.principalPaise === 5000000 && loanCheck1.data.loan.outstandingPrincipalPaise === 5000000) {
+      logPass('Loan principal strictly unaffected by Moi/Seer records (Gross: ₹50,000, Outstanding: ₹50,000)');
     } else {
-      logFail('Cross-module leakage detected: loan principal altered by Moi/Seer!');
+      logFail(`Cross-module leakage detected: loan principal altered by Moi/Seer! (Got: ${loanCheck1.data.loan.outstandingPrincipalPaise})`);
     }
 
     // Check that Daily Collection account has independent balance
@@ -333,10 +333,10 @@ async function runAuditTests() {
       logFail('Payment reversal failed');
     }
 
-    // Verify loan principal restored back to 49000 (net payable after upfront interest)
+    // Verify loan principal restored back to 50000 (full principal)
     const loanCheck2 = await apiRequest(`/loans/${loan._id}`);
-    if (loanCheck2.data.loan.outstandingPrincipalPaise === 4900000) {
-      logPass('Loan outstanding principal accurately restored to net payable ₹49,000 upon reversal');
+    if (loanCheck2.data.loan.outstandingPrincipalPaise === 5000000) {
+      logPass('Loan outstanding principal accurately restored to full principal ₹50,000 upon reversal');
     } else {
       logFail(`Restored principal mismatch: ${loanCheck2.data.loan.outstandingPrincipalPaise}`);
     }

@@ -166,9 +166,11 @@ export default function MonthlyFinance({ onNavigate, preselectedCustomer }) {
   const ratePct = parseFloat(interestRatePercent) || 0;
   // Monthly finance interest calculated on full principal amount: (P * Rate * 1) / 100
   const calculatedMonthlyInterest = pAmount > 0 && ratePct >= 0 ? Math.round((pAmount * ratePct) / 100) : 0;
-  // Net cash handed to borrower and net payable balance after upfront interest deduction:
+  // Upfront interest deduction:
+  // Net cash handed to borrower = P - Upfront Interest
+  // Total repayable cash by customer = Full Original Principal P (e.g. 5L)
   const netCashGiven = Math.max(0, pAmount - calculatedMonthlyInterest);
-  const totalPayable = netCashGiven;
+  const totalRepayableCash = pAmount;
 
   // Open Confirmation Modal
   const handleInitiateDisbursement = (e) => {
@@ -742,13 +744,13 @@ export default function MonthlyFinance({ onNavigate, preselectedCustomer }) {
                   <span className="text-slate-400 font-sans">Calculated Upfront Interest (I):</span>
                   <span className="font-bold text-rose-400">- {formatINR(calculatedMonthlyInterest)}</span>
                 </div>
-                <div className="flex justify-between py-2 border-b border-slate-700 bg-slate-800/40 px-2 rounded">
+                <div className="flex justify-between py-2 border-b border-slate-700 bg-emerald-950/40 px-2 rounded">
                   <span className="text-emerald-400 font-sans font-bold">Net Cash Given (P - I):</span>
                   <span className="font-black text-emerald-400 text-sm">{formatINR(netCashGiven)}</span>
                 </div>
                 <div className="flex justify-between py-2 border-b border-slate-700 bg-blue-950/40 px-2 rounded">
-                  <span className="text-blue-300 font-sans font-bold">Total Customer Payable:</span>
-                  <span className="font-black text-blue-300 text-sm">{formatINR(totalPayable)}</span>
+                  <span className="text-blue-300 font-sans font-bold">Total Customer Repayable Cash:</span>
+                  <span className="font-black text-blue-300 text-sm">{formatINR(totalRepayableCash)}</span>
                 </div>
               </div>
 
@@ -756,20 +758,25 @@ export default function MonthlyFinance({ onNavigate, preselectedCustomer }) {
               <div className="mt-5 p-3 rounded-lg bg-blue-900/30 border border-blue-700/40 text-[11px] text-blue-200 space-y-1.5 font-sans">
                 <p className="font-bold flex items-center space-x-1.5 text-blue-300">
                   <CheckCircle className="w-3.5 h-3.5 shrink-0" />
-                  <span>Important Business Rule:</span>
+                  <span>Monthly Finance Business Rules:</span>
                 </p>
                 <p className="text-slate-300">
-                  Monthly interest is calculated on full principal originally given:
+                  • Monthly Interest Deducted Upfront:
                   <br />
                   <span className="font-mono text-amber-300">I = (Principal × Rate) / 100</span>
                 </p>
                 <p className="text-slate-300">
-                  The payable amount is the remaining balance after upfront interest deduction:
+                  • Net Cash Given to Customer:
                   <br />
-                  <span className="font-mono text-emerald-300">Payable = Principal - Interest</span>
+                  <span className="font-mono text-emerald-300">Net Cash = Principal - Upfront Interest</span>
+                </p>
+                <p className="text-slate-300 font-semibold">
+                  • Total Repayable Cash by Customer:
+                  <br />
+                  <span className="font-mono text-blue-300 font-bold">Total Repayable = Full Original Principal ({formatINR(pAmount)})</span>
                 </p>
                 <p className="text-slate-400 text-[10px]">
-                  Interest is deducted upfront at disbursement and never charged again.
+                  Interest is deducted upfront at disbursement. The customer receives net cash and repays the full original principal.
                 </p>
               </div>
             </div>
@@ -824,9 +831,9 @@ export default function MonthlyFinance({ onNavigate, preselectedCustomer }) {
                   <span className="font-bold text-emerald-800">Net Cash Handed Over:</span>
                   <span className="font-mono font-black text-emerald-700 text-sm">{formatINR(netCashGiven)}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="font-bold text-blue-800">Total Customer Payable:</span>
-                  <span className="font-mono font-black text-blue-700 text-sm">{formatINR(totalPayable)}</span>
+                <div className="flex justify-between bg-blue-50 px-2 py-1 rounded">
+                  <span className="font-bold text-blue-900">Total Customer Repayable Cash:</span>
+                  <span className="font-mono font-black text-blue-700 text-sm">{formatINR(totalRepayableCash)}</span>
                 </div>
                 <div className="flex justify-between text-[11px] pt-1">
                   <span className="text-slate-500">Repayment Due Date:</span>
