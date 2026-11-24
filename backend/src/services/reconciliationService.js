@@ -10,11 +10,19 @@ const {
 const CONSTANTS = require('../config/constants');
 const { toRupees } = require('./calculationEngine');
 
+let lastSyncTimestamp = 0;
+
 /**
  * Safe, Idempotent Historical Upfront-Interest Collection Reconciliation
  * Supports --dry-run to preview changes without modifying database.
  */
 async function syncHistoricalUpfrontCollections({ dryRun = false } = {}) {
+  // Throttle pre-flight existence checks to at most once per 3 seconds if not dry-run
+  if (!dryRun && Date.now() - lastSyncTimestamp < 3000) {
+    return { dryRun, skipped: true };
+  }
+  lastSyncTimestamp = Date.now();
+
   const report = {
     dryRun,
     loansScanned: 0,
@@ -26,6 +34,30 @@ async function syncHistoricalUpfrontCollections({ dryRun = false } = {}) {
   };
 
   try {
+    // Quick pre-flight check: Are there ANY loans or DC accounts that might be missing an upfront collection?
+    if (!dryRun) {
+      const hasUnsyncedLoan = await Loan.exists({
+        upfrontInterestPaise: { $gt: 0 },
+        status: { $nin: ['CANCELLED', 'REVERSED'] },
+        $or: [
+          { upfrontCollectionId: { $exists: false } },
+          { upfrontCollectionId: null },
+        ],
+      });
+      const hasUnsyncedDc = await DailyCollectionAccount.exists({
+        scheme: 'UPFRONT_DEDUCTION',
+        upfrontInterestPaise: { $gt: 0 },
+        status: { $nin: ['CANCELLED', 'REVERSED'] },
+        $or: [
+          { upfrontReceiptNumber: { $exists: false } },
+          { upfrontReceiptNumber: null },
+        ],
+      });
+
+      if (!hasUnsyncedLoan && !hasUnsyncedDc) {
+        return report;
+      }
+    }
     // 1. Process Monthly and Daily Loans with Upfront Interest
     const loans = await Loan.find({
       upfrontInterestPaise: { $gt: 0 },
@@ -93,15 +125,20 @@ async function syncHistoricalUpfrontCollections({ dryRun = false } = {}) {
           upfrontReceiptNumber: upfrontReceiptNum,
         });
 
-        // Ensure ledger transaction exists
-        const existingTxn = await Transaction.findOne({
-          $or: [
-            { collectionId: newCol._id },
-            { referenceId: upfrontReceiptNum },
-          ],
+        // Ensure ledger transaction exists without duplicate interest credit
+        const existingInterestTxn = await Transaction.findOne({
+          loanId: loan._id,
+          interestCreditPaise: { $gt: 0 },
         });
 
-        if (!existingTxn) {
+        if (existingInterestTxn) {
+          if (!existingInterestTxn.collectionId || !existingInterestTxn.referenceId) {
+            await Transaction.findByIdAndUpdate(existingInterestTxn._id, {
+              collectionId: newCol._id,
+              referenceId: upfrontReceiptNum,
+            });
+          }
+        } else {
           const colTxn = new Transaction({
             transactionId: txnId,
             customerId: loan.customerId,
@@ -219,14 +256,19 @@ async function syncHistoricalUpfrontCollections({ dryRun = false } = {}) {
             upfrontReceiptNumber: upfrontReceiptNum,
           });
 
-          const existingTxn = await Transaction.findOne({
-            $or: [
-              { collectionId: newCol._id },
-              { referenceId: upfrontReceiptNum },
-            ],
+          const existingInterestTxn = await Transaction.findOne({
+            loanId: dc.loanId,
+            interestCreditPaise: { $gt: 0 },
           });
 
-          if (!existingTxn) {
+          if (existingInterestTxn) {
+            if (!existingInterestTxn.collectionId || !existingInterestTxn.referenceId) {
+              await Transaction.findByIdAndUpdate(existingInterestTxn._id, {
+                collectionId: newCol._id,
+                referenceId: upfrontReceiptNum,
+              });
+            }
+          } else {
             const colTxn = new Transaction({
               transactionId: txnId,
               customerId: dc.customerId,

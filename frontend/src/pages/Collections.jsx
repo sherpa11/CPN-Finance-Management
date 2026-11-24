@@ -21,6 +21,7 @@ export default function Collections({ initialLoan }) {
   const [collections, setCollections] = useState([]);
   const [total, setTotal] = useState(0);
   const [search, setSearch] = useState('');
+  const [filterType, setFilterType] = useState('ALL');
   const [loading, setLoading] = useState(true);
 
   // New Collection Form State
@@ -309,10 +310,53 @@ export default function Collections({ initialLoan }) {
 
       {/* Collection Records Table */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="p-4 border-b border-slate-200 flex items-center justify-between">
+        <div className="p-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-            Collections History ({total} Records)
+            Collections History ({collections.filter((col) => {
+              if (filterType === 'UPFRONT') return col.isUpfrontInterest || col.collectionType === 'UPFRONT_INTEREST';
+              if (filterType === 'MONTHLY') return col.vattiType === 'MONTHLY';
+              if (filterType === 'DAILY') return col.vattiType === 'DAILY';
+              if (filterType === 'DAILY_COLLECTION') return col.vattiType === 'DAILY_COLLECTION';
+              return true;
+            }).length} Records)
           </h3>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <button
+              type="button"
+              onClick={() => setFilterType('ALL')}
+              className={`px-2.5 py-1 rounded text-xs font-semibold transition-colors cursor-pointer ${filterType === 'ALL' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+            >
+              All
+            </button>
+            <button
+              type="button"
+              onClick={() => setFilterType('UPFRONT')}
+              className={`px-2.5 py-1 rounded text-xs font-semibold transition-colors cursor-pointer ${filterType === 'UPFRONT' ? 'bg-purple-600 text-white shadow-sm' : 'bg-purple-50 text-purple-700 hover:bg-purple-100'}`}
+            >
+              Upfront Interest
+            </button>
+            <button
+              type="button"
+              onClick={() => setFilterType('MONTHLY')}
+              className={`px-2.5 py-1 rounded text-xs font-semibold transition-colors cursor-pointer ${filterType === 'MONTHLY' ? 'bg-blue-600 text-white shadow-sm' : 'bg-blue-50 text-blue-700 hover:bg-blue-100'}`}
+            >
+              Monthly
+            </button>
+            <button
+              type="button"
+              onClick={() => setFilterType('DAILY')}
+              className={`px-2.5 py-1 rounded text-xs font-semibold transition-colors cursor-pointer ${filterType === 'DAILY' ? 'bg-amber-600 text-white shadow-sm' : 'bg-amber-50 text-amber-700 hover:bg-amber-100'}`}
+            >
+              Daily Finance
+            </button>
+            <button
+              type="button"
+              onClick={() => setFilterType('DAILY_COLLECTION')}
+              className={`px-2.5 py-1 rounded text-xs font-semibold transition-colors cursor-pointer ${filterType === 'DAILY_COLLECTION' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'}`}
+            >
+              Daily Collection
+            </button>
+          </div>
         </div>
 
         {loading ? (
@@ -344,18 +388,32 @@ export default function Collections({ initialLoan }) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {collections.map((col) => {
+                {collections
+                  .filter((col) => {
+                    if (filterType === 'UPFRONT') return col.isUpfrontInterest || col.collectionType === 'UPFRONT_INTEREST';
+                    if (filterType === 'MONTHLY') return col.vattiType === 'MONTHLY';
+                    if (filterType === 'DAILY') return col.vattiType === 'DAILY';
+                    if (filterType === 'DAILY_COLLECTION') return col.vattiType === 'DAILY_COLLECTION';
+                    return true;
+                  })
+                  .map((col) => {
                   const statusBadge = getStatusBadge(col.status);
                   return (
                     <tr key={col._id} className="hover:bg-slate-50 transition-colors">
                       <td className="py-3 px-4 font-mono font-bold text-slate-900">
-                        <div className="flex items-center space-x-1.5 flex-wrap gap-y-1">
-                          <span>{col.receiptNumber}</span>
-                          {col.isUpfrontInterest && (
-                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-purple-100 text-purple-700 border border-purple-200">
-                              Upfront
-                            </span>
-                          )}
+                        <div className="flex flex-col gap-0.5">
+                          <span className="font-mono text-xs">{col.receiptNumber}</span>
+                          <div>
+                            {col.isUpfrontInterest || col.collectionType === 'UPFRONT_INTEREST' ? (
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-purple-100 text-purple-700 border border-purple-200">
+                                Upfront Interest
+                              </span>
+                            ) : (
+                              <span className="text-[10px] text-slate-400 font-sans font-normal">
+                                Regular Repayment
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </td>
                       <td className="py-3 px-3 text-slate-600">{formatDate(col.paymentDate)}</td>

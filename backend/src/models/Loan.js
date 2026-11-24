@@ -219,9 +219,11 @@ const loanSchema = new mongoose.Schema(
     upfrontCollectionId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Collection',
+      index: true,
     },
     upfrontReceiptNumber: {
       type: String,
+      index: true,
     },
   },
   {

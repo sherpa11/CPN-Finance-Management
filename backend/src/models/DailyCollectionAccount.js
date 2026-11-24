@@ -225,6 +225,7 @@ const dailyCollectionAccountSchema = new mongoose.Schema(
     },
     upfrontReceiptNumber: {
       type: String,
+      index: true,
     },
     schedule: [scheduleItemSchema],
   },

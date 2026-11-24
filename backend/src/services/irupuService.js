@@ -13,6 +13,7 @@ const {
   generateReceiptNumber,
 } = require('../controllers/collectionController');
 const CONSTANTS = require('../config/constants');
+const { syncHistoricalUpfrontCollections } = require('./reconciliationService');
 
 const TIMEZONE = 'Asia/Kolkata';
 
@@ -103,130 +104,6 @@ function getLoanCashDisbursedPaise(loan) {
 }
 
 /**
- * Safely and idempotently backfill upfront collections for existing loans with upfront interest
- */
-async function syncHistoricalUpfrontCollections() {
-  try {
-    const loans = await Loan.find({
-      upfrontInterestPaise: { $gt: 0 },
-      status: { $nin: ['CANCELLED', 'REVERSED'] },
-    }).lean();
-
-    for (const loan of loans) {
-      const existing = await Collection.findOne({
-        $or: [
-          { idempotencyKey: `UPFRONT-${loan.loanId}` },
-          { loanId: loan._id, isUpfrontInterest: true },
-        ],
-      });
-
-      if (!existing) {
-        const upfrontColId = await generateCollectionId();
-        const upfrontReceiptNum = await generateReceiptNumber();
-
-        const newCol = new Collection({
-          collectionId: upfrontColId,
-          receiptNumber: upfrontReceiptNum,
-          loanId: loan._id,
-          loanCode: loan.loanId,
-          customerId: loan.customerId,
-          customerName: loan.customerName,
-          paymentDate: loan.startDate || loan.createdAt || new Date(),
-          paymentMethod: loan.disbursementPaymentMethod || 'CASH',
-          totalAmountPaise: loan.upfrontInterestPaise,
-          principalAllocationPaise: 0,
-          interestAllocationPaise: loan.upfrontInterestPaise,
-          penaltyAllocationPaise: 0,
-          isUpfrontInterest: true,
-          collectionType: 'UPFRONT_INTEREST',
-          vattiType: loan.vattiType || 'MONTHLY',
-          previousOutstandingPrincipalPaise: loan.grossPrincipalPaise || loan.principalPaise,
-          previousOutstandingInterestPaise: loan.upfrontInterestPaise,
-          remainingPrincipalPaise: loan.grossPrincipalPaise || loan.principalPaise,
-          remainingInterestPaise: 0,
-          status: CONSTANTS.COLLECTION_STATUS.CONFIRMED,
-          collectedBy: 'admin',
-          remarks: 'Upfront interest deducted during disbursement',
-          idempotencyKey: `UPFRONT-${loan.loanId}`,
-        });
-
-        await newCol.save();
-        await Loan.findByIdAndUpdate(loan._id, {
-          upfrontCollectionId: newCol._id,
-          upfrontReceiptNumber: upfrontReceiptNum,
-        });
-      } else if (!loan.upfrontCollectionId || !loan.upfrontReceiptNumber) {
-        await Loan.findByIdAndUpdate(loan._id, {
-          upfrontCollectionId: existing._id,
-          upfrontReceiptNumber: existing.receiptNumber,
-        });
-      }
-    }
-
-    const dcAccounts = await DailyCollectionAccount.find({
-      scheme: 'UPFRONT_DEDUCTION',
-      upfrontInterestPaise: { $gt: 0 },
-      status: { $nin: ['CANCELLED', 'REVERSED'] },
-    }).lean();
-
-    for (const dc of dcAccounts) {
-      const targetLoanCode = dc.accountId || dc.loanCode || `CPN-DC-${dc._id.toString().slice(-4)}`;
-      const existing = await Collection.findOne({
-        $or: [
-          { idempotencyKey: `UPFRONT-${dc.accountId}` },
-          { loanCode: targetLoanCode, isUpfrontInterest: true },
-          ...(dc.loanId ? [{ loanId: dc.loanId, isUpfrontInterest: true }] : []),
-        ],
-      });
-
-      if (!existing) {
-        const upfrontColId = await generateCollectionId();
-        const upfrontReceiptNum = await generateReceiptNumber();
-
-        const newCol = new Collection({
-          collectionId: upfrontColId,
-          receiptNumber: upfrontReceiptNum,
-          loanId: dc.loanId || null,
-          loanCode: targetLoanCode,
-          customerId: dc.customerId,
-          customerName: dc.customerName,
-          paymentDate: dc.startDate || dc.createdAt || new Date(),
-          paymentMethod: 'CASH',
-          totalAmountPaise: dc.upfrontInterestPaise,
-          principalAllocationPaise: 0,
-          interestAllocationPaise: dc.upfrontInterestPaise,
-          penaltyAllocationPaise: 0,
-          isUpfrontInterest: true,
-          collectionType: 'UPFRONT_INTEREST',
-          vattiType: 'DAILY_COLLECTION',
-          previousOutstandingPrincipalPaise: dc.grossPrincipalPaise || 0,
-          previousOutstandingInterestPaise: dc.upfrontInterestPaise || 0,
-          remainingPrincipalPaise: dc.grossPrincipalPaise || 0,
-          remainingInterestPaise: 0,
-          status: CONSTANTS.COLLECTION_STATUS.CONFIRMED,
-          collectedBy: 'admin',
-          remarks: 'Upfront interest deducted during disbursement',
-          idempotencyKey: `UPFRONT-${dc.accountId}`,
-        });
-
-        await newCol.save();
-        await DailyCollectionAccount.findByIdAndUpdate(dc._id, {
-          upfrontReceiptNumber: upfrontReceiptNum,
-        });
-        if (dc.loanId) {
-          await Loan.findByIdAndUpdate(dc.loanId, {
-            upfrontCollectionId: newCol._id,
-            upfrontReceiptNumber: upfrontReceiptNum,
-          });
-        }
-      }
-    }
-  } catch (err) {
-    console.error('[syncHistoricalUpfrontCollections Error]', err.message);
-  }
-}
-
-/**
  * Helper to accurately resolve collection vattiType across models and legacy codes
  */
 function resolveVattiType(col, loanTypeMap, dcAccountSet) {
@@ -283,6 +160,7 @@ function resolveVattiType(col, loanTypeMap, dcAccountSet) {
  * Main Irupu Cash In Hand Financial Calculation & Reconciliation Engine
  */
 async function getIrupuSummary({ startDate, endDate, period = 'all' } = {}) {
+  await syncHistoricalUpfrontCollections();
   const currentOpb = await getCurrentOpeningBalance();
 
   // Determine date bounds in Asia/Kolkata timezone

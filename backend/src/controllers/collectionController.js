@@ -496,6 +496,9 @@ const deleteCollection = async (req, res, next) => {
  */
 const listCollections = async (req, res, next) => {
   try {
+    const { syncHistoricalUpfrontCollections } = require('../services/reconciliationService');
+    await syncHistoricalUpfrontCollections();
+
     const { customerId, loanId, paymentMethod, status, startDate, endDate, page = 1, limit = 50 } = req.query;
     const query = {};
 
@@ -570,8 +573,10 @@ const getReceipt = async (req, res, next) => {
         customerAddress: collection.customerId?.address,
         customerId: collection.customerId?.customerId,
         loanCode: collection.loanCode,
-        financeType: collection.loanId?.vattiType,
-        vattiType: collection.loanId?.vattiType,
+        financeType: collection.loanId?.vattiType || collection.vattiType || 'MONTHLY',
+        vattiType: collection.loanId?.vattiType || collection.vattiType || 'MONTHLY',
+        isUpfrontInterest: !!collection.isUpfrontInterest,
+        collectionType: collection.collectionType || (collection.isUpfrontInterest ? 'UPFRONT_INTEREST' : 'REGULAR'),
         totalAmountRupees: toRupees(collection.totalAmountPaise),
         principalAllocationRupees: toRupees(collection.principalAllocationPaise),
         interestAllocationRupees: toRupees(collection.interestAllocationPaise),
