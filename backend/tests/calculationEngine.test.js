@@ -122,24 +122,33 @@ describe('CPN RAJA – Centralized Financial Calculation Engine', () => {
     });
   });
 
-  describe('Daily Finance Financial Calculations', () => {
-    test('calculates daily interest accurately using Asia/Kolkata timezone', () => {
-      const principalPaise = toPaise(20000); // ₹20,000
-      const dailyRate = 0.1; // 0.1% per day = ₹20/day
+  describe('Daily Finance Financial Calculations (Upfront Interest Deduction)', () => {
+    test('calculates upfront interest deduction accurately (e.g. ₹1,00,000 at 2% for 10 days)', () => {
+      const principalPaise = toPaise(100000); // ₹1,00,000
+      const rate = 2.0; // 2% upfront
 
       const res = calculateDailyInterest({
         principalPaise,
-        dailyRatePercent: dailyRate,
+        dailyRatePercent: rate,
         startDate: '2026-05-01',
         asOfDate: '2026-05-11', // 10 days
         config: { dateInclusionConvention: CONSTANTS.DAILY_INCLUSION_CONVENTIONS.INCLUDE_START_EXCLUDE_END },
       });
 
       expect(res.eligibleDays).toBe(10);
-      // 20,000 * 0.1% * 10 = ₹200 = 20,000 paise
-      expect(res.interestPaise).toBe(20000);
-      expect(toRupees(res.interestPaise)).toBe(200);
-      expect(toRupees(res.totalPayablePaise)).toBe(20200);
+      // Upfront interest: 100,000 * 2% = ₹2,000 = 200,000 paise
+      expect(res.upfrontInterestPaise).toBe(200000);
+      expect(toRupees(res.upfrontInterestPaise)).toBe(2000);
+      // Net cash given: 100,000 - 2,000 = ₹98,000 = 9,800,000 paise
+      expect(res.netDisbursementPaise).toBe(9800000);
+      expect(toRupees(res.netDisbursementPaise)).toBe(98000);
+      // Total daily repayment: Full principal ₹1,00,000 = 10,000,000 paise
+      expect(res.totalPayablePaise).toBe(10000000);
+      expect(toRupees(res.totalPayablePaise)).toBe(100000);
+      // Daily instalment: 100,000 / 10 = ₹10,000/day = 1,000,000 paise
+      expect(res.dailyInstalmentPaise).toBe(1000000);
+      expect(toRupees(res.dailyInstalmentPaise)).toBe(10000);
+      expect(res.isUpfrontDeduction).toBe(true);
     });
 
     test('supports configurable date inclusion conventions', () => {

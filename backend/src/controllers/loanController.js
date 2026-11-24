@@ -86,11 +86,14 @@ const previewLoan = async (req, res, next) => {
         dueDate: getKolkataDate(dueDate).toISODate(),
         expectedInterestRupees: toRupees(calculation.interestPaise),
         expectedInterestPaise: calculation.interestPaise,
-        netAmountGivenRupees: toRupees(calculation.netAmountGivenPaise || (calculation.principalPaise - calculation.interestPaise)),
-        netAmountGivenPaise: calculation.netAmountGivenPaise || (calculation.principalPaise - calculation.interestPaise),
+        netAmountGivenRupees: toRupees(calculation.netDisbursementPaise || calculation.netAmountGivenPaise || (calculation.principalPaise - calculation.interestPaise)),
+        netAmountGivenPaise: calculation.netDisbursementPaise || calculation.netAmountGivenPaise || (calculation.principalPaise - calculation.interestPaise),
         expectedTotalPayableRupees: toRupees(calculation.totalPayablePaise),
         expectedTotalPayablePaise: calculation.totalPayablePaise,
-        isUpfrontDeduction: vattiType === 'MONTHLY' || !!calculation.isUpfrontDeduction,
+        dailyInstalmentRupees: calculation.dailyInstalmentPaise ? toRupees(calculation.dailyInstalmentPaise) : undefined,
+        dailyInstalmentPaise: calculation.dailyInstalmentPaise || undefined,
+        durationDays: calculation.eligibleDays || calculation.durationDays || undefined,
+        isUpfrontDeduction: vattiType === 'MONTHLY' || vattiType === 'DAILY' || !!calculation.isUpfrontDeduction,
         eligibleUnits: calculation.eligibleMonths || calculation.eligibleDays || 0,
         unitLabel: vattiType === 'MONTHLY' ? 'Months' : vattiType === 'DAILY' ? 'Days' : 'Units',
         isPendingOwnerConfirmation: !!calculation.isPendingOwnerConfirmation,
@@ -159,8 +162,16 @@ const createLoan = async (req, res, next) => {
     const txnId = await generateTransactionId();
 
     const isMonthly = vattiType === CONSTANTS.VATTI_TYPES.MONTHLY;
-    const upfrontInterestPaise = isMonthly ? (initialCalc.interestPaise || 0) : 0;
-    const netPayablePaise = isMonthly ? Math.max(0, principalPaise - upfrontInterestPaise) : principalPaise;
+    const isDaily = vattiType === CONSTANTS.VATTI_TYPES.DAILY;
+    const isUpfrontDeduction = isMonthly || isDaily;
+    const upfrontInterestPaise = isUpfrontDeduction ? (initialCalc.upfrontInterestPaise || initialCalc.interestPaise || 0) : 0;
+    const netDisbursedPaise = isUpfrontDeduction ? Math.max(0, principalPaise - upfrontInterestPaise) : principalPaise;
+
+    // For Monthly: customer repays remaining balance P - I
+    // For Daily: customer repays full original principal P
+    const initialOutstandingPrincipalPaise = isMonthly ? netDisbursedPaise : principalPaise;
+    const dailyDurationDays = isDaily ? (initialCalc.eligibleDays || initialCalc.durationDays || 10) : undefined;
+    const dailyInstalmentPaise = isDaily ? (initialCalc.dailyInstalmentPaise || Math.floor(principalPaise / (dailyDurationDays || 1))) : undefined;
 
     const result = await runInTransaction(async (session) => {
       // 1. Create Loan Document
@@ -172,24 +183,38 @@ const createLoan = async (req, res, next) => {
         customerMobile: customer.mobileNumber,
         vattiType,
         principalPaise,
+        grossPrincipalPaise: principalPaise,
         interestRatePercent: rate,
         startDate: new Date(startDate),
         dueDate: new Date(dueDate),
         status: CONSTANTS.LOAN_STATUS.ACTIVE,
         calculationConfigSnapshot: configSnapshot,
-        outstandingPrincipalPaise: netPayablePaise,
-        accruedInterestPaise: isMonthly ? upfrontInterestPaise : (initialCalc.interestPaise || 0),
-        outstandingInterestPaise: isMonthly ? 0 : (initialCalc.interestPaise || 0),
+        outstandingPrincipalPaise: initialOutstandingPrincipalPaise,
+        accruedInterestPaise: isUpfrontDeduction ? upfrontInterestPaise : (initialCalc.interestPaise || 0),
+        outstandingInterestPaise: isUpfrontDeduction ? 0 : (initialCalc.interestPaise || 0),
         totalPrincipalPaidPaise: 0,
-        totalInterestPaidPaise: isMonthly ? upfrontInterestPaise : 0,
+        totalInterestPaidPaise: isUpfrontDeduction ? upfrontInterestPaise : 0,
+        upfrontInterestPaise: isUpfrontDeduction ? upfrontInterestPaise : 0,
+        netDisbursementPaise: isUpfrontDeduction ? netDisbursedPaise : principalPaise,
+        dailyInstalmentPaise: isDaily ? dailyInstalmentPaise : undefined,
+        totalDurationDays: isDaily ? dailyDurationDays : undefined,
         remarks: remarks || '',
         monthlyFinanceDetails: isMonthly ? {
           grossPrincipalPaise: principalPaise,
           upfrontInterestPaise,
-          netDisbursedPaise: netPayablePaise,
-          totalPayablePaise: netPayablePaise,
+          netDisbursedPaise,
+          totalPayablePaise: initialOutstandingPrincipalPaise,
           monthlyRatePercent: rate,
           eligibleMonths: initialCalc.eligibleMonths,
+        } : undefined,
+        dailyFinanceDetails: isDaily ? {
+          grossPrincipalPaise: principalPaise,
+          upfrontInterestPaise,
+          upfrontInterestPercent: rate,
+          netDisbursedPaise,
+          dailyInstalmentPaise,
+          totalDurationDays: dailyDurationDays,
+          dailyRepaymentTargetPaise: principalPaise,
         } : undefined,
         meaterConfig: vattiType === CONSTANTS.VATTI_TYPES.MEATER ? {
           status: 'PENDING_CONFIRMATION',
@@ -206,15 +231,17 @@ const createLoan = async (req, res, next) => {
         loanId: loan._id,
         date: new Date(startDate),
         type: CONSTANTS.TRANSACTION_TYPES.LOAN_DISBURSEMENT,
-        principalDebitPaise: netPayablePaise,
+        principalDebitPaise: initialOutstandingPrincipalPaise,
         principalCreditPaise: 0,
         interestDebitPaise: 0,
-        interestCreditPaise: 0,
-        balancePrincipalPaise: netPayablePaise,
+        interestCreditPaise: isDaily ? upfrontInterestPaise : 0,
+        balancePrincipalPaise: initialOutstandingPrincipalPaise,
         balanceInterestPaise: 0,
-        balanceTotalPaise: netPayablePaise,
-        remarks: isMonthly
-          ? `Disbursed Monthly loan ${loan.loanId} to ${customer.name} (Gross: ₹${toRupees(principalPaise)}, Upfront Interest Deducted: ₹${toRupees(upfrontInterestPaise)}, Net Given: ₹${toRupees(netPayablePaise)}, Payable: ₹${toRupees(netPayablePaise)})`
+        balanceTotalPaise: initialOutstandingPrincipalPaise,
+        remarks: isDaily
+          ? `Disbursed Daily loan ${loan.loanId} to ${customer.name} (Loan Principal: ₹${toRupees(principalPaise)}, Cash Disbursed: ₹${toRupees(netDisbursedPaise)}, Upfront Interest Received: ₹${toRupees(upfrontInterestPaise)}, Daily Repayment Target: ₹${toRupees(principalPaise)}, Daily Instalment: ₹${toRupees(dailyInstalmentPaise)}/day for ${dailyDurationDays} days)`
+          : isMonthly
+          ? `Disbursed Monthly loan ${loan.loanId} to ${customer.name} (Gross: ₹${toRupees(principalPaise)}, Upfront Interest Deducted: ₹${toRupees(upfrontInterestPaise)}, Net Given: ₹${toRupees(netDisbursedPaise)}, Payable: ₹${toRupees(netDisbursedPaise)})`
           : `Disbursed ${vattiType} loan ${loan.loanId} to ${customer.name}`,
         referenceId: loan.loanId,
         performedBy: req.user.username,
@@ -223,10 +250,10 @@ const createLoan = async (req, res, next) => {
       await txn.save(session ? { session } : undefined);
 
       // 3. Update Customer Financial Aggregates
-      customer.totalLentPaise = (customer.totalLentPaise || 0) + netPayablePaise;
-      customer.outstandingPrincipalPaise = (customer.outstandingPrincipalPaise || 0) + netPayablePaise;
-      customer.totalInterestPaidPaise = (customer.totalInterestPaidPaise || 0) + (isMonthly ? upfrontInterestPaise : 0);
-      customer.outstandingInterestPaise = (customer.outstandingInterestPaise || 0) + (isMonthly ? 0 : (initialCalc.interestPaise || 0));
+      customer.totalLentPaise = (customer.totalLentPaise || 0) + netDisbursedPaise;
+      customer.outstandingPrincipalPaise = (customer.outstandingPrincipalPaise || 0) + initialOutstandingPrincipalPaise;
+      customer.totalInterestPaidPaise = (customer.totalInterestPaidPaise || 0) + (isUpfrontDeduction ? upfrontInterestPaise : 0);
+      customer.outstandingInterestPaise = (customer.outstandingInterestPaise || 0) + (isUpfrontDeduction ? 0 : (initialCalc.interestPaise || 0));
       customer.activeLoanCount = (customer.activeLoanCount || 0) + 1;
       customer.totalLoanCount = (customer.totalLoanCount || 0) + 1;
 
@@ -342,13 +369,17 @@ const getLoanById = async (req, res, next) => {
       transactions,
       liveCalculation: {
         asOfDate: getKolkataDate().toISODate(),
-        liveAccruedInterestRupees: loan.vattiType === 'MONTHLY' ? 0 : toRupees(liveCalc.interestPaise),
-        liveAccruedInterestPaise: loan.vattiType === 'MONTHLY' ? 0 : liveCalc.interestPaise,
+        liveAccruedInterestRupees: (loan.vattiType === 'MONTHLY' || loan.vattiType === 'DAILY') ? 0 : toRupees(liveCalc.interestPaise),
+        liveAccruedInterestPaise: (loan.vattiType === 'MONTHLY' || loan.vattiType === 'DAILY') ? 0 : liveCalc.interestPaise,
         outstandingPrincipalRupees: toRupees(loan.outstandingPrincipalPaise),
         outstandingInterestRupees: toRupees(loan.outstandingInterestPaise),
         totalOutstandingRupees: toRupees(loan.outstandingPrincipalPaise + loan.outstandingInterestPaise),
         isPendingOwnerConfirmation: false,
-        message: loan.vattiType === 'MONTHLY' ? 'Monthly Finance: Interest was deducted upfront at loan disbursement.' : liveCalc.message,
+        message: loan.vattiType === 'MONTHLY'
+          ? 'Monthly Finance: Interest was deducted upfront at loan disbursement.'
+          : loan.vattiType === 'DAILY'
+          ? 'Daily Finance: Interest was deducted upfront at loan disbursement. Daily repayments reduce principal repayment balance.'
+          : liveCalc.message,
       },
     });
   } catch (error) {

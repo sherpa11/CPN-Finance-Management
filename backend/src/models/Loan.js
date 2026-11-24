@@ -145,6 +145,32 @@ const loanSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.Mixed,
       default: undefined,
     },
+    // For Daily Finance Upfront Interest Deduction snapshot
+    dailyFinanceDetails: {
+      type: mongoose.Schema.Types.Mixed,
+      default: undefined,
+    },
+    upfrontInterestPaise: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    netDisbursementPaise: {
+      type: Number,
+      default: undefined,
+    },
+    grossPrincipalPaise: {
+      type: Number,
+      default: undefined,
+    },
+    dailyInstalmentPaise: {
+      type: Number,
+      default: undefined,
+    },
+    totalDurationDays: {
+      type: Number,
+      default: undefined,
+    },
     // For MEATER Finance status and formula parameters
     meaterConfig: {
       status: {

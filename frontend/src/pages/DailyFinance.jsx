@@ -51,7 +51,8 @@ export default function DailyFinance({ onNavigate, preselectedCustomer }) {
   const [customers, setCustomers] = useState([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState(preselectedCustomer?._id || '');
   const [principalAmount, setPrincipalAmount] = useState('');
-  const [dailyRatePercent, setDailyRatePercent] = useState('0.1');
+  const [upfrontRatePercent, setUpfrontRatePercent] = useState('2.0');
+  const [durationDays, setDurationDays] = useState('10');
   const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
   const [dueDate, setDueDate] = useState('');
   const [remarks, setRemarks] = useState('');
@@ -69,8 +70,6 @@ export default function DailyFinance({ onNavigate, preselectedCustomer }) {
   const [isCollectionModalOpen, setIsCollectionModalOpen] = useState(false);
   const [collectionTargetLoan, setCollectionTargetLoan] = useState(null);
   const [collectionAmount, setCollectionAmount] = useState('');
-  const [principalAllocation, setPrincipalAllocation] = useState('');
-  const [interestAllocation, setInterestAllocation] = useState('');
   const [collectionMethod, setPaymentMethod] = useState('CASH');
   const [collectionDate, setCollectionDate] = useState(new Date().toISOString().split('T')[0]);
   const [collectionRemarks, setCollectionRemarks] = useState('');
@@ -78,16 +77,31 @@ export default function DailyFinance({ onNavigate, preselectedCustomer }) {
   const [collectionError, setCollectionError] = useState('');
   const [collectionSuccess, setCollectionSuccess] = useState('');
 
-  // Default due date when start date changes (+10 days)
+  // Synchronize Due Date when Start Date or Duration Days changes
   useEffect(() => {
-    if (startDate) {
+    if (startDate && durationDays) {
       const d = new Date(startDate);
-      if (!isNaN(d.getTime())) {
-        d.setDate(d.getDate() + 10);
+      const daysCount = parseInt(durationDays, 10);
+      if (!isNaN(d.getTime()) && !isNaN(daysCount) && daysCount > 0) {
+        d.setDate(d.getDate() + daysCount);
         setDueDate(d.toISOString().split('T')[0]);
       }
     }
-  }, [startDate]);
+  }, [startDate, durationDays]);
+
+  // Synchronize Duration Days when Due Date is manually changed
+  const handleDueDateChange = (e) => {
+    const newDueDate = e.target.value;
+    setDueDate(newDueDate);
+    if (startDate && newDueDate) {
+      const s = new Date(startDate);
+      const d = new Date(newDueDate);
+      const diffDays = Math.round((d - s) / (1000 * 60 * 60 * 24));
+      if (diffDays > 0) {
+        setDurationDays(String(diffDays));
+      }
+    }
+  };
 
   // Load Customers for Dropdown
   useEffect(() => {
@@ -129,17 +143,19 @@ export default function DailyFinance({ onNavigate, preselectedCustomer }) {
         let interestSum = 0;
 
         fetchedLoans.forEach((l) => {
-          const lent = (l.principalPaise || 0) / 100;
+          const gross = (l.grossPrincipalPaise || l.principalPaise || 0) / 100;
+          const upfrontInterest = (l.upfrontInterestPaise || (l.dailyFinanceDetails?.upfrontInterestPaise) || 0) / 100;
+          const netDisbursed = l.netDisbursementPaise !== undefined ? l.netDisbursementPaise / 100 : Math.max(0, gross - upfrontInterest);
           const returned = (l.totalPrincipalPaidPaise || 0) / 100;
           const outstanding = (l.outstandingPrincipalPaise || 0) / 100;
-          const interestPaid = (l.totalInterestPaidPaise || 0) / 100;
+          const interestCollected = (l.totalInterestPaidPaise || upfrontInterest) / 100;
 
-          lentSum += lent;
+          lentSum += netDisbursed;
           returnedSum += returned;
           outstandingSum += outstanding;
-          interestSum += interestPaid;
+          interestSum += interestCollected;
 
-          if (l.status === 'ACTIVE') {
+          if (l.status === 'ACTIVE' || l.status === 'OVERDUE') {
             activeCount += 1;
           }
         });
@@ -163,20 +179,34 @@ export default function DailyFinance({ onNavigate, preselectedCustomer }) {
     fetchDailyLoans();
   }, [statusFilter, search]);
 
-  // Live Calculation for Daily Finance
+  // Live Calculation for Daily Finance Upfront Interest Model
   const pAmount = parseFloat(principalAmount) || 0;
-  const ratePct = parseFloat(dailyRatePercent) || 0;
-  // Calculate days between start date and due date
-  let durationDays = 10;
-  if (startDate && dueDate) {
-    const s = new Date(startDate);
-    const e = new Date(dueDate);
-    const diff = Math.round((e - s) / (1000 * 60 * 60 * 24));
-    if (diff > 0) durationDays = diff;
-  }
-  // Simple interest daily: (P * Rate * Days) / 100
-  const expectedInterest = pAmount > 0 && ratePct >= 0 ? Math.round((pAmount * ratePct * durationDays) / 100) : 0;
-  const totalExpectedAmount = pAmount + expectedInterest;
+  const ratePct = parseFloat(upfrontRatePercent) || 0;
+  const numDays = parseInt(durationDays, 10) > 0 ? parseInt(durationDays, 10) : 1;
+
+  // 1. Upfront interest = Principal × Rate% / 100
+  const upfrontInterestDeducted = pAmount > 0 && ratePct >= 0 ? Math.round((pAmount * ratePct) / 100) : 0;
+
+  // 2. Net cash disbursed = Principal - Upfront Interest
+  const netCashGiven = Math.max(0, pAmount - upfrontInterestDeducted);
+
+  // 3. Total daily repayment = Full Principal
+  const totalDailyRepayment = pAmount;
+
+  // 4. Daily instalment = Principal ÷ Duration in days
+  const dailyCollectionAmount = pAmount > 0 && numDays > 0 ? Math.floor(pAmount / numDays) : 0;
+
+  // 5. Total interest collected = Upfront interest
+  const totalInterestCollected = upfrontInterestDeducted;
+
+  // 6. Total cash received from customer = Full Principal
+  const totalCashReceived = pAmount;
+
+  // 7. Total business receipt including upfront interest = Principal + Upfront interest
+  const totalBusinessReceipt = pAmount + upfrontInterestDeducted;
+
+  // 8. Total profit / interest = Upfront interest
+  const totalProfit = upfrontInterestDeducted;
 
   // Open Confirmation Modal
   const handleInitiateDisbursement = (e) => {
@@ -185,7 +215,7 @@ export default function DailyFinance({ onNavigate, preselectedCustomer }) {
     setFormSuccess('');
 
     if (!selectedCustomerId) {
-      setFormError('Please select a customer.');
+      setFormError('Please select a borrower.');
       return;
     }
     if (pAmount <= 0) {
@@ -193,7 +223,11 @@ export default function DailyFinance({ onNavigate, preselectedCustomer }) {
       return;
     }
     if (ratePct < 0) {
-      setFormError('Daily interest rate cannot be negative.');
+      setFormError('Upfront interest rate cannot be negative.');
+      return;
+    }
+    if (numDays <= 0) {
+      setFormError('Number of collection days must be at least 1 day.');
       return;
     }
     if (!startDate || !dueDate) {
@@ -261,9 +295,10 @@ export default function DailyFinance({ onNavigate, preselectedCustomer }) {
   // Open Quick Collection Modal
   const handleOpenCollectionModal = (loan) => {
     setCollectionTargetLoan(loan);
-    setCollectionAmount('');
-    setPrincipalAllocation('');
-    setInterestAllocation('');
+    const targetInstalment = loan.dailyInstalmentPaise
+      ? String(loan.dailyInstalmentPaise / 100)
+      : String(Math.min((loan.outstandingPrincipalPaise || 0) / 100, Math.floor((loan.principalPaise || 0) / (loan.totalDurationDays || 10) / 100)));
+    setCollectionAmount(targetInstalment > 0 ? targetInstalment : '');
     setCollectionError('');
     setCollectionSuccess('');
     setPaymentMethod('CASH');
@@ -272,55 +307,38 @@ export default function DailyFinance({ onNavigate, preselectedCustomer }) {
     setIsCollectionModalOpen(true);
   };
 
-  // Auto-allocate payment when total amount changes
-  const handleCollectionAmountChange = (val) => {
-    setCollectionAmount(val);
-    const amt = parseFloat(val) || 0;
-    if (collectionTargetLoan && amt > 0) {
-      const outP = (collectionTargetLoan.outstandingPrincipalPaise || 0) / 100;
-      // Default: allocate to principal first
-      if (amt <= outP) {
-        setPrincipalAllocation(String(amt));
-        setInterestAllocation('0');
-      } else {
-        setPrincipalAllocation(String(outP));
-        setInterestAllocation(String(Math.round((amt - outP) * 100) / 100));
-      }
-    } else {
-      setPrincipalAllocation('');
-      setInterestAllocation('');
-    }
-  };
-
-  // Submit Quick Collection
+  // Submit Quick Collection (100% principal repayment reduction)
   const handleRecordCollection = async (e) => {
     e.preventDefault();
     if (!collectionTargetLoan) return;
 
     const amt = parseFloat(collectionAmount);
     if (!amt || amt <= 0) {
-      setCollectionError('Please enter a valid payment amount.');
+      setCollectionError('Please enter a valid collection payment amount.');
+      return;
+    }
+
+    const currentBal = (collectionTargetLoan.outstandingPrincipalPaise || 0) / 100;
+    if (amt > currentBal) {
+      setCollectionError(`Collection cannot exceed outstanding principal balance of ${formatINR(currentBal)}`);
       return;
     }
 
     setCollectionSubmitting(true);
     setCollectionError('');
     try {
-      const pAlloc = parseFloat(principalAllocation) || 0;
-      const iAlloc = parseFloat(interestAllocation) || 0;
-
       const res = await api.post('/collections', {
         loanId: collectionTargetLoan._id,
         paymentAmount: amt,
-        principalAllocation: pAlloc,
-        interestAllocation: iAlloc,
+        principalAllocation: amt,
+        interestAllocation: 0,
         paymentMethod: collectionMethod,
         paymentDate: collectionDate,
-        remarks: collectionRemarks || 'Daily Finance repayment',
+        remarks: collectionRemarks || 'Daily Finance repayment collection',
       });
 
       if (res.data?.success) {
-        setCollectionSuccess(`Payment of ${formatINR(amt)} recorded successfully!`);
+        setCollectionSuccess(`Daily payment of ${formatINR(amt)} recorded successfully!`);
         fetchDailyLoans();
         setTimeout(() => {
           setIsCollectionModalOpen(false);
@@ -328,7 +346,7 @@ export default function DailyFinance({ onNavigate, preselectedCustomer }) {
         }, 1200);
       }
     } catch (err) {
-      setCollectionError(err.response?.data?.message || err.message || 'Failed to record payment');
+      setCollectionError(err.response?.data?.message || err.message || 'Failed to record daily collection');
     } finally {
       setCollectionSubmitting(false);
     }
@@ -351,7 +369,7 @@ export default function DailyFinance({ onNavigate, preselectedCustomer }) {
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-1">
-            Short-term daily simple interest finance. Flexible repayment schedule with daily accrued interest tracking.
+            Upfront interest deduction daily finance. Customer receives principal minus upfront interest and repays full principal through daily instalments.
           </p>
         </div>
 
@@ -398,7 +416,16 @@ export default function DailyFinance({ onNavigate, preselectedCustomer }) {
             <Wallet className="w-4 h-4 text-blue-500" />
           </div>
           <p className="text-lg sm:text-xl font-black text-slate-900">{formatINR(metrics.capitalLent)}</p>
-          <p className="text-[11px] text-slate-400 mt-0.5">Disbursed principal</p>
+          <p className="text-[11px] text-slate-400 mt-0.5">Net cash handed out</p>
+        </div>
+
+        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
+          <div className="flex items-center justify-between text-slate-500 mb-1">
+            <span className="text-xs font-medium">Upfront Interest</span>
+            <Percent className="w-4 h-4 text-purple-600" />
+          </div>
+          <p className="text-lg sm:text-xl font-black text-purple-700">{formatINR(metrics.interestCollected)}</p>
+          <p className="text-[11px] text-slate-400 mt-0.5">Realized upfront profit</p>
         </div>
 
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
@@ -407,16 +434,7 @@ export default function DailyFinance({ onNavigate, preselectedCustomer }) {
             <CheckCircle className="w-4 h-4 text-emerald-600" />
           </div>
           <p className="text-lg sm:text-xl font-black text-emerald-700">{formatINR(metrics.principalReturned)}</p>
-          <p className="text-[11px] text-slate-400 mt-0.5">Principal repaid</p>
-        </div>
-
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
-          <div className="flex items-center justify-between text-slate-500 mb-1">
-            <span className="text-xs font-medium">Interest Collected</span>
-            <Percent className="w-4 h-4 text-purple-600" />
-          </div>
-          <p className="text-lg sm:text-xl font-black text-purple-700">{formatINR(metrics.interestCollected)}</p>
-          <p className="text-[11px] text-slate-400 mt-0.5">Realized daily interest</p>
+          <p className="text-[11px] text-slate-400 mt-0.5">From daily collections</p>
         </div>
 
         <div className="bg-white p-4 rounded-xl border border-amber-200 bg-amber-50/20 shadow-xs col-span-2 lg:col-span-1">
@@ -425,7 +443,7 @@ export default function DailyFinance({ onNavigate, preselectedCustomer }) {
             <Coins className="w-4 h-4 text-amber-600" />
           </div>
           <p className="text-lg sm:text-xl font-black text-amber-900">{formatINR(metrics.outstandingPrincipal)}</p>
-          <p className="text-[11px] text-amber-700 mt-0.5">Balance to recover</p>
+          <p className="text-[11px] text-amber-700 mt-0.5">Daily repayment balance</p>
         </div>
       </div>
 
@@ -493,10 +511,11 @@ export default function DailyFinance({ onNavigate, preselectedCustomer }) {
                     <th className="px-4 py-3">Disbursed Date</th>
                     <th className="px-4 py-3">Customer</th>
                     <th className="px-4 py-3 text-right">Principal</th>
-                    <th className="px-4 py-3 text-center">Daily Rate</th>
-                    <th className="px-4 py-3 text-right">Principal Repaid</th>
-                    <th className="px-4 py-3 text-right">Outstanding Principal</th>
-                    <th className="px-4 py-3 text-right">Interest Collected</th>
+                    <th className="px-4 py-3 text-right">Upfront Interest</th>
+                    <th className="px-4 py-3 text-right">Net Given</th>
+                    <th className="px-4 py-3 text-right">Daily Instalment</th>
+                    <th className="px-4 py-3 text-right">Daily Repaid</th>
+                    <th className="px-4 py-3 text-right">Outstanding Balance</th>
                     <th className="px-4 py-3">Due Date</th>
                     <th className="px-4 py-3 text-center">Status</th>
                     <th className="px-4 py-3 text-center">Actions</th>
@@ -504,10 +523,13 @@ export default function DailyFinance({ onNavigate, preselectedCustomer }) {
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {loans.map((loan) => {
-                    const principal = (loan.principalPaise || 0) / 100;
+                    const gross = (loan.grossPrincipalPaise || loan.principalPaise || 0) / 100;
+                    const upfrontInterest = (loan.upfrontInterestPaise || (loan.dailyFinanceDetails?.upfrontInterestPaise) || 0) / 100;
+                    const netGiven = loan.netDisbursementPaise !== undefined ? loan.netDisbursementPaise / 100 : Math.max(0, gross - upfrontInterest);
+                    const days = loan.totalDurationDays || loan.dailyFinanceDetails?.totalDurationDays || 10;
+                    const dailyInstalment = loan.dailyInstalmentPaise !== undefined ? loan.dailyInstalmentPaise / 100 : Math.floor(gross / days);
                     const repaid = (loan.totalPrincipalPaidPaise || 0) / 100;
                     const outstanding = (loan.outstandingPrincipalPaise || 0) / 100;
-                    const interestPaid = (loan.totalInterestPaidPaise || 0) / 100;
                     const statusBadge = getStatusBadge(loan.status);
 
                     return (
@@ -526,19 +548,22 @@ export default function DailyFinance({ onNavigate, preselectedCustomer }) {
                           </div>
                         </td>
                         <td className="px-4 py-3 text-right font-semibold text-slate-900">
-                          {formatINR(principal)}
+                          {formatINR(gross)}
                         </td>
-                        <td className="px-4 py-3 text-center font-mono font-bold text-amber-700">
-                          {loan.interestRatePercent}% / day
+                        <td className="px-4 py-3 text-right font-semibold text-rose-600">
+                          - {formatINR(upfrontInterest)} ({loan.interestRatePercent}%)
+                        </td>
+                        <td className="px-4 py-3 text-right font-bold text-emerald-700">
+                          {formatINR(netGiven)}
+                        </td>
+                        <td className="px-4 py-3 text-right font-mono font-medium text-slate-800">
+                          {formatINR(dailyInstalment)} / day ({days}d)
                         </td>
                         <td className="px-4 py-3 text-right font-semibold text-emerald-600">
                           {formatINR(repaid)}
                         </td>
                         <td className="px-4 py-3 text-right font-bold text-amber-800">
                           {formatINR(outstanding)}
-                        </td>
-                        <td className="px-4 py-3 text-right font-semibold text-purple-700">
-                          {formatINR(interestPaid)}
                         </td>
                         <td className="px-4 py-3 text-slate-600 whitespace-nowrap">
                           {formatDate(loan.dueDate)}
@@ -562,7 +587,7 @@ export default function DailyFinance({ onNavigate, preselectedCustomer }) {
                               <button
                                 onClick={() => handleOpenCollectionModal(loan)}
                                 className="px-2 py-1 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded text-[10px] transition-colors cursor-pointer flex items-center space-x-1"
-                                title="Record Collection"
+                                title="Record Daily Collection"
                               >
                                 <Coins className="w-3 h-3" />
                                 <span>Collect</span>
@@ -599,7 +624,7 @@ export default function DailyFinance({ onNavigate, preselectedCustomer }) {
                 <span>Register New Daily Finance (நாள் வட்டி)</span>
               </h2>
               <p className="text-xs text-slate-500 mt-1">
-                Disburse simple interest daily loan. Interest is calculated on the outstanding balance for each elapsed day.
+                Upfront interest deduction daily finance. Customer receives principal minus upfront interest and repays full original principal through daily instalments.
               </p>
             </div>
 
@@ -635,7 +660,7 @@ export default function DailyFinance({ onNavigate, preselectedCustomer }) {
                 </div>
               </div>
 
-              {/* Principal & Daily Interest Rate */}
+              {/* Principal & Upfront Interest Rate */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">
@@ -650,7 +675,7 @@ export default function DailyFinance({ onNavigate, preselectedCustomer }) {
                       required
                       min="100"
                       step="any"
-                      placeholder="e.g. 20000"
+                      placeholder="e.g. 100000"
                       value={principalAmount}
                       onChange={(e) => setPrincipalAmount(e.target.value)}
                       className="w-full pl-8 pr-3 py-2 border border-slate-300 rounded-lg text-xs font-mono font-bold bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
@@ -660,7 +685,7 @@ export default function DailyFinance({ onNavigate, preselectedCustomer }) {
 
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">
-                    Daily Interest Rate (% per Day) *
+                    Upfront Interest Rate (% on Principal) *
                   </label>
                   <div className="relative">
                     <input
@@ -668,23 +693,47 @@ export default function DailyFinance({ onNavigate, preselectedCustomer }) {
                       required
                       min="0"
                       step="0.01"
-                      placeholder="e.g. 0.10"
-                      value={dailyRatePercent}
-                      onChange={(e) => setDailyRatePercent(e.target.value)}
-                      className="w-full pl-3 pr-16 py-2 border border-slate-300 rounded-lg text-xs font-mono font-bold bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
+                      placeholder="e.g. 2.0"
+                      value={upfrontRatePercent}
+                      onChange={(e) => setUpfrontRatePercent(e.target.value)}
+                      className="w-full pl-3 pr-8 py-2 border border-slate-300 rounded-lg text-xs font-mono font-bold bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
                     />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-[11px]">
-                      % / day
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold">
+                      %
                     </span>
                   </div>
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    Deducted upfront: ₹{formatINR(upfrontInterestDeducted).replace('₹', '')}
+                  </p>
                 </div>
               </div>
 
-              {/* Dates */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Duration and Dates */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">
-                    Disbursement / Start Date *
+                    Collection Days / தவணை நாட்கள் *
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      required
+                      min="1"
+                      step="1"
+                      placeholder="e.g. 10"
+                      value={durationDays}
+                      onChange={(e) => setDurationDays(e.target.value)}
+                      className="w-full pl-3 pr-12 py-2 border border-slate-300 rounded-lg text-xs font-mono font-bold bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-[10px]">
+                      Days
+                    </span>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Disbursement Date *
                   </label>
                   <input
                     type="date"
@@ -703,7 +752,7 @@ export default function DailyFinance({ onNavigate, preselectedCustomer }) {
                     type="date"
                     required
                     value={dueDate}
-                    onChange={(e) => setDueDate(e.target.value)}
+                    onChange={handleDueDateChange}
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
                   />
                 </div>
@@ -716,7 +765,7 @@ export default function DailyFinance({ onNavigate, preselectedCustomer }) {
                 </label>
                 <input
                   type="text"
-                  placeholder="e.g. Daily market collection, signed note"
+                  placeholder="e.g. Daily market collection, signed promissory note"
                   value={remarks}
                   onChange={(e) => setRemarks(e.target.value)}
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
@@ -751,50 +800,67 @@ export default function DailyFinance({ onNavigate, preselectedCustomer }) {
                 <span>Daily Finance Live Forecast</span>
               </div>
               <p className="text-xs text-slate-400 leading-relaxed">
-                Simple daily interest calculated per elapsed calendar day:
+                Upfront Interest Deduction Calculation Model:
               </p>
 
-              <div className="mt-4 space-y-3 font-mono text-xs">
-                <div className="flex justify-between py-1.5 border-b border-slate-800">
-                  <span className="text-slate-400 font-sans">Principal Amount (P):</span>
+              <div className="mt-4 space-y-2.5 font-mono text-xs">
+                <div className="flex justify-between py-1 border-b border-slate-800">
+                  <span className="text-slate-400 font-sans">Principal Amount:</span>
                   <span className="font-bold text-white">{formatINR(pAmount)}</span>
                 </div>
-                <div className="flex justify-between py-1.5 border-b border-slate-800">
-                  <span className="text-slate-400 font-sans">Daily Rate (R):</span>
-                  <span className="font-bold text-amber-300">{ratePct}% / Day</span>
+                <div className="flex justify-between py-1 border-b border-slate-800">
+                  <span className="text-slate-400 font-sans">Upfront Interest Rate:</span>
+                  <span className="font-bold text-amber-300">{ratePct}%</span>
                 </div>
-                <div className="flex justify-between py-1.5 border-b border-slate-800">
-                  <span className="text-slate-400 font-sans">Target Duration:</span>
-                  <span className="font-bold text-white">{durationDays} Calendar Days</span>
+                <div className="flex justify-between py-1 border-b border-slate-800">
+                  <span className="text-slate-400 font-sans">Upfront Interest Deducted:</span>
+                  <span className="font-bold text-rose-400">- {formatINR(upfrontInterestDeducted)}</span>
                 </div>
-                <div className="flex justify-between py-1.5 border-b border-slate-800">
-                  <span className="text-slate-400 font-sans">Expected Daily Interest:</span>
-                  <span className="font-bold text-purple-400">+{formatINR(expectedInterest)}</span>
+                <div className="flex justify-between py-1.5 border-b border-slate-700 bg-emerald-950/40 px-2 rounded">
+                  <span className="text-emerald-400 font-sans font-bold">Net Cash Given to Customer:</span>
+                  <span className="font-black text-emerald-400 text-sm">{formatINR(netCashGiven)}</span>
                 </div>
-                <div className="flex justify-between py-2 border-b border-slate-700 bg-amber-950/40 px-2 rounded">
-                  <span className="text-amber-300 font-sans font-bold">Total Expected Amount:</span>
-                  <span className="font-black text-amber-300 text-sm">{formatINR(totalExpectedAmount)}</span>
+                <div className="flex justify-between py-1 border-b border-slate-800">
+                  <span className="text-slate-400 font-sans">Daily Collection Amount:</span>
+                  <span className="font-bold text-white">{formatINR(dailyCollectionAmount)} / day</span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-slate-800">
+                  <span className="text-slate-400 font-sans">Number of Collection Days:</span>
+                  <span className="font-bold text-amber-300">{numDays} Days</span>
+                </div>
+                <div className="flex justify-between py-1.5 border-b border-slate-700 bg-blue-950/40 px-2 rounded">
+                  <span className="text-blue-300 font-sans font-bold">Total Daily Repayment:</span>
+                  <span className="font-black text-blue-300 text-sm">{formatINR(totalDailyRepayment)}</span>
+                </div>
+                <div className="flex justify-between py-1 border-b border-slate-800">
+                  <span className="text-slate-400 font-sans">Total Interest Collected:</span>
+                  <span className="font-bold text-purple-400">{formatINR(totalInterestCollected)}</span>
+                </div>
+                <div className="flex justify-between py-1 text-[11px] text-slate-400">
+                  <span className="font-sans">Total Business Receipt:</span>
+                  <span className="font-mono text-slate-300">{formatINR(totalBusinessReceipt)}</span>
                 </div>
               </div>
 
               {/* Explanatory callout */}
-              <div className="mt-5 p-3 rounded-lg bg-amber-900/30 border border-amber-700/40 text-[11px] text-amber-200 space-y-1.5 font-sans">
+              <div className="mt-4 p-3 rounded-lg bg-amber-900/30 border border-amber-700/40 text-[11px] text-amber-200 space-y-1 font-sans">
                 <p className="font-bold flex items-center space-x-1.5 text-amber-300">
                   <CheckCircle className="w-3.5 h-3.5 shrink-0" />
-                  <span>Daily Finance Rules:</span>
+                  <span>Daily Finance Business Rules:</span>
                 </p>
-                <p className="text-slate-300">
-                  Daily interest formula:
-                  <br />
-                  <span className="font-mono text-amber-300">I = (Principal × Daily Rate × Days) / 100</span>
+                <p className="text-slate-300 text-[10px]">
+                  • Principal − Upfront Interest = <strong className="text-emerald-300">Net Cash Given</strong>
                 </p>
-                <p className="text-slate-300">
-                  Repayments can be collected against principal, accrued interest, or both simultaneously.
+                <p className="text-slate-300 text-[10px]">
+                  • Full Original Principal = <strong className="text-blue-300">Total Daily Repayment</strong>
+                </p>
+                <p className="text-slate-400 text-[10px]">
+                  Interest is recorded as collected immediately at loan disbursement. Customer repays the full original principal through daily instalments. Upfront interest is never charged or accrued again.
                 </p>
               </div>
             </div>
 
-            <div className="text-[10px] text-slate-500 font-sans text-center">
+            <div className="text-[10px] text-slate-500 font-sans text-center mt-2">
               CPN Raja Finance Management System · Financial Engine v1.0
             </div>
           </div>
@@ -820,7 +886,7 @@ export default function DailyFinance({ onNavigate, preselectedCustomer }) {
 
             <div className="p-5 space-y-4 text-xs">
               <p className="text-slate-600">
-                Please verify the Daily Finance disbursement details. Once confirmed, customer ledger and initial balances will be initialized.
+                Please verify the Daily Finance details. Once confirmed, upfront interest will be recorded as collected and customer daily collection schedule will be initialized.
               </p>
 
               <div className="bg-slate-50 p-3.5 rounded-lg border border-slate-200 space-y-2">
@@ -833,20 +899,24 @@ export default function DailyFinance({ onNavigate, preselectedCustomer }) {
                   <span className="font-mono text-slate-700">{selectedBorrowerObj?.mobileNumber}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-500">Principal Disbursed:</span>
+                  <span className="text-slate-500">Principal Amount:</span>
                   <span className="font-mono font-bold text-slate-900">{formatINR(pAmount)}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-500">Daily Interest Rate:</span>
-                  <span className="font-mono font-bold text-amber-700">{ratePct}% / day</span>
+                  <span className="text-slate-500">Upfront Interest ({ratePct}%):</span>
+                  <span className="font-mono font-bold text-rose-600">- {formatINR(upfrontInterestDeducted)}</span>
                 </div>
                 <div className="flex justify-between border-t border-slate-200 pt-1.5">
-                  <span className="text-slate-500">Duration to Due Date:</span>
-                  <span className="font-mono font-bold text-slate-700">{durationDays} Days</span>
+                  <span className="font-bold text-emerald-800">Net Cash Handed to Customer:</span>
+                  <span className="font-mono font-black text-emerald-700 text-sm">{formatINR(netCashGiven)}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="font-bold text-amber-900">Total Expected Amount:</span>
-                  <span className="font-mono font-black text-amber-800 text-sm">{formatINR(totalExpectedAmount)}</span>
+                  <span className="text-slate-500">Daily Instalment Amount:</span>
+                  <span className="font-mono font-bold text-slate-900">{formatINR(dailyCollectionAmount)} / day ({numDays} days)</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="font-bold text-blue-800">Total Daily Repayment Target:</span>
+                  <span className="font-mono font-black text-blue-700 text-sm">{formatINR(totalDailyRepayment)}</span>
                 </div>
                 <div className="flex justify-between text-[11px] pt-1">
                   <span className="text-slate-500">Repayment Due Date:</span>
@@ -939,35 +1009,36 @@ export default function DailyFinance({ onNavigate, preselectedCustomer }) {
                   <p className="text-slate-400 font-bold uppercase text-[10px]">Disbursement Snapshot</p>
                   <p className="text-slate-600">Disbursed Date: <span className="font-bold text-slate-900">{formatDate(selectedLoanForDetails.startDate)}</span></p>
                   <p className="text-slate-600">Maturity Due Date: <span className="font-bold text-slate-900">{formatDate(selectedLoanForDetails.dueDate)}</span></p>
-                  <p className="text-slate-600">Daily Interest Rate: <span className="font-bold text-slate-900">{selectedLoanForDetails.interestRatePercent}% / day</span></p>
+                  <p className="text-slate-600">Upfront Interest Rate: <span className="font-bold text-slate-900">{selectedLoanForDetails.interestRatePercent}%</span></p>
+                  <p className="text-slate-600">Collection Duration: <span className="font-bold text-slate-900">{selectedLoanForDetails.totalDurationDays || 10} Days</span></p>
                 </div>
               </div>
 
               {/* Financial Balance Summary */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <div className="bg-blue-50/60 border border-blue-200 p-3 rounded-lg text-center">
-                  <p className="text-[10px] text-blue-700 font-bold uppercase">Principal Disbursed</p>
+                  <p className="text-[10px] text-blue-700 font-bold uppercase">Principal Amount</p>
                   <p className="text-base font-black text-blue-900 mt-0.5">
-                    {formatINR((selectedLoanForDetails.principalPaise || 0) / 100)}
+                    {formatINR((selectedLoanForDetails.grossPrincipalPaise || selectedLoanForDetails.principalPaise || 0) / 100)}
+                  </p>
+                </div>
+
+                <div className="bg-rose-50/60 border border-rose-200 p-3 rounded-lg text-center">
+                  <p className="text-[10px] text-rose-700 font-bold uppercase">Upfront Interest Deducted</p>
+                  <p className="text-base font-black text-rose-700 mt-0.5">
+                    {formatINR((selectedLoanForDetails.upfrontInterestPaise || selectedLoanForDetails.dailyFinanceDetails?.upfrontInterestPaise || 0) / 100)}
                   </p>
                 </div>
 
                 <div className="bg-emerald-50/60 border border-emerald-200 p-3 rounded-lg text-center">
-                  <p className="text-[10px] text-emerald-700 font-bold uppercase">Principal Repaid</p>
+                  <p className="text-[10px] text-emerald-700 font-bold uppercase">Net Cash Given</p>
                   <p className="text-base font-black text-emerald-700 mt-0.5">
-                    {formatINR((selectedLoanForDetails.totalPrincipalPaidPaise || 0) / 100)}
-                  </p>
-                </div>
-
-                <div className="bg-purple-50/60 border border-purple-200 p-3 rounded-lg text-center">
-                  <p className="text-[10px] text-purple-700 font-bold uppercase">Interest Collected</p>
-                  <p className="text-base font-black text-purple-700 mt-0.5">
-                    {formatINR((selectedLoanForDetails.totalInterestPaidPaise || 0) / 100)}
+                    {formatINR((selectedLoanForDetails.netDisbursementPaise !== undefined ? selectedLoanForDetails.netDisbursementPaise : ((selectedLoanForDetails.principalPaise || 0) - (selectedLoanForDetails.upfrontInterestPaise || 0))) / 100)}
                   </p>
                 </div>
 
                 <div className="bg-amber-50/60 border border-amber-200 p-3 rounded-lg text-center">
-                  <p className="text-[10px] text-amber-800 font-bold uppercase">Outstanding Principal</p>
+                  <p className="text-[10px] text-amber-800 font-bold uppercase">Outstanding Daily Repayment</p>
                   <p className="text-base font-black text-amber-900 mt-0.5">
                     {formatINR((selectedLoanForDetails.outstandingPrincipalPaise || 0) / 100)}
                   </p>
@@ -978,7 +1049,7 @@ export default function DailyFinance({ onNavigate, preselectedCustomer }) {
               <div>
                 <h4 className="font-bold text-slate-800 mb-2 flex items-center space-x-1.5">
                   <Receipt className="w-4 h-4 text-amber-600" />
-                  <span>Loan Transaction & Collection History</span>
+                  <span>Loan Transaction & Daily Collection History</span>
                 </h4>
 
                 {loadingDetails ? (
@@ -995,9 +1066,8 @@ export default function DailyFinance({ onNavigate, preselectedCustomer }) {
                           <th className="px-3 py-2">Date</th>
                           <th className="px-3 py-2">Receipt / Txn</th>
                           <th className="px-3 py-2">Description</th>
-                          <th className="px-3 py-2 text-right">Principal Repaid</th>
-                          <th className="px-3 py-2 text-right">Interest Repaid</th>
-                          <th className="px-3 py-2 text-right">Remaining Principal</th>
+                          <th className="px-3 py-2 text-right">Daily Repaid</th>
+                          <th className="px-3 py-2 text-right">Remaining Principal Balance</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
@@ -1008,9 +1078,6 @@ export default function DailyFinance({ onNavigate, preselectedCustomer }) {
                             <td className="px-3 py-2 text-slate-700">{tx.remarks || tx.type}</td>
                             <td className="px-3 py-2 text-right font-bold text-emerald-600">
                               {formatINR((tx.principalCreditPaise || 0) / 100)}
-                            </td>
-                            <td className="px-3 py-2 text-right font-bold text-purple-600">
-                              {formatINR((tx.interestCreditPaise || 0) / 100)}
                             </td>
                             <td className="px-3 py-2 text-right font-mono font-bold text-slate-900">
                               {formatINR((tx.balancePrincipalPaise || 0) / 100)}
@@ -1070,7 +1137,7 @@ export default function DailyFinance({ onNavigate, preselectedCustomer }) {
                   <span className="font-mono text-slate-700">{collectionTargetLoan.customerMobile}</span>
                 </div>
                 <div className="flex justify-between border-t border-slate-200 pt-1.5">
-                  <span className="font-bold text-amber-800">Outstanding Principal:</span>
+                  <span className="font-bold text-amber-800">Outstanding Daily Repayment:</span>
                   <span className="font-mono font-black text-amber-700 text-sm">
                     {formatINR((collectionTargetLoan.outstandingPrincipalPaise || 0) / 100)}
                   </span>
@@ -1080,7 +1147,7 @@ export default function DailyFinance({ onNavigate, preselectedCustomer }) {
               {/* Total Payment Amount */}
               <div>
                 <label className="block font-semibold text-slate-700 mb-1">
-                  Total Collection Amount (₹) *
+                  Collection Payment Amount (₹) / பெறப்பட்ட தொகை *
                 </label>
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold">₹</span>
@@ -1088,38 +1155,23 @@ export default function DailyFinance({ onNavigate, preselectedCustomer }) {
                     type="number"
                     required
                     min="1"
+                    max={(collectionTargetLoan.outstandingPrincipalPaise || 0) / 100}
                     step="any"
                     placeholder="Enter amount"
                     value={collectionAmount}
-                    onChange={(e) => handleCollectionAmountChange(e.target.value)}
+                    onChange={(e) => setCollectionAmount(e.target.value)}
                     className="w-full pl-8 pr-3 py-2 border border-slate-300 rounded-lg text-xs font-mono font-bold bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
                   />
                 </div>
-              </div>
-
-              {/* Principal vs Interest Allocation */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Principal Repayment (₹)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="any"
-                    value={principalAllocation}
-                    onChange={(e) => setPrincipalAllocation(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-mono bg-white focus:outline-none focus:border-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Interest Payment (₹)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="any"
-                    value={interestAllocation}
-                    onChange={(e) => setInterestAllocation(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs font-mono bg-white focus:outline-none focus:border-blue-500"
-                  />
+                <div className="mt-1 flex items-center justify-between text-[11px] text-slate-400">
+                  <span>100% applied towards daily principal repayment</span>
+                  <button
+                    type="button"
+                    onClick={() => setCollectionAmount(String((collectionTargetLoan.outstandingPrincipalPaise || 0) / 100))}
+                    className="text-blue-600 font-bold hover:underline"
+                  >
+                    Full Settlement
+                  </button>
                 </div>
               </div>
 
@@ -1155,7 +1207,7 @@ export default function DailyFinance({ onNavigate, preselectedCustomer }) {
                 <label className="block font-semibold text-slate-700 mb-1">Remarks</label>
                 <input
                   type="text"
-                  placeholder="e.g. Daily collection received"
+                  placeholder="e.g. Daily repayment received"
                   value={collectionRemarks}
                   onChange={(e) => setCollectionRemarks(e.target.value)}
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs bg-white focus:outline-none focus:border-blue-500"

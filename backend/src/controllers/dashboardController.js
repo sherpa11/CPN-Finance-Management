@@ -48,7 +48,7 @@ const getDashboardData = async (req, res, next) => {
         {
           $group: {
             _id: null,
-            totalPrincipalLentPaise: { $sum: '$principalPaise' },
+            totalPrincipalLentPaise: { $sum: { $ifNull: ['$netDisbursementPaise', '$principalPaise'] } },
             totalPrincipalPaidPaise: { $sum: '$totalPrincipalPaidPaise' },
             totalInterestPaidPaise: { $sum: '$totalInterestPaidPaise' },
             totalAccruedInterestPaise: { $sum: '$accruedInterestPaise' },

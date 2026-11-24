@@ -183,13 +183,16 @@ function calculateMonthlyInterest({
 /**
  * Daily Finance Calculation
  * 
- * Formula:
- * Daily Interest = Principal × Daily Rate × Eligible Days / 100
- * 
- * Configurable Date Inclusion Conventions:
- * - INCLUDE_START_EXCLUDE_END: Standard banking (startDate inclusive, asOfDate exclusive)
- * - INCLUDE_BOTH: Both startDate and asOfDate are counted
- * - EXCLUDE_START_INCLUDE_END: startDate exclusive, asOfDate inclusive
+ * Business Rule: Upfront Interest Deduction
+ * - Upfront Interest = Principal × Rate% / 100
+ * - Net Cash Disbursed = Principal - Upfront Interest
+ * - Total Daily Repayment = Full Original Principal
+ * - Customer repays the full original principal through daily instalments.
+ * - Daily Instalment = Principal / Eligible Days
+ * - Total Interest Collected = Upfront Interest (collected upfront upon disbursement, never charged again)
+ * - Total Cash Received from Customer = Full Original Principal
+ * - Total Business Receipt = Full Principal + Upfront Interest
+ * - Total Profit = Upfront Interest
  */
 function calculateDailyInterest({
   principalPaise,
@@ -198,13 +201,19 @@ function calculateDailyInterest({
   asOfDate,
   config = {},
 }) {
-  if (!principalPaise || principalPaise <= 0 || !dailyRatePercent || dailyRatePercent <= 0) {
+  if (!principalPaise || principalPaise <= 0 || dailyRatePercent === undefined || dailyRatePercent === null) {
     return {
       principalPaise: principalPaise || 0,
+      grossPrincipalPaise: principalPaise || 0,
       dailyRatePercent: dailyRatePercent || 0,
       eligibleDays: 0,
       interestPaise: 0,
+      upfrontInterestPaise: 0,
+      netDisbursementPaise: principalPaise || 0,
+      netAmountGivenPaise: principalPaise || 0,
       totalPayablePaise: principalPaise || 0,
+      dailyInstalmentPaise: 0,
+      isUpfrontDeduction: true,
       dateInclusionConvention: config.dateInclusionConvention || CONSTANTS.DAILY_INCLUSION_CONVENTIONS.INCLUDE_START_EXCLUDE_END,
     };
   }
@@ -212,18 +221,7 @@ function calculateDailyInterest({
   const start = getKolkataDate(startDate);
   const target = getKolkataDate(asOfDate);
 
-  if (target < start) {
-    return {
-      principalPaise,
-      dailyRatePercent,
-      eligibleDays: 0,
-      interestPaise: 0,
-      totalPayablePaise: principalPaise,
-      dateInclusionConvention: config.dateInclusionConvention || CONSTANTS.DAILY_INCLUSION_CONVENTIONS.INCLUDE_START_EXCLUDE_END,
-    };
-  }
-
-  const rawDiffDays = Math.floor(target.diff(start, 'days').days);
+  const rawDiffDays = Math.max(1, Math.floor(target.diff(start, 'days').days));
   const dateInclusionConvention = config.dateInclusionConvention || CONSTANTS.DAILY_INCLUSION_CONVENTIONS.INCLUDE_START_EXCLUDE_END;
 
   let eligibleDays = rawDiffDays;
@@ -235,25 +233,37 @@ function calculateDailyInterest({
     eligibleDays = rawDiffDays;
   }
 
-  eligibleDays = Math.max(0, eligibleDays);
+  eligibleDays = Math.max(1, eligibleDays);
 
-  // Daily Interest (Paise) = round(PrincipalPaise * DailyRatePercent * EligibleDays / 100)
-  const interestPaise = Math.round((principalPaise * dailyRatePercent * eligibleDays) / 100);
-  const totalPayablePaise = principalPaise + interestPaise;
+  // Upfront Interest = Principal × Rate% / 100
+  const upfrontInterestPaise = Math.round((principalPaise * dailyRatePercent) / 100);
+  const netDisbursementPaise = Math.max(0, principalPaise - upfrontInterestPaise);
+
+  // Customer repays the full original principal through daily instalments
+  const totalPayablePaise = principalPaise;
+  const dailyInstalmentPaise = Math.floor(principalPaise / eligibleDays);
 
   return {
     principalPaise,
+    grossPrincipalPaise: principalPaise,
     dailyRatePercent,
     eligibleDays,
-    interestPaise,
+    durationDays: eligibleDays,
+    interestPaise: upfrontInterestPaise,
+    upfrontInterestPaise,
+    netDisbursementPaise,
+    netAmountGivenPaise: netDisbursementPaise,
     totalPayablePaise,
+    dailyInstalmentPaise,
+    isUpfrontDeduction: true,
     dateInclusionConvention,
     isPendingOwnerConfirmation: !!config.isPendingOwnerConfirmation,
     calculationDetails: {
       startDate: start.toISODate(),
       asOfDate: target.toISODate(),
-      rawDiffDays,
-      formula: 'Principal × Daily Rate × Eligible Days / 100',
+      eligibleDays,
+      dailyInstalmentPaise,
+      formula: 'Upfront Interest = Principal × Rate / 100; Net Disbursed = Principal - Upfront Interest; Total Repayment = Principal',
     },
   };
 }
