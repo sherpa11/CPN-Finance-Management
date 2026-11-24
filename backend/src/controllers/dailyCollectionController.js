@@ -12,6 +12,7 @@ const {
   getKolkataDate,
   calculateDailyCollectionSchemeA,
   calculateDailyCollectionSchemeB,
+  calculateDailyPenalty,
 } = require('../services/calculationEngine');
 const CONSTANTS = require('../config/constants');
 const { DateTime } = require('luxon');
@@ -383,9 +384,18 @@ const getDailyCollectionAccounts = async (req, res, next) => {
       DailyCollectionAccount.countDocuments(query),
     ]);
 
-    res.json({
-      success: true,
-      accounts: accounts.map((acc) => ({
+    const accountsWithPenalty = accounts.map((acc) => {
+      const penaltyCalc = calculateDailyPenalty({
+        dailyRepaymentAmountPaise: acc.dailyInstalmentPaise,
+        dueDate: acc.expectedCompletionDate,
+        asOfDate: new Date(),
+        isFullyRepaid: acc.status === 'COMPLETED' || acc.totalOutstandingPaise === 0,
+        fullRepaymentDate: acc.actualCompletionDate,
+        penaltyPaidPaise: acc.penaltyPaidPaise || 0,
+        penaltyRatePercent: acc.penaltyRatePercent || 2.0,
+      });
+
+      return {
         ...acc,
         grossPrincipalRupees: toRupees(acc.grossPrincipalPaise),
         netDisbursementRupees: toRupees(acc.netDisbursementPaise),
@@ -395,7 +405,29 @@ const getDailyCollectionAccounts = async (req, res, next) => {
         progressPercent: acc.totalRepaymentPaise > 0
           ? Number(((acc.totalCollectedPaise / acc.totalRepaymentPaise) * 100).toFixed(1))
           : 0,
-      })),
+        penaltyBreakdown: {
+          isPenaltyApplicable: true,
+          penaltyRatePercent: penaltyCalc.penaltyRatePercent,
+          dailyRepaymentAmountRupees: toRupees(penaltyCalc.dailyRepaymentAmountPaise),
+          dailyPenaltyRupees: toRupees(penaltyCalc.dailyPenaltyPaise),
+          overdueDays: penaltyCalc.overdueDays,
+          cumulativePenaltyRupees: toRupees(penaltyCalc.cumulativePenaltyPaise),
+          penaltyPaidRupees: toRupees(penaltyCalc.penaltyPaidPaise),
+          penaltyOutstandingRupees: toRupees(penaltyCalc.penaltyOutstandingPaise),
+          totalAmountToCloseRupees: toRupees(acc.totalOutstandingPaise + penaltyCalc.penaltyOutstandingPaise),
+          dailyRepaymentAmountPaise: penaltyCalc.dailyRepaymentAmountPaise,
+          dailyPenaltyPaise: penaltyCalc.dailyPenaltyPaise,
+          cumulativePenaltyPaise: penaltyCalc.cumulativePenaltyPaise,
+          penaltyPaidPaise: penaltyCalc.penaltyPaidPaise,
+          penaltyOutstandingPaise: penaltyCalc.penaltyOutstandingPaise,
+          totalAmountToClosePaise: acc.totalOutstandingPaise + penaltyCalc.penaltyOutstandingPaise,
+        },
+      };
+    });
+
+    res.json({
+      success: true,
+      accounts: accountsWithPenalty,
       pagination: {
         page: parseInt(page, 10),
         limit: numLimit,
@@ -430,6 +462,73 @@ const getDailyCollectionAccountById = async (req, res, next) => {
       .sort({ dayNumber: 1, paymentDate: 1 })
       .lean();
 
+    // Calculate live 2% daily penalty if overdue
+    const penaltyCalc = calculateDailyPenalty({
+      dailyRepaymentAmountPaise: account.dailyInstalmentPaise,
+      dueDate: account.expectedCompletionDate,
+      asOfDate: new Date(),
+      isFullyRepaid: account.status === 'COMPLETED' || account.totalOutstandingPaise === 0,
+      fullRepaymentDate: account.actualCompletionDate,
+      penaltyPaidPaise: account.penaltyPaidPaise || 0,
+      penaltyRatePercent: account.penaltyRatePercent || 2.0,
+    });
+
+    // Build schedule list with overdue rows beyond scheduled duration if overdue
+    const scheduleList = account.schedule.map((s) => ({
+      ...s.toObject(),
+      expectedRupees: toRupees(s.expectedPaise),
+      collectedRupees: toRupees(s.collectedPaise),
+    }));
+
+    if (penaltyCalc.overdueDays > 0) {
+      const completionDate = getKolkataDate(account.expectedCompletionDate);
+      let remainingPaidPenalty = account.penaltyPaidPaise || 0;
+      for (let i = 1; i <= penaltyCalc.overdueDays; i++) {
+        const overdueDayNum = account.totalDurationDays + i;
+        const scheduledDate = completionDate.plus({ days: i }).toJSDate();
+        let status = 'MISSED';
+        let collectedPaise = 0;
+        if (remainingPaidPenalty >= penaltyCalc.dailyPenaltyPaise) {
+          status = 'PAID';
+          collectedPaise = penaltyCalc.dailyPenaltyPaise;
+          remainingPaidPenalty -= penaltyCalc.dailyPenaltyPaise;
+        } else if (remainingPaidPenalty > 0) {
+          status = 'PARTIAL';
+          collectedPaise = remainingPaidPenalty;
+          remainingPaidPenalty = 0;
+        }
+        scheduleList.push({
+          dayNumber: overdueDayNum,
+          scheduledDate,
+          category: 'PENALTY',
+          expectedPaise: penaltyCalc.dailyPenaltyPaise,
+          expectedRupees: toRupees(penaltyCalc.dailyPenaltyPaise),
+          collectedPaise,
+          collectedRupees: toRupees(collectedPaise),
+          status,
+          remarks: `Overdue Penalty Day ${i} (2% of daily repayment)`,
+        });
+      }
+    }
+
+    const penaltyBreakdown = {
+      isPenaltyApplicable: true,
+      penaltyRatePercent: penaltyCalc.penaltyRatePercent,
+      dailyRepaymentAmountRupees: toRupees(penaltyCalc.dailyRepaymentAmountPaise),
+      dailyPenaltyRupees: toRupees(penaltyCalc.dailyPenaltyPaise),
+      overdueDays: penaltyCalc.overdueDays,
+      cumulativePenaltyRupees: toRupees(penaltyCalc.cumulativePenaltyPaise),
+      penaltyPaidRupees: toRupees(penaltyCalc.penaltyPaidPaise),
+      penaltyOutstandingRupees: toRupees(penaltyCalc.penaltyOutstandingPaise),
+      totalAmountToCloseRupees: toRupees(account.totalOutstandingPaise + penaltyCalc.penaltyOutstandingPaise),
+      dailyRepaymentAmountPaise: penaltyCalc.dailyRepaymentAmountPaise,
+      dailyPenaltyPaise: penaltyCalc.dailyPenaltyPaise,
+      cumulativePenaltyPaise: penaltyCalc.cumulativePenaltyPaise,
+      penaltyPaidPaise: penaltyCalc.penaltyPaidPaise,
+      penaltyOutstandingPaise: penaltyCalc.penaltyOutstandingPaise,
+      totalAmountToClosePaise: account.totalOutstandingPaise + penaltyCalc.penaltyOutstandingPaise,
+    };
+
     res.json({
       success: true,
       account: {
@@ -444,14 +543,14 @@ const getDailyCollectionAccountById = async (req, res, next) => {
         principalCollectedRupees: toRupees(account.principalCollectedPaise),
         interestCollectedRupees: toRupees(account.interestCollectedPaise),
         totalOutstandingRupees: toRupees(account.totalOutstandingPaise),
-        schedule: account.schedule.map((s) => ({
-          ...s.toObject(),
-          expectedRupees: toRupees(s.expectedPaise),
-          collectedRupees: toRupees(s.collectedPaise),
-        })),
+        penaltyBreakdown,
+        schedule: scheduleList,
         payments: payments.map((p) => ({
           ...p,
           amountRupees: toRupees(p.amountPaise),
+          principalAllocationRupees: toRupees(p.principalAllocationPaise || 0),
+          interestAllocationRupees: toRupees(p.interestAllocationPaise || 0),
+          penaltyAllocationRupees: toRupees(p.penaltyAllocationPaise || 0),
         })),
       },
     });
@@ -497,9 +596,22 @@ const recordDailyCollectionPayment = async (req, res, next) => {
       return res.status(404).json({ success: false, message: 'Daily Collection account not found.' });
     }
 
-    const scheduleItem = account.schedule.find((s) => s.dayNumber === Number(dayNumber));
+    let scheduleItem = account.schedule.find((s) => s.dayNumber === Number(dayNumber));
+    let isPenaltyDay = false;
+    let scheduledDate = new Date();
+
     if (!scheduleItem) {
-      return res.status(400).json({ success: false, message: `Day ${dayNumber} not found in account schedule.` });
+      if (Number(dayNumber) > account.totalDurationDays) {
+        // Overdue penalty payment day
+        isPenaltyDay = true;
+        const completionDate = getKolkataDate(account.expectedCompletionDate);
+        const overdueIndex = Number(dayNumber) - account.totalDurationDays;
+        scheduledDate = completionDate.plus({ days: overdueIndex }).toJSDate();
+      } else {
+        return res.status(400).json({ success: false, message: `Day ${dayNumber} not found in account schedule.` });
+      }
+    } else {
+      scheduledDate = scheduleItem.scheduledDate;
     }
 
     const amountPaise = status === 'MISSED' ? 0 : toPaise(amountRupees);
@@ -510,9 +622,13 @@ const recordDailyCollectionPayment = async (req, res, next) => {
     // Allocation logic based on day category:
     // Days 1-100 (and Scheme A): PRINCIPAL
     // Days 101+ (Scheme B): INTEREST
+    // Overdue Days (Day D+1+): PENALTY
     let principalAllocationPaise = 0;
     let interestAllocationPaise = 0;
-    if (scheduleItem.category === 'PRINCIPAL') {
+    let penaltyAllocationPaise = 0;
+    if (isPenaltyDay) {
+      penaltyAllocationPaise = amountPaise;
+    } else if (scheduleItem.category === 'PRINCIPAL') {
       principalAllocationPaise = amountPaise;
     } else {
       interestAllocationPaise = amountPaise;
@@ -530,12 +646,13 @@ const recordDailyCollectionPayment = async (req, res, next) => {
         customerId: account.customerId,
         customerName: account.customerName,
         dayNumber: Number(dayNumber),
-        scheduledDate: scheduleItem.scheduledDate,
+        scheduledDate,
         paymentDate: new Date(paymentDate),
         amountPaise,
-        category: scheduleItem.category,
+        category: isPenaltyDay ? 'PENALTY' : scheduleItem.category,
         principalAllocationPaise,
         interestAllocationPaise,
+        penaltyAllocationPaise,
         paymentMethod,
         idempotencyKey: idempotencyKey || undefined,
         status: 'CONFIRMED',
@@ -545,18 +662,34 @@ const recordDailyCollectionPayment = async (req, res, next) => {
 
       await payment.save(session ? { session } : undefined);
 
-      // 2. Update schedule item
-      scheduleItem.collectedPaise = amountPaise;
-      scheduleItem.paymentDate = status === 'MISSED' ? undefined : new Date(paymentDate);
-      scheduleItem.paymentId = payment.paymentId;
-      scheduleItem.remarks = remarks;
+      // 2. Update schedule item or push overdue penalty schedule item
+      if (scheduleItem) {
+        scheduleItem.collectedPaise = amountPaise;
+        scheduleItem.paymentDate = status === 'MISSED' ? undefined : new Date(paymentDate);
+        scheduleItem.paymentId = payment.paymentId;
+        scheduleItem.remarks = remarks;
 
-      if (status === 'MISSED') {
-        scheduleItem.status = 'MISSED';
-      } else if (amountPaise >= scheduleItem.expectedPaise) {
-        scheduleItem.status = 'PAID';
-      } else {
-        scheduleItem.status = 'PARTIAL';
+        if (status === 'MISSED') {
+          scheduleItem.status = 'MISSED';
+        } else if (amountPaise >= scheduleItem.expectedPaise) {
+          scheduleItem.status = 'PAID';
+        } else {
+          scheduleItem.status = 'PARTIAL';
+        }
+      } else if (isPenaltyDay) {
+        account.penaltyPaidPaise = (account.penaltyPaidPaise || 0) + penaltyAllocationPaise;
+        const expectedPenaltyPaise = Math.round((account.dailyInstalmentPaise * (account.penaltyRatePercent || 2.0)) / 100);
+        account.schedule.push({
+          dayNumber: Number(dayNumber),
+          scheduledDate,
+          category: 'PENALTY',
+          expectedPaise: expectedPenaltyPaise,
+          collectedPaise: amountPaise,
+          status: status === 'MISSED' ? 'MISSED' : (amountPaise >= expectedPenaltyPaise ? 'PAID' : 'PARTIAL'),
+          paymentDate: status === 'MISSED' ? undefined : new Date(paymentDate),
+          paymentId: payment.paymentId,
+          remarks: remarks || `Overdue Penalty Day ${Number(dayNumber) - account.totalDurationDays}`,
+        });
       }
 
       // 3. Recalculate account totals
@@ -618,6 +751,10 @@ const recordDailyCollectionPayment = async (req, res, next) => {
           loan.outstandingInterestPaise = account.outstandingInterestPaise;
           loan.totalPrincipalPaidPaise += principalAllocationPaise;
           loan.totalInterestPaidPaise += interestAllocationPaise;
+          if (penaltyAllocationPaise > 0) {
+            loan.penaltyPaidPaise = (loan.penaltyPaidPaise || 0) + penaltyAllocationPaise;
+            loan.penaltyOutstandingPaise = Math.max(0, (loan.penaltyOutstandingPaise || 0) - penaltyAllocationPaise);
+          }
 
           if (account.totalOutstandingPaise === 0) {
             loan.status = CONSTANTS.LOAN_STATUS.SETTLED;
@@ -636,10 +773,15 @@ const recordDailyCollectionPayment = async (req, res, next) => {
             principalCreditPaise: principalAllocationPaise,
             interestDebitPaise: 0,
             interestCreditPaise: interestAllocationPaise,
+            penaltyDebitPaise: 0,
+            penaltyCreditPaise: penaltyAllocationPaise,
             balancePrincipalPaise: loan.outstandingPrincipalPaise,
             balanceInterestPaise: loan.outstandingInterestPaise,
-            balanceTotalPaise: loan.outstandingPrincipalPaise + loan.outstandingInterestPaise,
-            remarks: `Daily Collection Day ${dayNumber} (${scheduleItem.category}): ${paymentMethod} received for ${account.accountId}`,
+            balancePenaltyPaise: loan.penaltyOutstandingPaise || 0,
+            balanceTotalPaise: loan.outstandingPrincipalPaise + loan.outstandingInterestPaise + (loan.penaltyOutstandingPaise || 0),
+            remarks: isPenaltyDay
+              ? `Daily Collection Day ${dayNumber} (PENALTY): ${paymentMethod} received for ${account.accountId}`
+              : `Daily Collection Day ${dayNumber} (${scheduleItem.category}): ${paymentMethod} received for ${account.accountId}`,
             referenceId: payment.paymentId,
           });
           await txn.save(session ? { session } : undefined);

@@ -295,7 +295,7 @@ export default function Reports() {
           {activeReportTab === 'daily' && dailyData && (
             <div className="space-y-6 text-xs">
               {/* Daily KPI Metrics */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 font-mono">
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-3 font-mono">
                 <div className="bg-slate-50 p-3 rounded-lg border border-slate-200">
                   <span className="text-[10px] text-slate-500 font-sans block">Loans Issued Today</span>
                   <span className="text-lg font-bold text-slate-900">{dailyData.summary.loansIssuedCount}</span>
@@ -312,6 +312,10 @@ export default function Reports() {
                   <span className="text-[10px] text-amber-700 font-sans block">Interest Collected (Profit)</span>
                   <span className="text-lg font-bold">{formatINR(dailyData.summary.interestCollectedRupees)}</span>
                 </div>
+                <div className="bg-rose-50 p-3 rounded-lg border border-rose-200 text-rose-900">
+                  <span className="text-[10px] text-rose-700 font-sans block">Penalty Collected</span>
+                  <span className="text-lg font-bold">{formatINR(dailyData.summary.penaltyCollectedRupees || 0)}</span>
+                </div>
               </div>
 
               {/* Collections Received Table */}
@@ -320,7 +324,7 @@ export default function Reports() {
                   Collections Received Today ({dailyData.collections.length})
                 </h4>
                 <div className="overflow-x-auto border border-slate-200 rounded-lg">
-                  <table className="w-full text-left min-w-[650px]">
+                  <table className="w-full text-left min-w-[700px]">
                     <thead className="bg-slate-100 text-slate-700">
                       <tr>
                         <th className="py-2 px-3">Receipt #</th>
@@ -329,13 +333,14 @@ export default function Reports() {
                         <th className="py-2 px-3">Mode</th>
                         <th className="py-2 px-3 text-right">Principal</th>
                         <th className="py-2 px-3 text-right">Interest</th>
+                        <th className="py-2 px-3 text-right">Penalty</th>
                         <th className="py-2 px-3 text-right">Total</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 font-mono">
                       {dailyData.collections.length === 0 ? (
                         <tr>
-                          <td colSpan={7} className="py-4 text-center text-slate-400 font-sans">
+                          <td colSpan={8} className="py-4 text-center text-slate-400 font-sans">
                             No collections recorded on this date.
                           </td>
                         </tr>
@@ -349,6 +354,9 @@ export default function Reports() {
                             <td className="py-2 px-3 text-right text-slate-800">{formatINR(c.principalAllocationRupees)}</td>
                             <td className="py-2 px-3 text-right text-emerald-700 font-semibold">
                               {formatINR(c.interestAllocationRupees)}
+                            </td>
+                            <td className="py-2 px-3 text-right text-rose-700 font-semibold">
+                              {formatINR(c.penaltyAllocationRupees || 0)}
                             </td>
                             <td className="py-2 px-3 text-right font-bold text-slate-950">
                               {formatINR(c.totalAmountRupees)}
@@ -366,7 +374,7 @@ export default function Reports() {
           {/* TAB 2: MONTHLY REPORT */}
           {activeReportTab === 'monthly' && monthlyData && (
             <div className="space-y-6 text-xs">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 sm:gap-3 font-mono">
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-2.5 sm:gap-3 font-mono">
                 <div className="bg-blue-50 p-3 rounded-lg border border-blue-200 text-blue-900">
                   <span className="text-[10px] text-blue-700 font-sans block truncate">Capital Lent</span>
                   <span className="text-base sm:text-lg font-bold truncate block">{formatINR(monthlyData.summary.totalPrincipalLentRupees)}</span>
@@ -378,6 +386,10 @@ export default function Reports() {
                 <div className="bg-amber-50 p-3 rounded-lg border border-amber-200 text-amber-900">
                   <span className="text-[10px] text-amber-700 font-sans block truncate">Interest Realized</span>
                   <span className="text-base sm:text-lg font-bold truncate block">{formatINR(monthlyData.summary.totalInterestCollectedRupees)}</span>
+                </div>
+                <div className="bg-rose-50 p-3 rounded-lg border border-rose-200 text-rose-900">
+                  <span className="text-[10px] text-rose-700 font-sans block truncate">Penalty Realized</span>
+                  <span className="text-base sm:text-lg font-bold truncate block">{formatINR(monthlyData.summary.totalPenaltyCollectedRupees || 0)}</span>
                 </div>
                 <div className="bg-purple-50 p-3 rounded-lg border border-purple-200 text-purple-900">
                   <span className="text-[10px] text-purple-700 font-sans block truncate">Accrued Interest</span>
@@ -419,7 +431,7 @@ export default function Reports() {
           {/* TAB 3: YEARLY REPORT */}
           {activeReportTab === 'yearly' && yearlyData && (
             <div className="space-y-6 text-xs font-mono">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 sm:gap-3">
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-2.5 sm:gap-3">
                 <div className="bg-slate-50 p-3 rounded-lg border border-slate-200">
                   <span className="text-[10px] text-slate-500 font-sans block truncate">Annual Lending</span>
                   <span className="text-base sm:text-lg font-bold text-slate-900 truncate block">
@@ -439,7 +451,13 @@ export default function Reports() {
                   </span>
                 </div>
                 <div className="bg-rose-50 p-3 rounded-lg border border-rose-200 text-rose-900">
-                  <span className="text-[10px] text-rose-700 font-sans block truncate">Market Outstanding</span>
+                  <span className="text-[10px] text-rose-700 font-sans block truncate">Penalty Income</span>
+                  <span className="text-base sm:text-lg font-bold truncate block">
+                    {formatINR(yearlyData.summary.totalPenaltyCollectedRupees || 0)}
+                  </span>
+                </div>
+                <div className="bg-purple-50 p-3 rounded-lg border border-purple-200 text-purple-900">
+                  <span className="text-[10px] text-purple-700 font-sans block truncate">Market Outstanding</span>
                   <span className="text-base sm:text-lg font-bold truncate block">
                     {formatINR(yearlyData.summary.totalOutstandingRupees)}
                   </span>

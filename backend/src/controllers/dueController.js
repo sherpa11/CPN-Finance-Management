@@ -1,6 +1,6 @@
 const { DateTime } = require('luxon');
 const Loan = require('../models/Loan');
-const { toRupees } = require('../services/calculationEngine');
+const { toRupees, calculateDailyPenalty } = require('../services/calculationEngine');
 const CONSTANTS = require('../config/constants');
 const { escapeRegex } = require('../utils/sanitize');
 
@@ -84,7 +84,7 @@ const getDuesList = async (req, res, next) => {
 
     const total = await Loan.countDocuments(query);
     const loans = await Loan.find(query)
-      .select('loanId customerId customerCode customerName customerMobile vattiType principalPaise interestRatePercent accruedInterestPaise outstandingPrincipalPaise outstandingInterestPaise startDate dueDate status')
+      .select('loanId customerId customerCode customerName customerMobile vattiType principalPaise interestRatePercent accruedInterestPaise outstandingPrincipalPaise outstandingInterestPaise dailyInstalmentPaise totalDurationDays penaltyPaidPaise penaltyRatePercent settledDate startDate dueDate status')
       .sort(sort)
       .skip((page - 1) * limit)
       .limit(Number(limit))
@@ -93,6 +93,24 @@ const getDuesList = async (req, res, next) => {
     const formatted = loans.map((l) => {
       const dueKolkata = DateTime.fromJSDate(l.dueDate, { zone: TIMEZONE }).startOf('day');
       const diffDays = Math.round(dueKolkata.diff(today, 'days').days);
+      const isDailyOrDc = l.vattiType === 'DAILY' || l.vattiType === 'DAILY_COLLECTION' || l.vattiType === 'MEATER';
+
+      let penaltyCalc = null;
+      if (isDailyOrDc) {
+        const dailyInstalmentPaise = l.dailyInstalmentPaise || (l.totalDurationDays ? Math.floor((l.principalPaise || 0) / l.totalDurationDays) : Math.floor((l.principalPaise || 0) / 10));
+        penaltyCalc = calculateDailyPenalty({
+          dailyRepaymentAmountPaise: dailyInstalmentPaise,
+          dueDate: l.dueDate,
+          asOfDate: today.toJSDate(),
+          isFullyRepaid: l.outstandingPrincipalPaise === 0,
+          fullRepaymentDate: l.settledDate || null,
+          penaltyPaidPaise: l.penaltyPaidPaise || 0,
+          penaltyRatePercent: l.penaltyRatePercent || 2.0,
+        });
+      }
+
+      const penaltyOutstandingRupees = penaltyCalc ? toRupees(penaltyCalc.penaltyOutstandingPaise) : 0;
+      const totalAmountToCloseRupees = toRupees(l.outstandingPrincipalPaise + l.outstandingInterestPaise + (penaltyCalc ? penaltyCalc.penaltyOutstandingPaise : 0));
 
       return {
         id: l._id,
@@ -109,6 +127,29 @@ const getDuesList = async (req, res, next) => {
         outstandingPrincipalRupees: toRupees(l.outstandingPrincipalPaise),
         outstandingInterestRupees: toRupees(l.outstandingInterestPaise),
         totalOutstandingRupees: toRupees(l.outstandingPrincipalPaise + l.outstandingInterestPaise),
+        penaltyOutstandingRupees,
+        totalAmountToCloseRupees,
+        penaltyBreakdown: isDailyOrDc && penaltyCalc ? {
+          isPenaltyApplicable: true,
+          penaltyRatePercent: penaltyCalc.penaltyRatePercent,
+          overdueDays: penaltyCalc.overdueDays,
+          dailyRepaymentAmountRupees: toRupees(penaltyCalc.dailyRepaymentAmountPaise),
+          dailyPenaltyRupees: toRupees(penaltyCalc.dailyPenaltyPaise),
+          cumulativePenaltyRupees: toRupees(penaltyCalc.cumulativePenaltyPaise),
+          penaltyPaidRupees: toRupees(penaltyCalc.penaltyPaidPaise),
+          penaltyOutstandingRupees,
+          totalAmountToCloseRupees,
+        } : {
+          isPenaltyApplicable: false,
+          penaltyRatePercent: 0,
+          overdueDays: 0,
+          dailyRepaymentAmountRupees: 0,
+          dailyPenaltyRupees: 0,
+          cumulativePenaltyRupees: 0,
+          penaltyPaidRupees: 0,
+          penaltyOutstandingRupees: 0,
+          totalAmountToCloseRupees: toRupees(l.outstandingPrincipalPaise + l.outstandingInterestPaise),
+        },
         startDate: l.startDate,
         dueDate: l.dueDate,
         daysRemainingOrOverdue: diffDays,

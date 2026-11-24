@@ -440,6 +440,7 @@ export default function DailyCollection({ onNavigate }) {
                   <th className="py-3 px-3 text-center">Progress</th>
                   <th className="py-3 px-3 text-right">Collected</th>
                   <th className="py-3 px-3 text-right">Outstanding</th>
+                  <th className="py-3 px-3 text-right">Overdue Penalty (2%)</th>
                   <th className="py-3 px-3 text-center">Status</th>
                   <th className="py-3 px-3 text-center">Actions</th>
                 </tr>
@@ -504,6 +505,20 @@ export default function DailyCollection({ onNavigate }) {
                         </td>
                         <td className="py-3 px-3 text-right font-bold text-rose-600">
                           {formatINR(acc.totalOutstandingRupees)}
+                        </td>
+                        <td className="py-3 px-3 text-right">
+                          {acc.penaltyBreakdown && acc.penaltyBreakdown.overdueDays > 0 ? (
+                            <div>
+                              <span className="font-bold text-rose-700">
+                                {formatINR(acc.penaltyBreakdown.penaltyOutstandingRupees)}
+                              </span>
+                              <div className="text-[10px] text-rose-500 font-mono">
+                                {acc.penaltyBreakdown.overdueDays}d overdue ({formatINR(acc.penaltyBreakdown.dailyPenaltyRupees)}/d)
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-slate-400 font-mono text-[11px]">₹0.00</span>
+                          )}
                         </td>
                         <td className="py-3 px-3 text-center font-sans">
                           <span className={`px-2 py-0.5 text-[10px] font-bold rounded-full border ${statusBadge.bg}`}>
@@ -615,6 +630,77 @@ export default function DailyCollection({ onNavigate }) {
                 </div>
               </div>
 
+              {/* Overdue Daily Penalty Breakdown Block (Client-Confirmed 2% Rule) */}
+              {selectedAccountData.penaltyBreakdown && (
+                <div className="bg-rose-50/50 border border-rose-200 p-4 rounded-xl space-y-3">
+                  <div className="flex items-center justify-between border-b border-rose-200/60 pb-2">
+                    <h4 className="font-bold text-rose-900 text-xs flex items-center space-x-1.5">
+                      <AlertCircle className="w-4 h-4 text-rose-600" />
+                      <span>Overdue Penalty Breakdown (Client-Confirmed 2% Rule)</span>
+                    </h4>
+                    <span className="text-[10px] font-bold text-rose-700 bg-rose-100 px-2.5 py-0.5 rounded-full border border-rose-200">
+                      {selectedAccountData.penaltyBreakdown.overdueDays > 0
+                        ? `${selectedAccountData.penaltyBreakdown.overdueDays} Days Overdue (Past Term)`
+                        : 'Within Scheduled Term (₹0 Penalty)'}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
+                    <div className="bg-white p-2.5 rounded-lg border border-rose-100">
+                      <p className="text-[10px] text-slate-500 font-sans">Scheduled Duration</p>
+                      <p className="font-bold font-mono text-slate-800 text-sm mt-0.5">
+                        {selectedAccountData.totalDurationDays || 100} Days
+                      </p>
+                    </div>
+
+                    <div className="bg-white p-2.5 rounded-lg border border-rose-100">
+                      <p className="text-[10px] text-slate-500 font-sans">Daily Repayment Amount</p>
+                      <p className="font-bold font-mono text-slate-800 text-sm mt-0.5">
+                        {formatINR(selectedAccountData.penaltyBreakdown.dailyRepaymentAmountRupees)}
+                      </p>
+                    </div>
+
+                    <div className="bg-white p-2.5 rounded-lg border border-rose-100">
+                      <p className="text-[10px] text-rose-600 font-sans font-medium">Daily Penalty Rate (2%)</p>
+                      <p className="font-bold font-mono text-rose-700 text-sm mt-0.5">
+                        {formatINR(selectedAccountData.penaltyBreakdown.dailyPenaltyRupees)} / day
+                      </p>
+                    </div>
+
+                    <div className="bg-white p-2.5 rounded-lg border border-rose-100">
+                      <p className="text-[10px] text-slate-500 font-sans">Cumulative Penalty</p>
+                      <p className="font-bold font-mono text-slate-900 text-sm mt-0.5">
+                        {formatINR(selectedAccountData.penaltyBreakdown.cumulativePenaltyRupees)}
+                      </p>
+                    </div>
+
+                    <div className="bg-white p-2.5 rounded-lg border border-rose-100">
+                      <p className="text-[10px] text-emerald-600 font-sans font-medium">Penalty Paid</p>
+                      <p className="font-bold font-mono text-emerald-700 text-sm mt-0.5">
+                        {formatINR(selectedAccountData.penaltyBreakdown.penaltyPaidRupees)}
+                      </p>
+                    </div>
+
+                    <div className="bg-white p-2.5 rounded-lg border border-rose-100">
+                      <p className="text-[10px] text-rose-700 font-sans font-bold">Penalty Outstanding</p>
+                      <p className="font-bold font-mono text-rose-800 text-sm mt-0.5">
+                        {formatINR(selectedAccountData.penaltyBreakdown.penaltyOutstandingRupees)}
+                      </p>
+                    </div>
+
+                    <div className="bg-amber-100/70 p-2.5 rounded-lg border border-amber-300 col-span-2">
+                      <p className="text-[10px] text-amber-900 font-sans font-bold">Total Amount Required to Close Account</p>
+                      <p className="font-black font-mono text-amber-950 text-base mt-0.5">
+                        {formatINR(selectedAccountData.penaltyBreakdown.totalAmountToCloseRupees)}
+                      </p>
+                      <p className="text-[9px] text-amber-800 mt-0.5">
+                        Scheduled Repayment ({formatINR(selectedAccountData.totalOutstandingRupees)}) + Penalty ({formatINR(selectedAccountData.penaltyBreakdown.penaltyOutstandingRupees)})
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Grid Legend */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between text-xs pt-1 pb-2 border-b border-slate-200 gap-2">
                 <div className="flex flex-wrap items-center gap-2 sm:gap-4">
@@ -686,6 +772,49 @@ export default function DailyCollection({ onNavigate }) {
                     );
                   })}
                 </div>
+
+                {/* Overdue Penalty Schedule Days (Day D+1+) */}
+                {selectedAccountData.schedule.length > (selectedAccountData.totalDurationDays || 100) && (
+                  <div className="pt-3 border-t border-rose-200 space-y-2 mt-3">
+                    <div className="flex items-center justify-between">
+                      <h5 className="font-bold text-xs uppercase tracking-wider text-rose-700 flex items-center space-x-1.5">
+                        <AlertCircle className="w-3.5 h-3.5 text-rose-600" />
+                        <span>Overdue Penalty Schedule (Day {(selectedAccountData.totalDurationDays || 100) + 1}+)</span>
+                      </h5>
+                      <span className="text-[11px] font-mono text-rose-600">
+                        2% Daily Penalty: {formatINR(selectedAccountData.penaltyBreakdown?.dailyPenaltyRupees || 0)} / overdue day
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-5 sm:grid-cols-10 md:grid-cols-10 lg:grid-cols-20 gap-1.5">
+                      {selectedAccountData.schedule.slice(selectedAccountData.totalDurationDays || 100).map((day) => {
+                        let cellBg = 'bg-rose-50 hover:bg-rose-100 text-rose-800 border-rose-200';
+                        if (day.status === 'PAID') {
+                          cellBg = 'bg-emerald-500 hover:bg-emerald-600 text-white border-emerald-600';
+                        } else if (day.status === 'PARTIAL') {
+                          cellBg = 'bg-amber-400 hover:bg-amber-500 text-slate-900 border-amber-500';
+                        }
+
+                        return (
+                          <button
+                            key={day.dayNumber}
+                            onClick={() => handleOpenDayModal(day)}
+                            className={`p-1.5 rounded-lg border text-center transition-all cursor-pointer flex flex-col justify-between h-14 ${cellBg}`}
+                            title={`Overdue Day ${day.dayNumber}: Penalty ${formatINR(day.expectedRupees)}`}
+                          >
+                            <span className="text-[10px] font-bold">D{day.dayNumber}</span>
+                            <span className="text-[8px] opacity-80 leading-none">
+                              {new Date(day.scheduledDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
+                            </span>
+                            <span className="text-[9px] font-bold font-mono leading-none">
+                              {day.status === 'PAID' ? `₹${day.collectedRupees}` : `₹${day.expectedRupees}`}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Payments History for Selected Account */}

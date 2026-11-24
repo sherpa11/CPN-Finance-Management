@@ -9,6 +9,7 @@ const {
   toRupees,
   formatINR,
   validateAndAllocatePayment,
+  calculateDailyPenalty,
 } = require('../services/calculationEngine');
 const { evaluateDueNotifications } = require('../services/notificationService');
 const { invalidateDashboardCache } = require('./dashboardController');
@@ -60,7 +61,7 @@ async function generateTransactionId() {
  */
 const previewCollection = async (req, res, next) => {
   try {
-    const { loanId, paymentAmount, principalAllocation, interestAllocation } = req.body;
+    const { loanId, paymentAmount, principalAllocation, interestAllocation, penaltyAllocation } = req.body;
 
     if (!loanId || !paymentAmount) {
       return res.status(400).json({ success: false, message: 'Loan ID and payment amount are required' });
@@ -71,16 +72,35 @@ const previewCollection = async (req, res, next) => {
       return res.status(404).json({ success: false, message: 'Loan account not found' });
     }
 
+    let currentOutstandingPenaltyPaise = 0;
+    let penaltyCalc = null;
+    if (loan.vattiType === 'DAILY') {
+      const dailyInstalmentPaise = loan.dailyInstalmentPaise || (loan.totalDurationDays ? Math.floor((loan.principalPaise || 0) / loan.totalDurationDays) : Math.floor((loan.principalPaise || 0) / 10));
+      penaltyCalc = calculateDailyPenalty({
+        dailyRepaymentAmountPaise: dailyInstalmentPaise,
+        dueDate: loan.dueDate,
+        asOfDate: new Date(),
+        isFullyRepaid: loan.outstandingPrincipalPaise === 0,
+        fullRepaymentDate: loan.settledDate || null,
+        penaltyPaidPaise: loan.penaltyPaidPaise || 0,
+        penaltyRatePercent: loan.penaltyRatePercent || 2.0,
+      });
+      currentOutstandingPenaltyPaise = penaltyCalc.penaltyOutstandingPaise;
+    }
+
     const totalPaymentPaise = toPaise(paymentAmount);
     const pAllocPaise = toPaise(principalAllocation || 0);
     const iAllocPaise = toPaise(interestAllocation || 0);
+    const penaltyAllocPaise = toPaise(penaltyAllocation || 0);
 
     const breakdown = validateAndAllocatePayment({
       currentOutstandingPrincipalPaise: loan.outstandingPrincipalPaise,
       currentOutstandingInterestPaise: loan.outstandingInterestPaise,
+      currentOutstandingPenaltyPaise,
       totalPaymentPaise,
       principalAllocationPaise: pAllocPaise,
       interestAllocationPaise: iAllocPaise,
+      penaltyAllocationPaise: penaltyAllocPaise,
     });
 
     res.json({
@@ -88,12 +108,15 @@ const previewCollection = async (req, res, next) => {
       breakdown: {
         previousOutstandingPrincipalRupees: toRupees(breakdown.previousOutstandingPrincipalPaise),
         previousOutstandingInterestRupees: toRupees(breakdown.previousOutstandingInterestPaise),
-        previousTotalOutstandingRupees: toRupees(breakdown.previousOutstandingPrincipalPaise + breakdown.previousOutstandingInterestPaise),
+        previousOutstandingPenaltyRupees: toRupees(breakdown.previousOutstandingPenaltyPaise),
+        previousTotalOutstandingRupees: toRupees(breakdown.previousOutstandingPrincipalPaise + breakdown.previousOutstandingInterestPaise + breakdown.previousOutstandingPenaltyPaise),
         amountReceivedRupees: toRupees(breakdown.totalPaymentPaise),
         principalAllocationRupees: toRupees(breakdown.principalAllocationPaise),
         interestAllocationRupees: toRupees(breakdown.interestAllocationPaise),
+        penaltyAllocationRupees: toRupees(breakdown.penaltyAllocationPaise),
         remainingPrincipalRupees: toRupees(breakdown.remainingPrincipalPaise),
         remainingInterestRupees: toRupees(breakdown.remainingInterestPaise),
+        remainingPenaltyRupees: toRupees(breakdown.remainingPenaltyPaise),
         totalRemainingRupees: toRupees(breakdown.totalOutstandingPaise),
         isFullySettled: breakdown.isFullySettled,
       },
@@ -114,6 +137,7 @@ const recordCollection = async (req, res, next) => {
       paymentAmount,
       principalAllocation,
       interestAllocation,
+      penaltyAllocation,
       paymentMethod,
       remarks,
       idempotencyKey,
@@ -156,17 +180,36 @@ const recordCollection = async (req, res, next) => {
       return res.status(404).json({ success: false, message: 'Customer account not found' });
     }
 
+    let currentOutstandingPenaltyPaise = 0;
+    let penaltyCalc = null;
+    if (loan.vattiType === 'DAILY') {
+      const dailyInstalmentPaise = loan.dailyInstalmentPaise || (loan.totalDurationDays ? Math.floor((loan.principalPaise || 0) / loan.totalDurationDays) : Math.floor((loan.principalPaise || 0) / 10));
+      penaltyCalc = calculateDailyPenalty({
+        dailyRepaymentAmountPaise: dailyInstalmentPaise,
+        dueDate: loan.dueDate,
+        asOfDate: paymentDate ? new Date(paymentDate) : new Date(),
+        isFullyRepaid: loan.outstandingPrincipalPaise === 0,
+        fullRepaymentDate: loan.settledDate || null,
+        penaltyPaidPaise: loan.penaltyPaidPaise || 0,
+        penaltyRatePercent: loan.penaltyRatePercent || 2.0,
+      });
+      currentOutstandingPenaltyPaise = penaltyCalc.penaltyOutstandingPaise;
+    }
+
     const totalPaymentPaise = toPaise(paymentAmount);
     const pAllocPaise = toPaise(principalAllocation || 0);
     const iAllocPaise = toPaise(interestAllocation || 0);
+    const penaltyAllocPaise = toPaise(penaltyAllocation || 0);
 
     // Validate allocations against loan balances
     const breakdown = validateAndAllocatePayment({
       currentOutstandingPrincipalPaise: loan.outstandingPrincipalPaise,
       currentOutstandingInterestPaise: loan.outstandingInterestPaise,
+      currentOutstandingPenaltyPaise,
       totalPaymentPaise,
       principalAllocationPaise: pAllocPaise,
       interestAllocationPaise: iAllocPaise,
+      penaltyAllocationPaise: penaltyAllocPaise,
     });
 
     const collectionId = await generateCollectionId();
@@ -186,13 +229,16 @@ const recordCollection = async (req, res, next) => {
         totalAmountPaise: totalPaymentPaise,
         principalAllocationPaise: breakdown.principalAllocationPaise,
         interestAllocationPaise: breakdown.interestAllocationPaise,
+        penaltyAllocationPaise: breakdown.penaltyAllocationPaise,
         paymentMethod: paymentMethod || 'CASH',
         idempotencyKey: idempotencyKey || undefined,
         status: CONSTANTS.COLLECTION_STATUS.CONFIRMED,
         previousOutstandingPrincipalPaise: breakdown.previousOutstandingPrincipalPaise,
         previousOutstandingInterestPaise: breakdown.previousOutstandingInterestPaise,
+        previousOutstandingPenaltyPaise: breakdown.previousOutstandingPenaltyPaise,
         remainingPrincipalPaise: breakdown.remainingPrincipalPaise,
         remainingInterestPaise: breakdown.remainingInterestPaise,
+        remainingPenaltyPaise: breakdown.remainingPenaltyPaise,
         remarks: remarks || '',
         collectedBy: req.user.username,
       });
@@ -211,10 +257,13 @@ const recordCollection = async (req, res, next) => {
         principalCreditPaise: breakdown.principalAllocationPaise,
         interestDebitPaise: 0,
         interestCreditPaise: breakdown.interestAllocationPaise,
+        penaltyDebitPaise: 0,
+        penaltyCreditPaise: breakdown.penaltyAllocationPaise,
         balancePrincipalPaise: breakdown.remainingPrincipalPaise,
         balanceInterestPaise: breakdown.remainingInterestPaise,
+        balancePenaltyPaise: breakdown.remainingPenaltyPaise,
         balanceTotalPaise: breakdown.totalOutstandingPaise,
-        remarks: `Collection [${collection.receiptNumber}] via ${collection.paymentMethod}: Principal ₹${toRupees(breakdown.principalAllocationPaise)}, Interest ₹${toRupees(breakdown.interestAllocationPaise)}`,
+        remarks: `Collection [${collection.receiptNumber}] via ${collection.paymentMethod}: Principal ₹${toRupees(breakdown.principalAllocationPaise)}, Interest ₹${toRupees(breakdown.interestAllocationPaise)}${breakdown.penaltyAllocationPaise > 0 ? `, Penalty ₹${toRupees(breakdown.penaltyAllocationPaise)}` : ''}`,
         referenceId: collection.receiptNumber,
         performedBy: req.user.username,
       });
@@ -224,6 +273,11 @@ const recordCollection = async (req, res, next) => {
       // 3. Update Loan Balances
       loan.outstandingPrincipalPaise = breakdown.remainingPrincipalPaise;
       loan.outstandingInterestPaise = breakdown.remainingInterestPaise;
+      loan.penaltyPaidPaise = (loan.penaltyPaidPaise || 0) + breakdown.penaltyAllocationPaise;
+      loan.penaltyOutstandingPaise = breakdown.remainingPenaltyPaise;
+      if (penaltyCalc) {
+        loan.penaltyAssessedPaise = penaltyCalc.cumulativePenaltyPaise;
+      }
       loan.totalPrincipalPaidPaise = (loan.totalPrincipalPaidPaise || 0) + breakdown.principalAllocationPaise;
       loan.totalInterestPaidPaise = (loan.totalInterestPaidPaise || 0) + breakdown.interestAllocationPaise;
 
@@ -342,6 +396,8 @@ const reverseCollection = async (req, res, next) => {
       // 2. Restore loan balances
       loan.outstandingPrincipalPaise += collection.principalAllocationPaise;
       loan.outstandingInterestPaise += collection.interestAllocationPaise;
+      loan.penaltyPaidPaise = Math.max(0, (loan.penaltyPaidPaise || 0) - (collection.penaltyAllocationPaise || 0));
+      loan.penaltyOutstandingPaise = (loan.penaltyOutstandingPaise || 0) + (collection.penaltyAllocationPaise || 0);
       loan.totalPrincipalPaidPaise = Math.max(0, loan.totalPrincipalPaidPaise - collection.principalAllocationPaise);
       loan.totalInterestPaidPaise = Math.max(0, loan.totalInterestPaidPaise - collection.interestAllocationPaise);
 
@@ -376,9 +432,12 @@ const reverseCollection = async (req, res, next) => {
         principalCreditPaise: 0,
         interestDebitPaise: collection.interestAllocationPaise, // Re-debit
         interestCreditPaise: 0,
+        penaltyDebitPaise: collection.penaltyAllocationPaise || 0, // Re-debit
+        penaltyCreditPaise: 0,
         balancePrincipalPaise: loan.outstandingPrincipalPaise,
         balanceInterestPaise: loan.outstandingInterestPaise,
-        balanceTotalPaise: loan.outstandingPrincipalPaise + loan.outstandingInterestPaise,
+        balancePenaltyPaise: loan.penaltyOutstandingPaise,
+        balanceTotalPaise: loan.outstandingPrincipalPaise + loan.outstandingInterestPaise + (loan.penaltyOutstandingPaise || 0),
         remarks: `${isDelete ? 'Deletion / Reversal' : 'Reversal'} of Receipt [${collection.receiptNumber}]. Reason: ${reason}`,
         referenceId: collection.receiptNumber,
         performedBy: req.user.username,
@@ -458,7 +517,13 @@ const listCollections = async (req, res, next) => {
       total,
       page: Number(page),
       totalPages: Math.ceil(total / limit),
-      collections,
+      collections: collections.map((c) => ({
+        ...c,
+        totalAmountRupees: toRupees(c.totalAmountPaise),
+        principalAllocationRupees: toRupees(c.principalAllocationPaise),
+        interestAllocationRupees: toRupees(c.interestAllocationPaise),
+        penaltyAllocationRupees: toRupees(c.penaltyAllocationPaise || 0),
+      })),
     });
   } catch (error) {
     next(error);

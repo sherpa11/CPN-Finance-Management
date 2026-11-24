@@ -32,6 +32,7 @@ export default function Collections({ initialLoan }) {
   const [paymentAmount, setPaymentAmount] = useState('');
   const [principalAllocation, setPrincipalAllocation] = useState('');
   const [interestAllocation, setInterestAllocation] = useState('');
+  const [penaltyAllocation, setPenaltyAllocation] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('CASH');
   const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0]);
   const [remarks, setRemarks] = useState('');
@@ -130,6 +131,7 @@ export default function Collections({ initialLoan }) {
           paymentAmount: Number(paymentAmount),
           principalAllocation: Number(principalAllocation || 0),
           interestAllocation: Number(interestAllocation || 0),
+          penaltyAllocation: Number(penaltyAllocation || 0),
         });
 
         if (res.data.success) {
@@ -144,32 +146,35 @@ export default function Collections({ initialLoan }) {
 
     const timer = setTimeout(calculateBreakdown, 300);
     return () => clearTimeout(timer);
-  }, [selectedLoanId, paymentAmount, principalAllocation, interestAllocation]);
+  }, [selectedLoanId, paymentAmount, principalAllocation, interestAllocation, penaltyAllocation]);
 
   // Quick allocation helper: Full Interest
   const handleAutoInterestOnly = () => {
     if (!selectedLoanObj) return;
-    const dueInterest = selectedLoanObj.outstandingInterestPaise / 100;
+    const dueInterest = (selectedLoanObj.outstandingInterestPaise || 0) / 100;
     setPaymentAmount(String(dueInterest));
     setPrincipalAllocation('0');
     setInterestAllocation(String(dueInterest));
+    setPenaltyAllocation('0');
   };
 
   // Quick allocation helper: Full Settlement
   const handleAutoFullSettlement = () => {
     if (!selectedLoanObj) return;
-    const dueP = selectedLoanObj.outstandingPrincipalPaise / 100;
-    const dueI = selectedLoanObj.outstandingInterestPaise / 100;
-    const total = dueP + dueI;
+    const dueP = (selectedLoanObj.outstandingPrincipalPaise || 0) / 100;
+    const dueI = (selectedLoanObj.outstandingInterestPaise || 0) / 100;
+    const duePen = selectedLoanObj.penaltyBreakdown?.penaltyOutstandingRupees || (selectedLoanObj.penaltyOutstandingPaise || 0) / 100;
+    const total = dueP + dueI + duePen;
     setPaymentAmount(String(total));
     setPrincipalAllocation(String(dueP));
     setInterestAllocation(String(dueI));
+    setPenaltyAllocation(String(duePen));
   };
 
   const handleRecordPayment = async (e) => {
     e.preventDefault();
     if (!breakdown) {
-      setBreakdownError('Please ensure principal and interest allocations match the total amount received.');
+      setBreakdownError('Please ensure principal, interest, and penalty allocations match the total amount received.');
       return;
     }
 
@@ -184,6 +189,7 @@ export default function Collections({ initialLoan }) {
         paymentAmount: Number(paymentAmount),
         principalAllocation: Number(principalAllocation || 0),
         interestAllocation: Number(interestAllocation || 0),
+        penaltyAllocation: Number(penaltyAllocation || 0),
         paymentMethod,
         remarks,
         idempotencyKey,
@@ -197,9 +203,11 @@ export default function Collections({ initialLoan }) {
           totalAmountRupees: res.data.collection.totalAmountPaise / 100,
           principalAllocationRupees: res.data.collection.principalAllocationPaise / 100,
           interestAllocationRupees: res.data.collection.interestAllocationPaise / 100,
-          remainingPrincipalRupees: res.data.remainingSummary.remainingPrincipalRupees,
-          remainingInterestRupees: res.data.remainingSummary.remainingInterestRupees,
-          totalRemainingRupees: res.data.remainingSummary.totalRemainingRupees,
+          penaltyAllocationRupees: (res.data.collection.penaltyAllocationPaise || 0) / 100,
+          remainingPrincipalRupees: res.data.remainingSummary?.remainingPrincipalRupees,
+          remainingInterestRupees: res.data.remainingSummary?.remainingInterestRupees,
+          remainingPenaltyRupees: res.data.remainingSummary?.remainingPenaltyRupees,
+          totalRemainingRupees: res.data.remainingSummary?.totalRemainingRupees,
         });
         fetchCollections();
         loadActiveLoans();
@@ -329,6 +337,7 @@ export default function Collections({ initialLoan }) {
                   <th className="py-3 px-3 font-semibold">Method</th>
                   <th className="py-3 px-3 font-semibold text-right">Principal Repaid</th>
                   <th className="py-3 px-3 font-semibold text-right">Interest Repaid</th>
+                  <th className="py-3 px-3 font-semibold text-right">Penalty Repaid</th>
                   <th className="py-3 px-3 font-semibold text-right">Total Received</th>
                   <th className="py-3 px-3 font-semibold">Status</th>
                   <th className="py-3 px-4 font-semibold text-right">Actions</th>
@@ -351,6 +360,9 @@ export default function Collections({ initialLoan }) {
                       </td>
                       <td className="py-3 px-3 text-right font-mono font-medium text-emerald-700">
                         {formatINR(col.interestAllocationPaise / 100)}
+                      </td>
+                      <td className="py-3 px-3 text-right font-mono font-medium text-rose-700">
+                        {col.penaltyAllocationPaise > 0 ? formatINR(col.penaltyAllocationPaise / 100) : '—'}
                       </td>
                       <td className="py-3 px-3 text-right font-mono font-bold text-slate-950">
                         {formatINR(col.totalAmountPaise / 100)}
@@ -448,7 +460,7 @@ export default function Collections({ initialLoan }) {
 
               {/* Outstanding Balance Banner */}
               {selectedLoanObj && (
-                <div className="bg-slate-50 border border-slate-200 p-3 rounded-lg grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 text-xs font-mono">
+                <div className={`bg-slate-50 border border-slate-200 p-3 rounded-lg grid grid-cols-1 ${selectedLoanObj.penaltyBreakdown?.isPenaltyApplicable ? 'sm:grid-cols-3' : 'sm:grid-cols-2'} gap-2 sm:gap-3 text-xs font-mono`}>
                   <div>
                     <span className="text-[10px] text-slate-500 font-sans block">Current Outstanding Principal:</span>
                     <span className="text-sm font-bold text-slate-900">
@@ -461,6 +473,21 @@ export default function Collections({ initialLoan }) {
                       {formatINR(selectedLoanObj.outstandingInterestPaise / 100)}
                     </span>
                   </div>
+                  {selectedLoanObj.penaltyBreakdown?.isPenaltyApplicable && (
+                    <div>
+                      <span className="text-[10px] text-rose-600 font-sans block font-semibold">
+                        Overdue Penalty (2%/day):
+                      </span>
+                      <span className="text-sm font-bold text-rose-700">
+                        {formatINR(selectedLoanObj.penaltyBreakdown?.penaltyOutstandingRupees || (selectedLoanObj.penaltyOutstandingPaise || 0) / 100)}
+                      </span>
+                      {selectedLoanObj.penaltyBreakdown?.overdueDays > 0 && (
+                        <span className="text-[10px] text-rose-500 block font-sans">
+                          ({selectedLoanObj.penaltyBreakdown.overdueDays} days @ ₹{selectedLoanObj.penaltyBreakdown.dailyPenaltyRupees}/day)
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -504,7 +531,7 @@ export default function Collections({ initialLoan }) {
                   Explicit Payment Allocation (Must sum exactly to total received)
                 </p>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
+                <div className={`grid grid-cols-1 ${selectedLoanObj?.penaltyBreakdown?.isPenaltyApplicable ? 'sm:grid-cols-3' : 'sm:grid-cols-2'} gap-2 sm:gap-3`}>
                   <div>
                     <label className="block text-[11px] font-medium text-slate-600 mb-1">
                       Principal Allocation (₹)
@@ -534,6 +561,23 @@ export default function Collections({ initialLoan }) {
                       className="w-full px-3 py-1.5 border border-slate-300 rounded font-mono font-bold text-slate-900"
                     />
                   </div>
+
+                  {selectedLoanObj?.penaltyBreakdown?.isPenaltyApplicable && (
+                    <div>
+                      <label className="block text-[11px] font-semibold text-rose-700 mb-1">
+                        Penalty Allocation (₹)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        placeholder="0"
+                        value={penaltyAllocation}
+                        onChange={(e) => setPenaltyAllocation(e.target.value)}
+                        className="w-full px-3 py-1.5 border border-rose-300 rounded font-mono font-bold text-rose-800 focus:ring-rose-500"
+                      />
+                    </div>
+                  )}
                 </div>
 
                 {/* Live Post-Payment Breakdown Preview */}
@@ -547,6 +591,12 @@ export default function Collections({ initialLoan }) {
                       <span className="text-slate-500">Remaining Interest:</span>
                       <span className="font-bold text-slate-900">{formatINR(breakdown.remainingInterestRupees)}</span>
                     </div>
+                    {(breakdown.penaltyAllocationRupees > 0 || (breakdown.remainingPenaltyRupees || 0) > 0) && (
+                      <div className="flex justify-between font-sans">
+                        <span className="text-rose-600 font-semibold">Remaining Penalty:</span>
+                        <span className="font-bold text-rose-700">{formatINR(breakdown.remainingPenaltyRupees || 0)}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between font-sans font-bold pt-1 border-t border-slate-200 text-slate-950">
                       <span>Total Remaining:</span>
                       <span className={breakdown.isFullySettled ? 'text-emerald-700' : 'text-rose-700'}>

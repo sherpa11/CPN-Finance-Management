@@ -57,6 +57,11 @@ const collectionSchema = new mongoose.Schema(
       required: true,
       min: 0,
     },
+    penaltyAllocationPaise: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
     paymentMethod: {
       type: String,
       enum: ['CASH', 'UPI', 'BANK_TRANSFER', 'OTHER'],
@@ -84,6 +89,10 @@ const collectionSchema = new mongoose.Schema(
       type: Number,
       required: true,
     },
+    previousOutstandingPenaltyPaise: {
+      type: Number,
+      default: 0,
+    },
     remainingPrincipalPaise: {
       type: Number,
       required: true,
@@ -91,6 +100,10 @@ const collectionSchema = new mongoose.Schema(
     remainingInterestPaise: {
       type: Number,
       required: true,
+    },
+    remainingPenaltyPaise: {
+      type: Number,
+      default: 0,
     },
     remarks: {
       type: String,

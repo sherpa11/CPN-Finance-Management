@@ -52,7 +52,7 @@ const dailyCollectionPaymentSchema = new mongoose.Schema(
     },
     category: {
       type: String,
-      enum: ['PRINCIPAL', 'INTEREST'],
+      enum: ['PRINCIPAL', 'INTEREST', 'PENALTY'],
       required: true,
     },
     principalAllocationPaise: {
@@ -61,6 +61,11 @@ const dailyCollectionPaymentSchema = new mongoose.Schema(
       min: 0,
     },
     interestAllocationPaise: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    penaltyAllocationPaise: {
       type: Number,
       default: 0,
       min: 0,

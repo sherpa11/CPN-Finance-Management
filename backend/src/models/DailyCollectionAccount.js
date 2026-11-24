@@ -12,7 +12,7 @@ const scheduleItemSchema = new mongoose.Schema(
     },
     category: {
       type: String,
-      enum: ['PRINCIPAL', 'INTEREST'],
+      enum: ['PRINCIPAL', 'INTEREST', 'PENALTY'],
       required: true,
     },
     expectedPaise: {
@@ -154,6 +154,31 @@ const dailyCollectionAccountSchema = new mongoose.Schema(
       min: 0,
     },
     outstandingInterestPaise: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    // Penalty Tracking for Daily Collection (2% of daily instalment per overdue day)
+    penaltyRatePercent: {
+      type: Number,
+      default: 2.0,
+    },
+    penaltyAssessedPaise: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    penaltyPaidPaise: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    penaltyOutstandingPaise: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    overdueDays: {
       type: Number,
       default: 0,
       min: 0,

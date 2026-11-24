@@ -501,6 +501,81 @@ function calculateDailyCollectionSchemeB({
 }
 
 /**
+ * Client-Confirmed Penalty Calculation for Daily Finance and Daily Collection
+ * 
+ * Business Rules:
+ * 1. Monthly Finance: NO penalty under any circumstances.
+ * 2. Daily Finance & Daily Collection:
+ *    - Rate: 2% of the daily repayment amount per overdue day.
+ *    - Formula: Daily Penalty = Daily Repayment Amount × 2 / 100
+ *    - Penalty Start Date: Day D+1 (e.g. Day 101 for 100-day loan, or Day 71 for 70-day collection).
+ *    - Days 1 through D: No penalty. Never apply penalty on Day D.
+ *    - Day D+1: 1 overdue day (1 × Daily Penalty).
+ *    - Day D+2: 2 overdue days (2 × Daily Penalty), etc.
+ *    - Cumulative Penalty = Overdue Days × Daily Penalty Amount.
+ *    - Stop adding penalties once scheduled amount is fully repaid.
+ *    - Penalty Outstanding = Cumulative Penalty - Penalty Paid.
+ *    - Total Amount to Close = Outstanding Principal + Outstanding Interest + Penalty Outstanding.
+ * 
+ * Strict Separation:
+ * - Upfront interest collected at disbursement is NOT penalized or deducted again.
+ * - Penalty payments are NOT treated as principal repayment.
+ * - Assessed penalty is NOT counted as collected cash until customer actually pays it.
+ */
+function calculateDailyPenalty({
+  dailyRepaymentAmountPaise,
+  dueDate,
+  asOfDate,
+  isFullyRepaid = false,
+  fullRepaymentDate = null,
+  penaltyPaidPaise = 0,
+  penaltyRatePercent = 2.0,
+}) {
+  const dailyInstalment = Math.round(dailyRepaymentAmountPaise || 0);
+  if (dailyInstalment <= 0) {
+    return {
+      isPenaltyApplicable: false,
+      dailyRepaymentAmountPaise: 0,
+      dailyPenaltyPaise: 0,
+      overdueDays: 0,
+      cumulativePenaltyPaise: 0,
+      penaltyPaidPaise: 0,
+      penaltyOutstandingPaise: 0,
+    };
+  }
+
+  // Daily Penalty = Daily Repayment Amount × 2 / 100
+  const dailyPenaltyPaise = Math.round((dailyInstalment * penaltyRatePercent) / 100);
+
+  const due = getKolkataDate(dueDate);
+  // If loan was fully repaid, penalties stop accruing on full repayment date
+  const target = isFullyRepaid && fullRepaymentDate
+    ? getKolkataDate(fullRepaymentDate)
+    : getKolkataDate(asOfDate);
+
+  // Overdue Days = Max(0, target - due)
+  // Note: If target is due date (Day D), target.diff(due, 'days').days is 0 -> 0 overdue days!
+  // If target is Day D+1, diff is 1 -> 1 overdue day -> 1 × dailyPenaltyPaise
+  const diffDays = Math.floor(target.diff(due, 'days').days);
+  const overdueDays = Math.max(0, diffDays);
+
+  const cumulativePenaltyPaise = overdueDays * dailyPenaltyPaise;
+  const paid = Math.max(0, Math.round(penaltyPaidPaise || 0));
+  const penaltyOutstandingPaise = Math.max(0, cumulativePenaltyPaise - paid);
+
+  return {
+    isPenaltyApplicable: true,
+    penaltyRatePercent,
+    dailyRepaymentAmountPaise: dailyInstalment,
+    dailyPenaltyPaise,
+    overdueDays,
+    cumulativePenaltyPaise,
+    penaltyPaidPaise: paid,
+    penaltyOutstandingPaise,
+  };
+}
+
+/**
  * Unified Loan Calculation Dispatcher
  */
 function calculateLoanInterest({
@@ -590,28 +665,35 @@ function calculateLoanInterest({
  * Collection Allocation Validator & Calculator
  * 
  * Verifies that explicit allocation satisfies balance constraints.
+ * Strict separation: Principal, Scheduled Interest, and Assessed Penalty.
  */
 function validateAndAllocatePayment({
-  currentOutstandingPrincipalPaise,
-  currentOutstandingInterestPaise,
+  currentOutstandingPrincipalPaise = 0,
+  currentOutstandingInterestPaise = 0,
+  currentOutstandingPenaltyPaise = 0,
   totalPaymentPaise,
-  principalAllocationPaise,
-  interestAllocationPaise,
+  paymentAmountPaise,
+  principalAllocationPaise = 0,
+  interestAllocationPaise = 0,
+  penaltyAllocationPaise = 0,
 }) {
-  if (totalPaymentPaise <= 0) {
+  const effectiveTotalPaise = totalPaymentPaise !== undefined ? totalPaymentPaise : (paymentAmountPaise !== undefined ? paymentAmountPaise : 0);
+  if (effectiveTotalPaise <= 0) {
     throw new Error('Payment amount must be greater than zero.');
   }
 
   const pAlloc = Math.round(principalAllocationPaise || 0);
   const iAlloc = Math.round(interestAllocationPaise || 0);
+  const penaltyAlloc = Math.round(penaltyAllocationPaise || 0);
 
-  if (pAlloc < 0 || iAlloc < 0) {
-    throw new Error('Principal and Interest allocations cannot be negative.');
+  if (pAlloc < 0 || iAlloc < 0 || penaltyAlloc < 0) {
+    throw new Error('Principal, Interest, and Penalty allocations cannot be negative.');
   }
 
-  if (pAlloc + iAlloc !== totalPaymentPaise) {
+  const sumAllocations = pAlloc + iAlloc + penaltyAlloc;
+  if (sumAllocations !== effectiveTotalPaise) {
     throw new Error(
-      `Sum of allocations (₹${toRupees(pAlloc)} principal + ₹${toRupees(iAlloc)} interest = ₹${toRupees(pAlloc + iAlloc)}) must exactly equal total payment received (₹${toRupees(totalPaymentPaise)}).`
+      `Sum of allocations (₹${toRupees(pAlloc)} principal + ₹${toRupees(iAlloc)} interest + ₹${toRupees(penaltyAlloc)} penalty = ₹${toRupees(sumAllocations)}) must exactly equal total payment received (₹${toRupees(effectiveTotalPaise)}).`
     );
   }
 
@@ -621,23 +703,28 @@ function validateAndAllocatePayment({
     );
   }
 
-  if (iAlloc > currentOutstandingInterestPaise) {
-    // Note: If customer pays advance interest, system can warn or allocate
-    // For strict financial safety, we allow it only if explicit flag or clamp
+  if (penaltyAlloc > currentOutstandingPenaltyPaise && currentOutstandingPenaltyPaise > 0) {
+    throw new Error(
+      `Penalty allocation (₹${toRupees(penaltyAlloc)}) exceeds current outstanding penalty (₹${toRupees(currentOutstandingPenaltyPaise)}).`
+    );
   }
 
   const remainingPrincipalPaise = Math.max(0, currentOutstandingPrincipalPaise - pAlloc);
   const remainingInterestPaise = Math.max(0, currentOutstandingInterestPaise - iAlloc);
-  const totalOutstandingPaise = remainingPrincipalPaise + remainingInterestPaise;
+  const remainingPenaltyPaise = Math.max(0, currentOutstandingPenaltyPaise - penaltyAlloc);
+  const totalOutstandingPaise = remainingPrincipalPaise + remainingInterestPaise + remainingPenaltyPaise;
 
   return {
     previousOutstandingPrincipalPaise: currentOutstandingPrincipalPaise,
     previousOutstandingInterestPaise: currentOutstandingInterestPaise,
-    totalPaymentPaise,
+    previousOutstandingPenaltyPaise: currentOutstandingPenaltyPaise,
+    totalPaymentPaise: effectiveTotalPaise,
     principalAllocationPaise: pAlloc,
     interestAllocationPaise: iAlloc,
+    penaltyAllocationPaise: penaltyAlloc,
     remainingPrincipalPaise,
     remainingInterestPaise,
+    remainingPenaltyPaise,
     totalOutstandingPaise,
     isFullySettled: totalOutstandingPaise === 0,
   };
@@ -654,5 +741,6 @@ module.exports = {
   calculateDailyCollectionSchemeA,
   calculateDailyCollectionSchemeB,
   calculateLoanInterest,
+  calculateDailyPenalty,
   validateAndAllocatePayment,
 };

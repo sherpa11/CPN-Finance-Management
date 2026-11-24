@@ -70,6 +70,8 @@ export default function DailyFinance({ onNavigate, preselectedCustomer }) {
   const [isCollectionModalOpen, setIsCollectionModalOpen] = useState(false);
   const [collectionTargetLoan, setCollectionTargetLoan] = useState(null);
   const [collectionAmount, setCollectionAmount] = useState('');
+  const [collectionPrincipalAllocation, setCollectionPrincipalAllocation] = useState('');
+  const [collectionPenaltyAllocation, setCollectionPenaltyAllocation] = useState('0');
   const [collectionMethod, setPaymentMethod] = useState('CASH');
   const [collectionDate, setCollectionDate] = useState(new Date().toISOString().split('T')[0]);
   const [collectionRemarks, setCollectionRemarks] = useState('');
@@ -298,7 +300,10 @@ export default function DailyFinance({ onNavigate, preselectedCustomer }) {
     const targetInstalment = loan.dailyInstalmentPaise
       ? String(loan.dailyInstalmentPaise / 100)
       : String(Math.min((loan.outstandingPrincipalPaise || 0) / 100, Math.floor((loan.principalPaise || 0) / (loan.totalDurationDays || 10) / 100)));
-    setCollectionAmount(targetInstalment > 0 ? targetInstalment : '');
+    const targetVal = targetInstalment > 0 ? targetInstalment : '';
+    setCollectionAmount(targetVal);
+    setCollectionPrincipalAllocation(targetVal);
+    setCollectionPenaltyAllocation('0');
     setCollectionError('');
     setCollectionSuccess('');
     setPaymentMethod('CASH');
@@ -307,7 +312,7 @@ export default function DailyFinance({ onNavigate, preselectedCustomer }) {
     setIsCollectionModalOpen(true);
   };
 
-  // Submit Quick Collection (100% principal repayment reduction)
+  // Submit Quick Collection (with strict separation between Principal and Penalty)
   const handleRecordCollection = async (e) => {
     e.preventDefault();
     if (!collectionTargetLoan) return;
@@ -318,9 +323,23 @@ export default function DailyFinance({ onNavigate, preselectedCustomer }) {
       return;
     }
 
+    const pAlloc = parseFloat(collectionPrincipalAllocation) || 0;
+    const penaltyAlloc = parseFloat(collectionPenaltyAllocation) || 0;
+
+    if (Math.round((pAlloc + penaltyAlloc) * 100) !== Math.round(amt * 100)) {
+      setCollectionError(`Sum of principal (₹${pAlloc}) and penalty (₹${penaltyAlloc}) allocations must equal total payment (₹${amt}).`);
+      return;
+    }
+
     const currentBal = (collectionTargetLoan.outstandingPrincipalPaise || 0) / 100;
-    if (amt > currentBal) {
-      setCollectionError(`Collection cannot exceed outstanding principal balance of ${formatINR(currentBal)}`);
+    if (pAlloc > currentBal) {
+      setCollectionError(`Principal allocation cannot exceed outstanding principal balance of ${formatINR(currentBal)}`);
+      return;
+    }
+
+    const penaltyBal = collectionTargetLoan.penaltyBreakdown?.penaltyOutstandingRupees || 0;
+    if (penaltyAlloc > penaltyBal && penaltyBal > 0) {
+      setCollectionError(`Penalty allocation cannot exceed outstanding penalty of ${formatINR(penaltyBal)}`);
       return;
     }
 
@@ -330,11 +349,12 @@ export default function DailyFinance({ onNavigate, preselectedCustomer }) {
       const res = await api.post('/collections', {
         loanId: collectionTargetLoan._id,
         paymentAmount: amt,
-        principalAllocation: amt,
+        principalAllocation: pAlloc,
         interestAllocation: 0,
+        penaltyAllocation: penaltyAlloc,
         paymentMethod: collectionMethod,
         paymentDate: collectionDate,
-        remarks: collectionRemarks || 'Daily Finance repayment collection',
+        remarks: collectionRemarks || (penaltyAlloc > 0 ? 'Daily repayment & overdue penalty' : 'Daily Finance repayment collection'),
       });
 
       if (res.data?.success) {
@@ -517,6 +537,7 @@ export default function DailyFinance({ onNavigate, preselectedCustomer }) {
                     <th className="px-4 py-3 text-right">Daily Repaid</th>
                     <th className="px-4 py-3 text-right">Outstanding Balance</th>
                     <th className="px-4 py-3">Due Date</th>
+                    <th className="px-4 py-3 text-right">Overdue Penalty (2%)</th>
                     <th className="px-4 py-3 text-center">Status</th>
                     <th className="px-4 py-3 text-center">Actions</th>
                   </tr>
@@ -567,6 +588,20 @@ export default function DailyFinance({ onNavigate, preselectedCustomer }) {
                         </td>
                         <td className="px-4 py-3 text-slate-600 whitespace-nowrap">
                           {formatDate(loan.dueDate)}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          {loan.penaltyBreakdown && loan.penaltyBreakdown.overdueDays > 0 ? (
+                            <div>
+                              <span className="font-bold text-rose-700">
+                                {formatINR(loan.penaltyBreakdown.penaltyOutstandingRupees)}
+                              </span>
+                              <div className="text-[10px] text-rose-500 font-mono">
+                                {loan.penaltyBreakdown.overdueDays}d overdue ({formatINR(loan.penaltyBreakdown.dailyPenaltyRupees)}/d)
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-slate-400 font-mono text-[11px]">₹0.00</span>
+                          )}
                         </td>
                         <td className="px-4 py-3 text-center">
                           <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold border ${statusBadge.bg}`}>
@@ -857,6 +892,22 @@ export default function DailyFinance({ onNavigate, preselectedCustomer }) {
                 <p className="text-slate-400 text-[10px]">
                   Interest is recorded as collected immediately at loan disbursement. Customer repays the full original principal through daily instalments. Upfront interest is never charged or accrued again.
                 </p>
+
+                <div className="pt-2 border-t border-amber-800/60 mt-2">
+                  <p className="font-bold flex items-center space-x-1.5 text-rose-300">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                    <span>Client-Confirmed Daily Penalty Rule:</span>
+                  </p>
+                  <p className="text-slate-300 text-[10px] mt-0.5">
+                    • Daily Penalty = Daily Repayment Amount × 2 / 100 ({formatINR((pAmount > 0 && numDays > 0 ? Math.round((Math.floor(pAmount / numDays) * 2) / 100) : 0))}/day)
+                  </p>
+                  <p className="text-slate-400 text-[10px]">
+                    • Starts strictly on Day D+1 (Day {numDays + 1}). Days 1 to {numDays} incur ₹0 penalty.
+                  </p>
+                  <p className="text-slate-400 text-[10px]">
+                    • Penalty is tracked separately from principal repayments and upfront profit.
+                  </p>
+                </div>
               </div>
             </div>
 
@@ -1045,6 +1096,77 @@ export default function DailyFinance({ onNavigate, preselectedCustomer }) {
                 </div>
               </div>
 
+              {/* Overdue Daily Penalty Breakdown (Client-Confirmed 2% Rule) */}
+              {selectedLoanForDetails.penaltyBreakdown && (
+                <div className="bg-rose-50/50 border border-rose-200 p-4 rounded-xl space-y-3">
+                  <div className="flex items-center justify-between border-b border-rose-200/60 pb-2">
+                    <h4 className="font-bold text-rose-900 text-xs flex items-center space-x-1.5">
+                      <AlertCircle className="w-4 h-4 text-rose-600" />
+                      <span>Overdue Daily Penalty Breakdown (Client-Confirmed 2% Rule)</span>
+                    </h4>
+                    <span className="text-[10px] font-bold text-rose-700 bg-rose-100 px-2.5 py-0.5 rounded-full border border-rose-200">
+                      {selectedLoanForDetails.penaltyBreakdown.overdueDays > 0
+                        ? `${selectedLoanForDetails.penaltyBreakdown.overdueDays} Days Overdue (Past Maturity)`
+                        : 'Within Scheduled Term (₹0 Penalty)'}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
+                    <div className="bg-white p-2.5 rounded-lg border border-rose-100">
+                      <p className="text-[10px] text-slate-500 font-sans">Scheduled Duration</p>
+                      <p className="font-bold font-mono text-slate-800 text-sm mt-0.5">
+                        {selectedLoanForDetails.totalDurationDays || selectedLoanForDetails.dailyFinanceDetails?.totalDurationDays || 10} Days
+                      </p>
+                    </div>
+
+                    <div className="bg-white p-2.5 rounded-lg border border-rose-100">
+                      <p className="text-[10px] text-slate-500 font-sans">Daily Repayment Amount</p>
+                      <p className="font-bold font-mono text-slate-800 text-sm mt-0.5">
+                        {formatINR(selectedLoanForDetails.penaltyBreakdown.dailyRepaymentAmountRupees)}
+                      </p>
+                    </div>
+
+                    <div className="bg-white p-2.5 rounded-lg border border-rose-100">
+                      <p className="text-[10px] text-rose-600 font-sans font-medium">Daily Penalty Rate (2%)</p>
+                      <p className="font-bold font-mono text-rose-700 text-sm mt-0.5">
+                        {formatINR(selectedLoanForDetails.penaltyBreakdown.dailyPenaltyRupees)} / day
+                      </p>
+                    </div>
+
+                    <div className="bg-white p-2.5 rounded-lg border border-rose-100">
+                      <p className="text-[10px] text-slate-500 font-sans">Cumulative Penalty</p>
+                      <p className="font-bold font-mono text-slate-900 text-sm mt-0.5">
+                        {formatINR(selectedLoanForDetails.penaltyBreakdown.cumulativePenaltyRupees)}
+                      </p>
+                    </div>
+
+                    <div className="bg-white p-2.5 rounded-lg border border-rose-100">
+                      <p className="text-[10px] text-emerald-600 font-sans font-medium">Penalty Paid</p>
+                      <p className="font-bold font-mono text-emerald-700 text-sm mt-0.5">
+                        {formatINR(selectedLoanForDetails.penaltyBreakdown.penaltyPaidRupees)}
+                      </p>
+                    </div>
+
+                    <div className="bg-white p-2.5 rounded-lg border border-rose-100">
+                      <p className="text-[10px] text-rose-700 font-sans font-bold">Penalty Outstanding</p>
+                      <p className="font-bold font-mono text-rose-800 text-sm mt-0.5">
+                        {formatINR(selectedLoanForDetails.penaltyBreakdown.penaltyOutstandingRupees)}
+                      </p>
+                    </div>
+
+                    <div className="bg-amber-100/70 p-2.5 rounded-lg border border-amber-300 col-span-2">
+                      <p className="text-[10px] text-amber-900 font-sans font-bold">Total Amount Required to Close Loan</p>
+                      <p className="font-black font-mono text-amber-950 text-base mt-0.5">
+                        {formatINR(selectedLoanForDetails.penaltyBreakdown.totalAmountToCloseRupees)}
+                      </p>
+                      <p className="text-[9px] text-amber-800 mt-0.5">
+                        Principal ({formatINR((selectedLoanForDetails.outstandingPrincipalPaise || 0) / 100)}) + Penalty ({formatINR(selectedLoanForDetails.penaltyBreakdown.penaltyOutstandingRupees)})
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Transaction Ledger Table */}
               <div>
                 <h4 className="font-bold text-slate-800 mb-2 flex items-center space-x-1.5">
@@ -1137,11 +1259,27 @@ export default function DailyFinance({ onNavigate, preselectedCustomer }) {
                   <span className="font-mono text-slate-700">{collectionTargetLoan.customerMobile}</span>
                 </div>
                 <div className="flex justify-between border-t border-slate-200 pt-1.5">
-                  <span className="font-bold text-amber-800">Outstanding Daily Repayment:</span>
+                  <span className="font-bold text-amber-800">Outstanding Principal Repayment:</span>
                   <span className="font-mono font-black text-amber-700 text-sm">
                     {formatINR((collectionTargetLoan.outstandingPrincipalPaise || 0) / 100)}
                   </span>
                 </div>
+                {collectionTargetLoan.penaltyBreakdown && collectionTargetLoan.penaltyBreakdown.penaltyOutstandingRupees > 0 && (
+                  <>
+                    <div className="flex justify-between text-rose-700">
+                      <span className="font-bold">Overdue Penalty (2%/day):</span>
+                      <span className="font-mono font-black text-rose-700 text-sm">
+                        {formatINR(collectionTargetLoan.penaltyBreakdown.penaltyOutstandingRupees)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between border-t border-slate-200 pt-1 text-slate-900 font-bold bg-amber-50/80 -mx-1.5 px-1.5 py-1 rounded">
+                      <span>Total Required to Close Loan:</span>
+                      <span className="font-mono font-black text-amber-950 text-sm">
+                        {formatINR(collectionTargetLoan.penaltyBreakdown.totalAmountToCloseRupees)}
+                      </span>
+                    </div>
+                  </>
+                )}
               </div>
 
               {/* Total Payment Amount */}
@@ -1155,25 +1293,67 @@ export default function DailyFinance({ onNavigate, preselectedCustomer }) {
                     type="number"
                     required
                     min="1"
-                    max={(collectionTargetLoan.outstandingPrincipalPaise || 0) / 100}
                     step="any"
                     placeholder="Enter amount"
                     value={collectionAmount}
-                    onChange={(e) => setCollectionAmount(e.target.value)}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setCollectionAmount(val);
+                      if (!collectionTargetLoan.penaltyBreakdown || collectionTargetLoan.penaltyBreakdown.penaltyOutstandingRupees <= 0) {
+                        setCollectionPrincipalAllocation(val);
+                        setCollectionPenaltyAllocation('0');
+                      }
+                    }}
                     className="w-full pl-8 pr-3 py-2 border border-slate-300 rounded-lg text-xs font-mono font-bold bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
                   />
                 </div>
                 <div className="mt-1 flex items-center justify-between text-[11px] text-slate-400">
-                  <span>100% applied towards daily principal repayment</span>
+                  <span>Strict separation of principal and overdue penalty</span>
                   <button
                     type="button"
-                    onClick={() => setCollectionAmount(String((collectionTargetLoan.outstandingPrincipalPaise || 0) / 100))}
-                    className="text-blue-600 font-bold hover:underline"
+                    onClick={() => {
+                      const fullP = (collectionTargetLoan.outstandingPrincipalPaise || 0) / 100;
+                      const fullPen = collectionTargetLoan.penaltyBreakdown?.penaltyOutstandingRupees || 0;
+                      setCollectionAmount(String(fullP + fullPen));
+                      setCollectionPrincipalAllocation(String(fullP));
+                      setCollectionPenaltyAllocation(String(fullPen));
+                    }}
+                    className="text-blue-600 font-bold hover:underline cursor-pointer"
                   >
-                    Full Settlement
+                    Full Settlement (₹{formatINR((collectionTargetLoan.outstandingPrincipalPaise || 0) / 100 + (collectionTargetLoan.penaltyBreakdown?.penaltyOutstandingRupees || 0)).replace('₹', '')})
                   </button>
                 </div>
               </div>
+
+              {/* Split allocation inputs if penalty outstanding exists */}
+              {collectionTargetLoan.penaltyBreakdown && collectionTargetLoan.penaltyBreakdown.penaltyOutstandingRupees > 0 && (
+                <div className="grid grid-cols-2 gap-3 p-3 bg-amber-50/40 rounded-lg border border-amber-200">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Principal Allocation (₹) *</label>
+                    <input
+                      type="number"
+                      required
+                      min="0"
+                      step="any"
+                      value={collectionPrincipalAllocation}
+                      onChange={(e) => setCollectionPrincipalAllocation(e.target.value)}
+                      className="w-full px-3 py-1.5 border border-slate-300 rounded-lg font-mono font-bold text-xs bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold text-rose-700 mb-1">Penalty Allocation (₹) *</label>
+                    <input
+                      type="number"
+                      required
+                      min="0"
+                      step="any"
+                      value={collectionPenaltyAllocation}
+                      onChange={(e) => setCollectionPenaltyAllocation(e.target.value)}
+                      className="w-full px-3 py-1.5 border border-rose-300 rounded-lg font-mono font-bold text-xs bg-white text-rose-700"
+                    />
+                  </div>
+                </div>
+              )}
 
               {/* Payment Method & Date */}
               <div className="grid grid-cols-2 gap-3">

@@ -9,6 +9,7 @@ const {
   toRupees,
   formatINR,
   calculateLoanInterest,
+  calculateDailyPenalty,
   getKolkataDate,
 } = require('../services/calculationEngine');
 const { evaluateDueNotifications } = require('../services/notificationService');
@@ -329,12 +330,67 @@ const listLoans = async (req, res, next) => {
       .limit(Number(limit))
       .lean();
 
+    const enrichedLoans = loans.map((loan) => {
+      if (loan.vattiType === 'DAILY') {
+        const dailyInstalmentPaise = loan.dailyInstalmentPaise || (loan.totalDurationDays ? Math.floor((loan.principalPaise || 0) / loan.totalDurationDays) : Math.floor((loan.principalPaise || 0) / 10));
+        const penaltyCalc = calculateDailyPenalty({
+          dailyRepaymentAmountPaise: dailyInstalmentPaise,
+          dueDate: loan.dueDate,
+          asOfDate: new Date(),
+          isFullyRepaid: loan.outstandingPrincipalPaise === 0,
+          fullRepaymentDate: loan.settledDate || null,
+          penaltyPaidPaise: loan.penaltyPaidPaise || 0,
+          penaltyRatePercent: loan.penaltyRatePercent || 2.0,
+        });
+        return {
+          ...loan,
+          penaltyBreakdown: {
+            isPenaltyApplicable: true,
+            penaltyRatePercent: penaltyCalc.penaltyRatePercent,
+            dailyRepaymentAmountRupees: toRupees(penaltyCalc.dailyRepaymentAmountPaise),
+            dailyPenaltyRupees: toRupees(penaltyCalc.dailyPenaltyPaise),
+            overdueDays: penaltyCalc.overdueDays,
+            cumulativePenaltyRupees: toRupees(penaltyCalc.cumulativePenaltyPaise),
+            penaltyPaidRupees: toRupees(penaltyCalc.penaltyPaidPaise),
+            penaltyOutstandingRupees: toRupees(penaltyCalc.penaltyOutstandingPaise),
+            totalAmountToCloseRupees: toRupees(loan.outstandingPrincipalPaise + loan.outstandingInterestPaise + penaltyCalc.penaltyOutstandingPaise),
+            dailyRepaymentAmountPaise: penaltyCalc.dailyRepaymentAmountPaise,
+            dailyPenaltyPaise: penaltyCalc.dailyPenaltyPaise,
+            cumulativePenaltyPaise: penaltyCalc.cumulativePenaltyPaise,
+            penaltyPaidPaise: penaltyCalc.penaltyPaidPaise,
+            penaltyOutstandingPaise: penaltyCalc.penaltyOutstandingPaise,
+            totalAmountToClosePaise: loan.outstandingPrincipalPaise + loan.outstandingInterestPaise + penaltyCalc.penaltyOutstandingPaise,
+          },
+        };
+      }
+      return {
+        ...loan,
+        penaltyBreakdown: {
+          isPenaltyApplicable: false,
+          penaltyRatePercent: 0,
+          dailyRepaymentAmountRupees: 0,
+          dailyPenaltyRupees: 0,
+          overdueDays: 0,
+          cumulativePenaltyRupees: 0,
+          penaltyPaidRupees: 0,
+          penaltyOutstandingRupees: 0,
+          totalAmountToCloseRupees: toRupees(loan.outstandingPrincipalPaise + loan.outstandingInterestPaise),
+          dailyRepaymentAmountPaise: 0,
+          dailyPenaltyPaise: 0,
+          cumulativePenaltyPaise: 0,
+          penaltyPaidPaise: 0,
+          penaltyOutstandingPaise: 0,
+          totalAmountToClosePaise: loan.outstandingPrincipalPaise + loan.outstandingInterestPaise,
+        },
+      };
+    });
+
     res.json({
       success: true,
       total,
       page: Number(page),
       totalPages: Math.ceil(total / limit),
-      loans,
+      loans: enrichedLoans,
     });
   } catch (error) {
     next(error);
@@ -364,10 +420,63 @@ const getLoanById = async (req, res, next) => {
       config: loan.calculationConfigSnapshot,
     });
 
+    const isDaily = loan.vattiType === 'DAILY';
+    let penaltyCalc = null;
+    if (isDaily) {
+      const dailyInstalmentPaise = loan.dailyInstalmentPaise || (loan.totalDurationDays ? Math.floor((loan.principalPaise || 0) / loan.totalDurationDays) : Math.floor((loan.principalPaise || 0) / 10));
+      penaltyCalc = calculateDailyPenalty({
+        dailyRepaymentAmountPaise: dailyInstalmentPaise,
+        dueDate: loan.dueDate,
+        asOfDate: new Date(),
+        isFullyRepaid: loan.outstandingPrincipalPaise === 0,
+        fullRepaymentDate: loan.settledDate || null,
+        penaltyPaidPaise: loan.penaltyPaidPaise || 0,
+        penaltyRatePercent: loan.penaltyRatePercent || 2.0,
+      });
+    }
+
+    const penaltyBreakdown = isDaily && penaltyCalc ? {
+      isPenaltyApplicable: true,
+      penaltyRatePercent: penaltyCalc.penaltyRatePercent,
+      dailyRepaymentAmountRupees: toRupees(penaltyCalc.dailyRepaymentAmountPaise),
+      dailyPenaltyRupees: toRupees(penaltyCalc.dailyPenaltyPaise),
+      overdueDays: penaltyCalc.overdueDays,
+      cumulativePenaltyRupees: toRupees(penaltyCalc.cumulativePenaltyPaise),
+      penaltyPaidRupees: toRupees(penaltyCalc.penaltyPaidPaise),
+      penaltyOutstandingRupees: toRupees(penaltyCalc.penaltyOutstandingPaise),
+      totalAmountToCloseRupees: toRupees(loan.outstandingPrincipalPaise + loan.outstandingInterestPaise + penaltyCalc.penaltyOutstandingPaise),
+      dailyRepaymentAmountPaise: penaltyCalc.dailyRepaymentAmountPaise,
+      dailyPenaltyPaise: penaltyCalc.dailyPenaltyPaise,
+      cumulativePenaltyPaise: penaltyCalc.cumulativePenaltyPaise,
+      penaltyPaidPaise: penaltyCalc.penaltyPaidPaise,
+      penaltyOutstandingPaise: penaltyCalc.penaltyOutstandingPaise,
+      totalAmountToClosePaise: loan.outstandingPrincipalPaise + loan.outstandingInterestPaise + penaltyCalc.penaltyOutstandingPaise,
+    } : {
+      isPenaltyApplicable: false,
+      penaltyRatePercent: 0,
+      dailyRepaymentAmountRupees: 0,
+      dailyPenaltyRupees: 0,
+      overdueDays: 0,
+      cumulativePenaltyRupees: 0,
+      penaltyPaidRupees: 0,
+      penaltyOutstandingRupees: 0,
+      totalAmountToCloseRupees: toRupees(loan.outstandingPrincipalPaise + loan.outstandingInterestPaise),
+      dailyRepaymentAmountPaise: 0,
+      dailyPenaltyPaise: 0,
+      cumulativePenaltyPaise: 0,
+      penaltyPaidPaise: 0,
+      penaltyOutstandingPaise: 0,
+      totalAmountToClosePaise: loan.outstandingPrincipalPaise + loan.outstandingInterestPaise,
+    };
+
+    const loanObj = loan.toObject ? loan.toObject() : loan;
+    loanObj.penaltyBreakdown = penaltyBreakdown;
+
     res.json({
       success: true,
-      loan,
+      loan: loanObj,
       transactions,
+      penaltyBreakdown,
       liveCalculation: {
         asOfDate: getKolkataDate().toISODate(),
         liveAccruedInterestRupees: (loan.vattiType === 'MONTHLY' || loan.vattiType === 'DAILY') ? 0 : toRupees(liveCalc.interestPaise),
@@ -375,11 +484,12 @@ const getLoanById = async (req, res, next) => {
         outstandingPrincipalRupees: toRupees(loan.outstandingPrincipalPaise),
         outstandingInterestRupees: toRupees(loan.outstandingInterestPaise),
         totalOutstandingRupees: toRupees(loan.outstandingPrincipalPaise + loan.outstandingInterestPaise),
+        penaltyBreakdown,
         isPendingOwnerConfirmation: false,
         message: loan.vattiType === 'MONTHLY'
-          ? 'Monthly Finance: Interest was deducted upfront at loan disbursement.'
+          ? 'Monthly Finance: Interest was deducted upfront at loan disbursement. Strictly no overdue penalties.'
           : loan.vattiType === 'DAILY'
-          ? 'Daily Finance: Interest was deducted upfront at loan disbursement. Daily repayments reduce principal repayment balance.'
+          ? 'Daily Finance: Interest was deducted upfront at loan disbursement. Overdue penalty of 2% per day applies after maturity.'
           : liveCalc.message,
       },
     });

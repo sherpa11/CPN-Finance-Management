@@ -123,6 +123,29 @@ const loanSchema = new mongoose.Schema(
       default: 0,
       min: 0,
     },
+    // Daily Finance Penalty Tracking (Strictly 2% of daily repayment amount per overdue day)
+    penaltyRatePercent: {
+      type: Number,
+      default: 2.0,
+    },
+    penaltyAssessedPaise: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    penaltyPaidPaise: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    penaltyOutstandingPaise: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    lastPenaltyCalculationDate: {
+      type: Date,
+    },
     lastAccrualDate: {
       type: Date,
     },

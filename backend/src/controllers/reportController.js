@@ -48,7 +48,8 @@ const getDailyReport = async (req, res, next) => {
     const upfrontInterestFromLoansPaise = loansIssued.reduce((sum, l) => sum + (l.upfrontInterestPaise || 0), 0);
     const principalCollectedPaise = collections.reduce((sum, c) => sum + c.principalAllocationPaise, 0);
     const interestCollectedPaise = collections.reduce((sum, c) => sum + c.interestAllocationPaise, 0) + upfrontInterestFromLoansPaise;
-    const totalCollectionPaise = principalCollectedPaise + interestCollectedPaise;
+    const penaltyCollectedPaise = collections.reduce((sum, c) => sum + (c.penaltyAllocationPaise || 0), 0);
+    const totalCollectionPaise = principalCollectedPaise + interestCollectedPaise + penaltyCollectedPaise;
 
     res.json({
       success: true,
@@ -60,6 +61,7 @@ const getDailyReport = async (req, res, next) => {
           collectionsCount: collections.length,
           principalCollectedRupees: toRupees(principalCollectedPaise),
           interestCollectedRupees: toRupees(interestCollectedPaise),
+          penaltyCollectedRupees: toRupees(penaltyCollectedPaise),
           totalCollectionRupees: toRupees(totalCollectionPaise),
           dueTodayCount: dueToday.length,
           overdueCount: overdue.length,
@@ -80,6 +82,7 @@ const getDailyReport = async (req, res, next) => {
           totalAmountRupees: toRupees(c.totalAmountPaise),
           principalAllocationRupees: toRupees(c.principalAllocationPaise),
           interestAllocationRupees: toRupees(c.interestAllocationPaise),
+          penaltyAllocationRupees: toRupees(c.penaltyAllocationPaise || 0),
           paymentMethod: c.paymentMethod,
         })),
         dueToday: dueToday.map((d) => ({
@@ -122,7 +125,7 @@ const getMonthlyReport = async (req, res, next) => {
         paymentDate: { $gte: startOfMonth.toJSDate(), $lte: endOfMonth.toJSDate() },
         status: 'CONFIRMED',
       })
-        .select('principalAllocationPaise interestAllocationPaise totalAmountPaise loanCode')
+        .select('principalAllocationPaise interestAllocationPaise penaltyAllocationPaise totalAmountPaise loanCode')
         .lean(),
       Loan.find({
         status: { $in: [CONSTANTS.LOAN_STATUS.ACTIVE, CONSTANTS.LOAN_STATUS.OVERDUE] },
@@ -135,7 +138,8 @@ const getMonthlyReport = async (req, res, next) => {
     const upfrontInterestFromLoansPaise = loans.reduce((sum, l) => sum + (l.upfrontInterestPaise || 0), 0);
     const totalPrincipalCollectedPaise = collections.reduce((sum, c) => sum + c.principalAllocationPaise, 0);
     const totalInterestCollectedPaise = collections.reduce((sum, c) => sum + c.interestAllocationPaise, 0) + upfrontInterestFromLoansPaise;
-    const totalCollectionPaise = totalPrincipalCollectedPaise + totalInterestCollectedPaise;
+    const totalPenaltyCollectedPaise = collections.reduce((sum, c) => sum + (c.penaltyAllocationPaise || 0), 0);
+    const totalCollectionPaise = totalPrincipalCollectedPaise + totalInterestCollectedPaise + totalPenaltyCollectedPaise;
 
     const outstandingPrincipalPaise = activeLoans.reduce((sum, l) => sum + l.outstandingPrincipalPaise, 0);
     const outstandingInterestPaise = activeLoans.reduce((sum, l) => sum + l.outstandingInterestPaise, 0);
@@ -166,6 +170,7 @@ const getMonthlyReport = async (req, res, next) => {
           totalPrincipalLentRupees: toRupees(totalPrincipalLentPaise),
           totalPrincipalCollectedRupees: toRupees(totalPrincipalCollectedPaise),
           totalInterestCollectedRupees: toRupees(totalInterestCollectedPaise),
+          totalPenaltyCollectedRupees: toRupees(totalPenaltyCollectedPaise),
           totalCollectionRupees: toRupees(totalCollectionPaise),
           totalAccruedInterestRupees: toRupees(totalAccruedInterestPaise),
           outstandingPrincipalRupees: toRupees(outstandingPrincipalPaise),
@@ -205,7 +210,7 @@ const getYearlyReport = async (req, res, next) => {
         paymentDate: { $gte: startOfYear.toJSDate(), $lte: endOfYear.toJSDate() },
         status: 'CONFIRMED',
       })
-        .select('principalAllocationPaise interestAllocationPaise totalAmountPaise')
+        .select('principalAllocationPaise interestAllocationPaise penaltyAllocationPaise totalAmountPaise')
         .lean(),
       Loan.find({
         status: { $in: [CONSTANTS.LOAN_STATUS.ACTIVE, CONSTANTS.LOAN_STATUS.OVERDUE] },
@@ -217,6 +222,7 @@ const getYearlyReport = async (req, res, next) => {
     const totalPrincipalLentPaise = loans.reduce((sum, l) => sum + l.principalPaise, 0);
     const totalPrincipalCollectedPaise = collections.reduce((sum, c) => sum + c.principalAllocationPaise, 0);
     const totalInterestCollectedPaise = collections.reduce((sum, c) => sum + c.interestAllocationPaise, 0);
+    const totalPenaltyCollectedPaise = collections.reduce((sum, c) => sum + (c.penaltyAllocationPaise || 0), 0);
 
     const outstandingPrincipalPaise = activeLoans.reduce((sum, l) => sum + l.outstandingPrincipalPaise, 0);
     const outstandingInterestPaise = activeLoans.reduce((sum, l) => sum + l.outstandingInterestPaise, 0);
@@ -229,7 +235,8 @@ const getYearlyReport = async (req, res, next) => {
           totalPrincipalLentRupees: toRupees(totalPrincipalLentPaise),
           totalPrincipalCollectedRupees: toRupees(totalPrincipalCollectedPaise),
           totalInterestCollectedRupees: toRupees(totalInterestCollectedPaise),
-          totalCollectionRupees: toRupees(totalPrincipalCollectedPaise + totalInterestCollectedPaise),
+          totalPenaltyCollectedRupees: toRupees(totalPenaltyCollectedPaise),
+          totalCollectionRupees: toRupees(totalPrincipalCollectedPaise + totalInterestCollectedPaise + totalPenaltyCollectedPaise),
           outstandingPrincipalRupees: toRupees(outstandingPrincipalPaise),
           outstandingInterestRupees: toRupees(outstandingInterestPaise),
           totalOutstandingRupees: toRupees(outstandingPrincipalPaise + outstandingInterestPaise),
@@ -296,6 +303,7 @@ const getCategoryReport = async (req, res, next) => {
       const totalPrincipalPaise = allLoans.reduce((s, l) => s + (l.netDisbursementPaise !== undefined ? l.netDisbursementPaise : l.principalPaise), 0);
       const totalPrincipalPaidPaise = allLoans.reduce((s, l) => s + l.totalPrincipalPaidPaise, 0);
       const totalInterestPaidPaise = allLoans.reduce((s, l) => s + l.totalInterestPaidPaise, 0);
+      const totalPenaltyPaidPaise = cat === 'MONTHLY' ? 0 : allLoans.reduce((s, l) => s + (l.penaltyPaidPaise || 0), 0);
       const outstandingPrincipalPaise = activeLoans.reduce((s, l) => s + l.outstandingPrincipalPaise, 0);
       const outstandingInterestPaise = activeLoans.reduce((s, l) => s + l.outstandingInterestPaise, 0);
 
@@ -308,6 +316,7 @@ const getCategoryReport = async (req, res, next) => {
         totalPrincipalLentRupees: toRupees(totalPrincipalPaise),
         totalPrincipalCollectedRupees: toRupees(totalPrincipalPaidPaise),
         totalInterestCollectedRupees: toRupees(totalInterestPaidPaise),
+        totalPenaltyCollectedRupees: toRupees(totalPenaltyPaidPaise),
         outstandingPrincipalRupees: toRupees(outstandingPrincipalPaise),
         outstandingInterestRupees: toRupees(outstandingInterestPaise),
         totalOutstandingRupees: toRupees(outstandingPrincipalPaise + outstandingInterestPaise),

@@ -221,8 +221,13 @@ export default function DueManagement({ onNavigate, onOpenCollection }) {
                       <td className="py-3 px-3 text-right font-mono font-medium text-slate-900">
                         {formatINR(d.principalRupees)}
                       </td>
-                      <td className="py-3 px-3 text-right font-mono font-bold text-rose-700">
-                        {formatINR(d.totalOutstandingRupees)}
+                      <td className="py-3 px-3 text-right font-mono">
+                        <div className="font-bold text-rose-700">{formatINR(d.totalOutstandingRupees)}</div>
+                        {d.penaltyBreakdown?.isPenaltyApplicable && d.penaltyOutstandingRupees > 0 && (
+                          <div className="text-[10px] text-rose-600 font-semibold" title={`Daily Penalty: ₹${d.penaltyBreakdown.dailyPenaltyRupees}/day`}>
+                            + Pen: {formatINR(d.penaltyOutstandingRupees)}
+                          </div>
+                        )}
                       </td>
                       <td className="py-3 px-3 font-medium text-slate-900">{formatDate(d.dueDate)}</td>
                       <td className="py-3 px-3">
@@ -241,6 +246,11 @@ export default function DueManagement({ onNavigate, onOpenCollection }) {
                             ? 'Due Today'
                             : `${d.daysRemainingOrOverdue}d Left`}
                         </span>
+                        {d.penaltyBreakdown?.isPenaltyApplicable && d.penaltyBreakdown.overdueDays > 0 && (
+                          <div className="text-[10px] text-rose-600 font-bold mt-0.5">
+                            Penalty: {formatINR(d.penaltyOutstandingRupees)} ({d.penaltyBreakdown.overdueDays}d @ ₹{d.penaltyBreakdown.dailyPenaltyRupees}/d)
+                          </div>
+                        )}
                       </td>
                       <td className="py-3 px-4 text-right">
                         <button

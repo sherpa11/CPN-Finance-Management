@@ -33,7 +33,7 @@ const transactionSchema = new mongoose.Schema(
     },
     type: {
       type: String,
-      enum: ['LOAN_DISBURSEMENT', 'INTEREST_ACCRUAL', 'COLLECTION', 'REVERSAL', 'ADJUSTMENT'],
+      enum: ['LOAN_DISBURSEMENT', 'INTEREST_ACCRUAL', 'COLLECTION', 'REVERSAL', 'ADJUSTMENT', 'PENALTY_ASSESSMENT'],
       required: true,
       index: true,
     },
@@ -58,6 +58,16 @@ const transactionSchema = new mongoose.Schema(
       default: 0,
       min: 0,
     },
+    penaltyDebitPaise: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    penaltyCreditPaise: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
     // Running Balances after this transaction
     balancePrincipalPaise: {
       type: Number,
@@ -66,6 +76,10 @@ const transactionSchema = new mongoose.Schema(
     balanceInterestPaise: {
       type: Number,
       required: true,
+    },
+    balancePenaltyPaise: {
+      type: Number,
+      default: 0,
     },
     balanceTotalPaise: {
       type: Number,

@@ -202,6 +202,18 @@ export default function Ledger() {
                 <span>Total Interest Repaid:</span>
                 <span className="font-bold">{formatINR(ledgerData.summary.totalInterestPaidRupees)}</span>
               </div>
+              {ledgerData.summary.totalPenaltyPaidRupees > 0 && (
+                <div className="flex justify-between font-sans text-rose-700">
+                  <span>Total Penalty Paid:</span>
+                  <span className="font-bold">{formatINR(ledgerData.summary.totalPenaltyPaidRupees)}</span>
+                </div>
+              )}
+              {ledgerData.summary.totalPenaltyOutstandingRupees > 0 && (
+                <div className="flex justify-between font-sans text-rose-700">
+                  <span>Total Penalty Outstanding:</span>
+                  <span className="font-bold">{formatINR(ledgerData.summary.totalPenaltyOutstandingRupees)}</span>
+                </div>
+              )}
               <div className="flex justify-between font-sans text-rose-700 border-t border-slate-200 pt-1 font-bold">
                 <span>Total Outstanding Balance:</span>
                 <span>{formatINR(ledgerData.summary.totalOutstandingRupees)}</span>
@@ -211,7 +223,7 @@ export default function Ledger() {
 
           {/* Ledger Table */}
           <div className="overflow-x-auto">
-            <table className="w-full text-xs text-left border border-slate-200 rounded-lg overflow-hidden min-w-[720px]">
+            <table className="w-full text-xs text-left border border-slate-200 rounded-lg overflow-hidden min-w-[760px]">
               <thead className="bg-slate-100 text-slate-700 border-b border-slate-200">
                 <tr>
                   <th className="py-2.5 px-3 font-semibold">Date</th>
@@ -221,6 +233,7 @@ export default function Ledger() {
                   <th className="py-2.5 px-3 font-semibold text-right">Principal Debit</th>
                   <th className="py-2.5 px-3 font-semibold text-right">Principal Credit</th>
                   <th className="py-2.5 px-3 font-semibold text-right">Interest Credit</th>
+                  <th className="py-2.5 px-3 font-semibold text-right">Penalty Credit</th>
                   <th className="py-2.5 px-3 font-semibold text-right">Bal Principal</th>
                   <th className="py-2.5 px-3 font-semibold text-right">Bal Total</th>
                 </tr>
@@ -228,7 +241,7 @@ export default function Ledger() {
               <tbody className="divide-y divide-slate-100 font-mono">
                 {ledgerData.transactions.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="py-6 text-center text-slate-400 font-sans">
+                    <td colSpan={10} className="py-6 text-center text-slate-400 font-sans">
                       No transactions recorded within selected date criteria.
                     </td>
                   </tr>
@@ -246,6 +259,8 @@ export default function Ledger() {
                             ? 'bg-emerald-100 text-emerald-800'
                             : t.type === 'REVERSAL'
                             ? 'bg-rose-100 text-rose-800'
+                            : t.type === 'PENALTY_ASSESSMENT'
+                            ? 'bg-rose-100 text-rose-800'
                             : 'bg-purple-100 text-purple-800'
                         }`}>
                           {t.type}
@@ -259,6 +274,9 @@ export default function Ledger() {
                       </td>
                       <td className="py-2.5 px-3 text-right font-medium text-emerald-700">
                         {t.interestCreditRupees > 0 ? formatINR(t.interestCreditRupees) : '—'}
+                      </td>
+                      <td className="py-2.5 px-3 text-right font-medium text-rose-700">
+                        {t.penaltyCreditRupees > 0 ? formatINR(t.penaltyCreditRupees) : '—'}
                       </td>
                       <td className="py-2.5 px-3 text-right font-medium text-slate-700">
                         {formatINR(t.balancePrincipalRupees)}
