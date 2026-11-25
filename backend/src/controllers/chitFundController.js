@@ -1,4 +1,6 @@
 const mongoose = require('mongoose');
+const { DateTime } = require('luxon');
+const CONSTANTS = require('../config/constants');
 const ChitGroup = require('../models/ChitGroup');
 const ChitMember = require('../models/ChitMember');
 const ChitCollection = require('../models/ChitCollection');
@@ -184,6 +186,7 @@ const getChitGroups = async (req, res, next) => {
       isScheduleApproved: g.isScheduleApproved,
       startDate: g.startDate,
       firstInstalmentDate: g.firstInstalmentDate,
+      endDate: g.endDate || (g.startDate ? (() => { const d = new Date(g.startDate); d.setMonth(d.getMonth() + (g.durationMonths || 20)); return d; })() : null),
       totalCollectedRupees: toRupees(g.totalCollectedPaise),
       totalPayoutsRupees: toRupees(g.totalPayoutsPaise),
       totalExpectedRupees: toRupees(g.totalInstalmentExpectedPaise),
@@ -247,6 +250,7 @@ const getChitGroupById = async (req, res, next) => {
         isScheduleApproved: group.isScheduleApproved,
         startDate: group.startDate,
         firstInstalmentDate: group.firstInstalmentDate,
+        endDate: group.endDate || (group.startDate ? (() => { const d = new Date(group.startDate); d.setMonth(d.getMonth() + (group.durationMonths || 20)); return d; })() : null),
         totalCollectedRupees: toRupees(group.totalCollectedPaise),
         totalPayoutsRupees: toRupees(group.totalPayoutsPaise),
         totalExpectedRupees: toRupees(group.totalInstalmentExpectedPaise),
@@ -271,6 +275,7 @@ const createChitGroup = async (req, res, next) => {
       name,
       startDate = new Date(),
       firstInstalmentDate = new Date(),
+      endDate,
       remarks = '',
       customSchedule,
     } = req.body;
@@ -315,6 +320,16 @@ const createChitGroup = async (req, res, next) => {
     const perMemberTotalInstalmentPaise = scheduleData.reduce((acc, s) => acc + s.instalmentPaise, 0);
     const totalInstalmentExpectedPaise = perMemberTotalInstalmentPaise * 20;
 
+    // Calculate 20th month ending date
+    let calcEndDate = null;
+    if (endDate) {
+      calcEndDate = new Date(endDate);
+    } else if (startDate) {
+      const d = new Date(startDate);
+      d.setMonth(d.getMonth() + 20);
+      calcEndDate = d;
+    }
+
     const group = new ChitGroup({
       chitId,
       name: groupName,
@@ -325,6 +340,7 @@ const createChitGroup = async (req, res, next) => {
       durationMonths: 20,
       startDate: new Date(startDate),
       firstInstalmentDate: new Date(firstInstalmentDate),
+      endDate: calcEndDate,
       currentMonth: 1,
       status: 'FORMING',
       isScheduleApproved,
@@ -858,6 +874,15 @@ const recordMemberCollection = async (req, res, next) => {
 
     const receiptNumber = await generateChitReceiptNumber();
 
+    let collectionDate = new Date();
+    if (paymentDate) {
+      if (typeof paymentDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(paymentDate)) {
+        collectionDate = DateTime.fromISO(paymentDate, { zone: CONSTANTS.DEFAULT_TIMEZONE }).startOf('day').toJSDate();
+      } else {
+        collectionDate = new Date(paymentDate);
+      }
+    }
+
     const collection = new ChitCollection({
       receiptNumber,
       chitGroupId: group._id,
@@ -868,7 +893,7 @@ const recordMemberCollection = async (req, res, next) => {
       month: monthNum,
       expectedAmountPaise: expectedInstalmentPaise,
       amountPaidPaise: paidPaise,
-      paymentDate: new Date(paymentDate),
+      paymentDate: collectionDate,
       paymentMethod,
       status,
       notes: notes.trim(),

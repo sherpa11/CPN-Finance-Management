@@ -2,6 +2,7 @@ process.env.NODE_ENV = 'test';
 require('dotenv').config();
 const request = require('supertest');
 const assert = require('assert');
+const { DateTime } = require('luxon');
 const app = require('../src/app');
 const connectDB = require('../src/config/db');
 const mongoose = require('mongoose');
@@ -56,6 +57,7 @@ async function runChitFundTests() {
     assert(group10L.durationMonths === 20, 'Duration is 20 months');
     assert(group10L.maxMembers === 20, 'Max members is 20');
     assert(group10L.schedule.length === 20, 'Schedule has 20 entries');
+    assert(group10L.endDate, 'Chit Group must have an auto-calculated 20th month ending date');
 
     // Verify Image 1 Reference values for Month 1, 2, 3, 20
     const sched10L = group10L.schedule;
@@ -205,7 +207,7 @@ async function runChitFundTests() {
     console.log('  ✓ PASS: 20-slot interactive roster rendered');
 
     // 9. Monthly Instalment Collection: Record Full Payment (Month 1, Member 1: ₹34,500)
-    console.log('\n[9] Record Full Instalment Collection (Month 1, Member 1)');
+    console.log('\n[9] Record Full Instalment Collection with Custom Date (Month 1, Member 1)');
     const payFullRes = await request(app)
       .post(`/api/chit-funds/groups/${group10L._id}/collections`)
       .set('Authorization', `Bearer ${token}`)
@@ -214,15 +216,18 @@ async function runChitFundTests() {
         month: 1,
         amountRupees: 34500,
         paymentMethod: 'CASH',
-        notes: 'Month 1 on-time payment',
+        paymentDate: '2026-11-20',
+        notes: 'Month 1 on-time payment on custom date',
       });
 
     assert(payFullRes.status === 201, 'Failed to record full collection');
     assert(payFullRes.body.collection.status === 'PAID', 'Status is PAID');
     assert(payFullRes.body.collection.remainingRupees === 0, 'Remaining is 0');
     assert(payFullRes.body.collection.receiptNumber.startsWith('CPR-CHIT-'), 'Receipt generated');
+    const actualDate = DateTime.fromJSDate(new Date(payFullRes.body.collection.paymentDate)).setZone('Asia/Kolkata').toISODate();
+    assert(actualDate === '2026-11-20', `Payment date must match custom date 2026-11-20, got: ${actualDate}`);
     const receiptToReverse = payFullRes.body.collection.receiptNumber;
-    console.log('  ✓ PASS: Full payment of ₹34,500 logged with receipt', receiptToReverse);
+    console.log('  ✓ PASS: Full payment of ₹34,500 logged with custom payment date and receipt', receiptToReverse);
 
     // 10. Record Partial Payment (Month 1, Member 2: ₹20,000 of ₹34,500)
     console.log('\n[10] Record Partial Instalment (Month 1, Member 2: ₹20,000 of ₹34,500)');

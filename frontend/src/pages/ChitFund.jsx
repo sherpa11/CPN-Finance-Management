@@ -80,6 +80,7 @@ export default function ChitFund() {
   const [paymentModalData, setPaymentModalData] = useState(null);
   const [payAmountInput, setPayAmountInput] = useState('');
   const [payMethod, setPayMethod] = useState('CASH');
+  const [payDate, setPayDate] = useState(new Date().toISOString().split('T')[0]);
   const [payNotes, setPayNotes] = useState('');
   const [submittingPayment, setSubmittingPayment] = useState(false);
   const [paymentSuccessReceipt, setPaymentSuccessReceipt] = useState(null);
@@ -100,8 +101,26 @@ export default function ChitFund() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [newChitCategory, setNewChitCategory] = useState('10_LAKH');
   const [newChitName, setNewChitName] = useState('');
+  const calculate20thMonthEndDate = (startDateStr) => {
+    if (!startDateStr) return '';
+    try {
+      const orig = new Date(startDateStr);
+      if (isNaN(orig.getTime())) return '';
+      const d = new Date(orig);
+      d.setMonth(d.getMonth() + 20);
+      return d.toISOString().split('T')[0];
+    } catch {
+      return '';
+    }
+  };
+
   const [newChitStartDate, setNewChitStartDate] = useState(new Date().toISOString().split('T')[0]);
   const [newChitFirstInstDate, setNewChitFirstInstDate] = useState(new Date().toISOString().split('T')[0]);
+  const [newChitEndDate, setNewChitEndDate] = useState(() => {
+    const d = new Date();
+    d.setMonth(d.getMonth() + 20);
+    return d.toISOString().split('T')[0];
+  });
   const [newChitRemarks, setNewChitRemarks] = useState('');
   const [submittingNewChit, setSubmittingNewChit] = useState(false);
   const [createChitError, setCreateChitError] = useState('');
@@ -487,6 +506,7 @@ export default function ChitFund() {
     setPaymentModalData(memberRow);
     setPayAmountInput(String(memberRow.remainingRupees));
     setPayMethod('CASH');
+    setPayDate(new Date().toISOString().split('T')[0]);
     setPayNotes('');
     setPaymentSuccessReceipt(null);
   };
@@ -503,6 +523,7 @@ export default function ChitFund() {
         month: selectedMonth,
         amountRupees: Number(payAmountInput),
         paymentMethod: payMethod,
+        paymentDate: payDate || new Date().toISOString().split('T')[0],
         notes: payNotes,
       });
 
@@ -571,6 +592,7 @@ export default function ChitFund() {
         name: newChitName,
         startDate: newChitStartDate,
         firstInstalmentDate: newChitFirstInstDate,
+        endDate: newChitEndDate || calculate20thMonthEndDate(newChitStartDate),
         remarks: newChitRemarks,
       });
 
@@ -750,7 +772,7 @@ export default function ChitFund() {
                 )}
               </div>
               <p className="text-xs text-slate-500 mt-1">
-                Value: <span className="font-bold text-slate-800">{formatINR(selectedGroup.totalValueRupees)}</span> • Duration: 20 Months • Base Monthly: {formatINR(selectedGroup.monthlyChitAmountRupees)} • 20 Member Slots
+                Value: <span className="font-bold text-slate-800">{formatINR(selectedGroup.totalValueRupees)}</span> • Duration: 20 Months • Start: <span className="font-semibold text-slate-700">{formatDate(selectedGroup.startDate)}</span> • End (20th Mo): <span className="font-semibold text-slate-700">{formatDate(selectedGroup.endDate || calculate20thMonthEndDate(selectedGroup.startDate))}</span> • 20 Member Slots
               </p>
             </div>
 
@@ -2484,14 +2506,18 @@ export default function ChitFund() {
               </div>
 
               {/* Dates */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">Start Date *</label>
                   <input
                     type="date"
                     required
                     value={newChitStartDate}
-                    onChange={(e) => setNewChitStartDate(e.target.value)}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setNewChitStartDate(val);
+                      setNewChitEndDate(calculate20thMonthEndDate(val));
+                    }}
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-900"
                   />
                 </div>
@@ -2504,6 +2530,19 @@ export default function ChitFund() {
                     onChange={(e) => setNewChitFirstInstDate(e.target.value)}
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-900"
                   />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Ending Date (20th Month) *
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={newChitEndDate}
+                    onChange={(e) => setNewChitEndDate(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-900 bg-white"
+                  />
+                  <p className="text-[10px] text-slate-400 mt-0.5">20th month ending date</p>
                 </div>
               </div>
 
@@ -2730,6 +2769,22 @@ export default function ChitFund() {
                     <option value="BANK_TRANSFER">Bank Transfer (வங்கி கணக்கு)</option>
                     <option value="CHEQUE">Cheque (காசோலை)</option>
                   </select>
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    வசூல் தேதி (Payment Date) *
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={payDate}
+                    onChange={(e) => setPayDate(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-900 bg-white font-mono text-xs focus:ring-2 focus:ring-emerald-500"
+                  />
+                  <p className="text-[10px] text-slate-400 mt-0.5">
+                    Manual date selection per member (Default: Today)
+                  </p>
                 </div>
 
                 <div>

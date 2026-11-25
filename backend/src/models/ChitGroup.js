@@ -116,6 +116,10 @@ const ChitGroupSchema = new mongoose.Schema({
     type: Date,
     required: true,
   },
+  endDate: {
+    type: Date,
+    default: null,
+  },
   currentMonth: {
     type: Number,
     default: 1,
