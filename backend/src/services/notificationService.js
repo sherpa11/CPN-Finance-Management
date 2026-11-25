@@ -54,7 +54,13 @@ async function evaluateDueNotifications() {
     // Recalculate up-to-date accrued interest for active/overdue loans
     let accruedInterestPaise = loan.accruedInterestPaise || 0;
     if (loan.status === CONSTANTS.LOAN_STATUS.ACTIVE || loan.status === CONSTANTS.LOAN_STATUS.OVERDUE) {
-      if (loan.vattiType !== CONSTANTS.VATTI_TYPES.MEATER) {
+      if (loan.vattiType === 'MONTHLY' || loan.vattiType === 'DAILY') {
+        // Renewal Workflow: First month / 10-day interest is deducted upfront.
+        // Renewals are paid as renewal interest. Ongoing outstanding interest does not compound or accumulate.
+        accruedInterestPaise = loan.totalInterestPaidPaise || 0;
+        loan.accruedInterestPaise = accruedInterestPaise;
+        loan.outstandingInterestPaise = 0;
+      } else if (loan.vattiType !== CONSTANTS.VATTI_TYPES.MEATER) {
         const calc = calculateLoanInterest({
           vattiType: loan.vattiType,
           principalPaise: loan.outstandingPrincipalPaise,

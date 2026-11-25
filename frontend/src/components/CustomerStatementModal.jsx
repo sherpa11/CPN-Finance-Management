@@ -167,7 +167,17 @@ export default function CustomerStatementModal({ customerId, onClose }) {
                         <td className="py-2 px-2.5 font-sans">{formatDate(t.date)}</td>
                         <td className="py-2 px-2.5 text-slate-600">{t.transactionId}</td>
                         <td className="py-2 px-2.5 font-sans">
-                          <span className="text-[11px] font-medium text-slate-700">{t.type}</span>
+                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                            t.type === 'LOAN_DISBURSEMENT'
+                              ? 'bg-blue-100 text-blue-800'
+                              : t.type === 'COLLECTION'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : t.type === 'RENEWAL_INTEREST'
+                              ? 'bg-indigo-100 text-indigo-800'
+                              : 'bg-slate-100 text-slate-800'
+                          }`}>
+                            {t.type}
+                          </span>
                         </td>
                         <td className="py-2 px-2.5 text-right font-medium text-slate-900">
                           {t.principalDebitPaise > 0 ? formatINR(t.principalDebitPaise / 100) : '—'}

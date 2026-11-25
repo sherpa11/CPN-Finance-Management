@@ -501,14 +501,15 @@ function calculateDailyCollectionSchemeB({
 }
 
 /**
- * Client-Confirmed Penalty Calculation for Daily Finance and Daily Collection
+ * Client-Confirmed Penalty Calculation for Daily Collection
  * 
  * Business Rules:
- * 1. Monthly Finance: NO penalty under any circumstances.
- * 2. Daily Finance & Daily Collection:
+ * 1. Monthly Finance: NO penalty under any circumstances (1-month renewal workflow).
+ * 2. Daily Finance: NO penalty under any circumstances (10-day renewal workflow).
+ * 3. Daily Collection (Scheme A & Scheme B):
  *    - Rate: 2% of the daily repayment amount per overdue day.
  *    - Formula: Daily Penalty = Daily Repayment Amount × 2 / 100
- *    - Penalty Start Date: Day D+1 (e.g. Day 101 for 100-day loan, or Day 71 for 70-day collection).
+ *    - Penalty Start Date: Day D+1 (e.g. Day 101 for 100-day collection, or Day 71 for 70-day collection).
  *    - Days 1 through D: No penalty. Never apply penalty on Day D.
  *    - Day D+1: 1 overdue day (1 × Daily Penalty).
  *    - Day D+2: 2 overdue days (2 × Daily Penalty), etc.
@@ -519,6 +520,7 @@ function calculateDailyCollectionSchemeB({
  * 
  * Strict Separation:
  * - Upfront interest collected at disbursement is NOT penalized or deducted again.
+ * - Renewal interest collected at loan renewal is NOT penalized and does NOT reduce principal.
  * - Penalty payments are NOT treated as principal repayment.
  * - Assessed penalty is NOT counted as collected cash until customer actually pays it.
  */

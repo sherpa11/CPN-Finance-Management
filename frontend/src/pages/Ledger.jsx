@@ -257,13 +257,15 @@ export default function Ledger() {
                             ? 'bg-blue-100 text-blue-800'
                             : t.type === 'COLLECTION'
                             ? 'bg-emerald-100 text-emerald-800'
+                            : t.type === 'RENEWAL_INTEREST'
+                            ? 'bg-indigo-100 text-indigo-800'
                             : t.type === 'REVERSAL'
                             ? 'bg-rose-100 text-rose-800'
                             : t.type === 'PENALTY_ASSESSMENT'
                             ? 'bg-rose-100 text-rose-800'
                             : 'bg-purple-100 text-purple-800'
                         }`}>
-                          {t.type}
+                          {t.type === 'RENEWAL_INTEREST' ? 'RENEWAL_INTEREST' : t.type}
                         </span>
                       </td>
                       <td className="py-2.5 px-3 text-right font-medium text-slate-900">

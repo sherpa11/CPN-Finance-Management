@@ -3,6 +3,7 @@ const Customer = require('../models/Customer');
 const Transaction = require('../models/Transaction');
 const Collection = require('../models/Collection');
 const CalculationConfiguration = require('../models/CalculationConfiguration');
+const { DateTime } = require('luxon');
 const { logAuditEvent } = require('../services/auditService');
 const { runInTransaction } = require('../services/transactionHelper');
 const {
@@ -55,7 +56,7 @@ async function generateTransactionId(offset = 0) {
 const previewLoan = async (req, res, next) => {
   try {
     const vattiType = req.body.financeType || req.body.vattiType;
-    const { principalAmount, interestRatePercent, startDate, dueDate } = req.body;
+    const { principalAmount, interestRatePercent, startDate, dueDate, interestAmount, upfrontInterestAmount } = req.body;
 
     if (!vattiType || !principalAmount || interestRatePercent === undefined || !startDate || !dueDate) {
       return res.status(400).json({
@@ -80,6 +81,13 @@ const previewLoan = async (req, res, next) => {
       config,
     });
 
+    // Support admin-adjusted / entered upfront interest amount
+    const customAmt = interestAmount !== undefined && interestAmount !== '' ? interestAmount : upfrontInterestAmount;
+    const hasCustomInterest = customAmt !== undefined && customAmt !== '' && !isNaN(customAmt);
+    const expectedInterestPaise = hasCustomInterest ? toPaise(customAmt) : calculation.interestPaise;
+    const isUpfrontDeduction = vattiType === 'MONTHLY' || vattiType === 'DAILY' || !!calculation.isUpfrontDeduction;
+    const netGivenPaise = isUpfrontDeduction ? Math.max(0, principalPaise - expectedInterestPaise) : principalPaise;
+
     res.json({
       success: true,
       preview: {
@@ -90,16 +98,16 @@ const previewLoan = async (req, res, next) => {
         interestRatePercent: rate,
         startDate: getKolkataDate(startDate).toISODate(),
         dueDate: getKolkataDate(dueDate).toISODate(),
-        expectedInterestRupees: toRupees(calculation.interestPaise),
-        expectedInterestPaise: calculation.interestPaise,
-        netAmountGivenRupees: toRupees(calculation.netDisbursementPaise || calculation.netAmountGivenPaise || (calculation.principalPaise - calculation.interestPaise)),
-        netAmountGivenPaise: calculation.netDisbursementPaise || calculation.netAmountGivenPaise || (calculation.principalPaise - calculation.interestPaise),
+        expectedInterestRupees: toRupees(expectedInterestPaise),
+        expectedInterestPaise,
+        netAmountGivenRupees: toRupees(netGivenPaise),
+        netAmountGivenPaise: netGivenPaise,
         expectedTotalPayableRupees: toRupees(calculation.totalPayablePaise),
         expectedTotalPayablePaise: calculation.totalPayablePaise,
         dailyInstalmentRupees: calculation.dailyInstalmentPaise ? toRupees(calculation.dailyInstalmentPaise) : undefined,
         dailyInstalmentPaise: calculation.dailyInstalmentPaise || undefined,
         durationDays: calculation.eligibleDays || calculation.durationDays || undefined,
-        isUpfrontDeduction: vattiType === 'MONTHLY' || vattiType === 'DAILY' || !!calculation.isUpfrontDeduction,
+        isUpfrontDeduction,
         eligibleUnits: calculation.eligibleMonths || calculation.eligibleDays || 0,
         unitLabel: vattiType === 'MONTHLY' ? 'Months' : vattiType === 'DAILY' ? 'Days' : 'Units',
         isPendingOwnerConfirmation: !!calculation.isPendingOwnerConfirmation,
@@ -171,7 +179,15 @@ const createLoan = async (req, res, next) => {
     const isMonthly = vattiType === CONSTANTS.VATTI_TYPES.MONTHLY;
     const isDaily = vattiType === CONSTANTS.VATTI_TYPES.DAILY;
     const isUpfrontDeduction = isMonthly || isDaily;
-    const upfrontInterestPaise = isUpfrontDeduction ? (initialCalc.upfrontInterestPaise || initialCalc.interestPaise || 0) : 0;
+    
+    // Support admin-adjusted / custom interest amount entered during loan creation
+    const customAmt = req.body.interestAmount !== undefined && req.body.interestAmount !== ''
+      ? req.body.interestAmount
+      : req.body.upfrontInterestAmount;
+    const hasCustomInterest = customAmt !== undefined && customAmt !== '' && !isNaN(customAmt);
+    const upfrontInterestPaise = isUpfrontDeduction
+      ? (hasCustomInterest ? toPaise(customAmt) : (initialCalc.upfrontInterestPaise || initialCalc.interestPaise || 0))
+      : 0;
     const netDisbursedPaise = isUpfrontDeduction ? Math.max(0, principalPaise - upfrontInterestPaise) : principalPaise;
 
     // For both Monthly and Daily: customer repays the full original principal P (e.g. 5L)
@@ -211,6 +227,10 @@ const createLoan = async (req, res, next) => {
         totalInterestPaidPaise: isUpfrontDeduction ? upfrontInterestPaise : 0,
         upfrontInterestPaise: isUpfrontDeduction ? upfrontInterestPaise : 0,
         netDisbursementPaise: isUpfrontDeduction ? netDisbursedPaise : principalPaise,
+        renewalCount: 0,
+        currentPeriodStartDate: new Date(startDate),
+        currentPeriodDueDate: new Date(dueDate),
+        renewalHistory: [],
         dailyInstalmentPaise: isDaily ? dailyInstalmentPaise : undefined,
         totalDurationDays: isDaily ? dailyDurationDays : undefined,
         disbursementPaymentMethod: disbursementPaymentMethod || 'CASH',
@@ -410,7 +430,14 @@ const listLoans = async (req, res, next) => {
       .lean();
 
     const enrichedLoans = loans.map((loan) => {
-      if (loan.vattiType === 'DAILY') {
+      const isDailyCollection = loan.vattiType === 'DAILY_COLLECTION' || loan.vattiType === 'MEATER';
+      const todayKolkata = DateTime.now().setZone(CONSTANTS.DEFAULT_TIMEZONE).startOf('day');
+      const dueKolkata = DateTime.fromJSDate(loan.dueDate, { zone: CONSTANTS.DEFAULT_TIMEZONE }).startOf('day');
+      const diffDays = Math.round(dueKolkata.diff(todayKolkata, 'days').days);
+      const isDueForRenewal = diffDays <= 0 && loan.outstandingPrincipalPaise > 0;
+      const currentPeriodInterestPaise = Math.round((loan.outstandingPrincipalPaise * loan.interestRatePercent) / 100);
+
+      if (isDailyCollection) {
         const dailyInstalmentPaise = loan.dailyInstalmentPaise || (loan.totalDurationDays ? Math.floor((loan.principalPaise || 0) / loan.totalDurationDays) : Math.floor((loan.principalPaise || 0) / 10));
         const penaltyCalc = calculateDailyPenalty({
           dailyRepaymentAmountPaise: dailyInstalmentPaise,
@@ -423,6 +450,12 @@ const listLoans = async (req, res, next) => {
         });
         return {
           ...loan,
+          renewalCount: loan.renewalCount || 0,
+          currentPeriodStartDate: loan.currentPeriodStartDate || loan.startDate,
+          currentPeriodDueDate: loan.currentPeriodDueDate || loan.dueDate,
+          currentPeriodInterestRupees: toRupees(currentPeriodInterestPaise),
+          currentPeriodInterestPaise,
+          isDueForRenewal,
           penaltyBreakdown: {
             isPenaltyApplicable: true,
             penaltyRatePercent: penaltyCalc.penaltyRatePercent,
@@ -442,8 +475,16 @@ const listLoans = async (req, res, next) => {
           },
         };
       }
+
+      // For Monthly Finance and Daily Finance (Renewal Workflow): Strictly NO penalty under any circumstances
       return {
         ...loan,
+        renewalCount: loan.renewalCount || 0,
+        currentPeriodStartDate: loan.currentPeriodStartDate || loan.startDate,
+        currentPeriodDueDate: loan.currentPeriodDueDate || loan.dueDate,
+        currentPeriodInterestRupees: toRupees(currentPeriodInterestPaise),
+        currentPeriodInterestPaise,
+        isDueForRenewal,
         penaltyBreakdown: {
           isPenaltyApplicable: false,
           penaltyRatePercent: 0,
@@ -499,9 +540,9 @@ const getLoanById = async (req, res, next) => {
       config: loan.calculationConfigSnapshot,
     });
 
-    const isDaily = loan.vattiType === 'DAILY';
+    const isDailyCollection = loan.vattiType === 'DAILY_COLLECTION' || loan.vattiType === 'MEATER';
     let penaltyCalc = null;
-    if (isDaily) {
+    if (isDailyCollection) {
       const dailyInstalmentPaise = loan.dailyInstalmentPaise || (loan.totalDurationDays ? Math.floor((loan.principalPaise || 0) / loan.totalDurationDays) : Math.floor((loan.principalPaise || 0) / 10));
       penaltyCalc = calculateDailyPenalty({
         dailyRepaymentAmountPaise: dailyInstalmentPaise,
@@ -514,7 +555,7 @@ const getLoanById = async (req, res, next) => {
       });
     }
 
-    const penaltyBreakdown = isDaily && penaltyCalc ? {
+    const penaltyBreakdown = isDailyCollection && penaltyCalc ? {
       isPenaltyApplicable: true,
       penaltyRatePercent: penaltyCalc.penaltyRatePercent,
       dailyRepaymentAmountRupees: toRupees(penaltyCalc.dailyRepaymentAmountPaise),
@@ -548,8 +589,21 @@ const getLoanById = async (req, res, next) => {
       totalAmountToClosePaise: loan.outstandingPrincipalPaise + loan.outstandingInterestPaise,
     };
 
+    const todayKolkata = DateTime.now().setZone(CONSTANTS.DEFAULT_TIMEZONE).startOf('day');
+    const dueKolkata = DateTime.fromJSDate(loan.dueDate, { zone: CONSTANTS.DEFAULT_TIMEZONE }).startOf('day');
+    const diffDays = Math.round(dueKolkata.diff(todayKolkata, 'days').days);
+    const isDueForRenewal = diffDays <= 0 && loan.outstandingPrincipalPaise > 0;
+    const currentPeriodInterestPaise = Math.round((loan.outstandingPrincipalPaise * loan.interestRatePercent) / 100);
+
     const loanObj = loan.toObject ? loan.toObject() : loan;
     loanObj.penaltyBreakdown = penaltyBreakdown;
+    loanObj.renewalCount = loan.renewalCount || 0;
+    loanObj.currentPeriodStartDate = loan.currentPeriodStartDate || loan.startDate;
+    loanObj.currentPeriodDueDate = loan.currentPeriodDueDate || loan.dueDate;
+    loanObj.currentPeriodInterestRupees = toRupees(currentPeriodInterestPaise);
+    loanObj.currentPeriodInterestPaise = currentPeriodInterestPaise;
+    loanObj.isDueForRenewal = isDueForRenewal;
+    loanObj.renewalHistory = loan.renewalHistory || [];
 
     res.json({
       success: true,
@@ -566,9 +620,9 @@ const getLoanById = async (req, res, next) => {
         penaltyBreakdown,
         isPendingOwnerConfirmation: false,
         message: loan.vattiType === 'MONTHLY'
-          ? 'Monthly Finance: Interest was deducted upfront at loan disbursement. Strictly no overdue penalties.'
+          ? 'Monthly Finance: First month interest deducted upfront. Customer repays full principal within monthly period or pays renewal interest to extend.'
           : loan.vattiType === 'DAILY'
-          ? 'Daily Finance: Interest was deducted upfront at loan disbursement. Overdue penalty of 2% per day applies after maturity.'
+          ? 'Daily Finance: First 10-day interest deducted upfront. Customer repays full principal within 10 days or pays renewal interest to extend.'
           : liveCalc.message,
       },
     });
@@ -781,6 +835,209 @@ const reverseLoan = async (req, res, next) => {
   }
 };
 
+/**
+ * Renew Loan for Monthly Finance (extends by 1 month) or Daily Finance (extends by 10 days)
+ */
+const renewLoan = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const {
+      paymentAmount,
+      renewalInterestAmount,
+      paymentMethod = 'CASH',
+      paymentDate = new Date(),
+      remarks,
+    } = req.body;
+
+    const loan = await Loan.findById(id).populate('customerId');
+    if (!loan) {
+      return res.status(404).json({ success: false, message: 'Loan account not found' });
+    }
+
+    if (loan.status === 'SETTLED' || loan.status === 'CLOSED' || loan.status === 'CANCELLED' || loan.status === 'REVERSED') {
+      return res.status(400).json({ success: false, message: `Cannot renew loan with status ${loan.status}` });
+    }
+
+    if (loan.outstandingPrincipalPaise <= 0) {
+      return res.status(400).json({ success: false, message: 'Loan has zero outstanding principal; cannot be renewed' });
+    }
+
+    if (loan.vattiType !== 'MONTHLY' && loan.vattiType !== 'DAILY') {
+      return res.status(400).json({
+        success: false,
+        message: `Loan renewal is only applicable for Monthly Finance and Daily Finance. Current type: ${loan.vattiType}`,
+      });
+    }
+
+    // Calculate standard renewal interest based on current remaining principal:
+    // Renewal Interest = Outstanding Principal × Rate / 100
+    const standardRenewalInterestPaise = Math.round((loan.outstandingPrincipalPaise * loan.interestRatePercent) / 100);
+    const amountToCharge = paymentAmount !== undefined && paymentAmount !== ''
+      ? paymentAmount
+      : renewalInterestAmount;
+    const renewalPaymentPaise = amountToCharge !== undefined && amountToCharge !== '' && !isNaN(amountToCharge)
+      ? toPaise(amountToCharge)
+      : standardRenewalInterestPaise;
+
+    if (renewalPaymentPaise <= 0) {
+      return res.status(400).json({ success: false, message: 'Renewal payment amount must be greater than zero' });
+    }
+
+    // Previous due date in Asia/Kolkata
+    const prevDueKolkata = DateTime.fromJSDate(loan.dueDate, { zone: CONSTANTS.DEFAULT_TIMEZONE }).startOf('day');
+
+    // Calculate new extended due date
+    let newDueKolkata;
+    if (loan.vattiType === 'MONTHLY') {
+      // Monthly Finance: extend to the next monthly period, handling calendar month-ends safely
+      newDueKolkata = prevDueKolkata.plus({ months: 1 });
+    } else {
+      // Daily Finance: extend by exactly 10 calendar days
+      newDueKolkata = prevDueKolkata.plus({ days: 10 });
+    }
+
+    const renewalNumber = (loan.renewalCount || 0) + 1;
+    const upfrontReceiptNum = await generateReceiptNumber();
+    const upfrontColId = await generateCollectionId();
+    const colTxnId = await generateTransactionId();
+
+    const payDate = paymentDate ? new Date(paymentDate) : new Date();
+    const todayKolkata = DateTime.now().setZone(CONSTANTS.DEFAULT_TIMEZONE).startOf('day');
+
+    const result = await runInTransaction(async (session) => {
+      // 1. Create Confirmed Renewal Interest Collection Record
+      const collection = new Collection({
+        collectionId: upfrontColId,
+        receiptNumber: upfrontReceiptNum,
+        loanId: loan._id,
+        loanCode: loan.loanId,
+        customerId: loan.customerId._id,
+        customerName: loan.customerName,
+        paymentDate: payDate,
+        paymentMethod: paymentMethod || 'CASH',
+        totalAmountPaise: renewalPaymentPaise,
+        principalAllocationPaise: 0, // Renewal interest strictly does NOT reduce principal!
+        interestAllocationPaise: renewalPaymentPaise,
+        penaltyAllocationPaise: 0,
+        isUpfrontInterest: false,
+        accountedInDisbursement: false,
+        isRenewalInterest: true,
+        renewalNumber,
+        collectionType: 'RENEWAL_INTEREST',
+        vattiType: loan.vattiType,
+        previousOutstandingPrincipalPaise: loan.outstandingPrincipalPaise,
+        previousOutstandingInterestPaise: 0,
+        remainingPrincipalPaise: loan.outstandingPrincipalPaise, // Principal remains unchanged!
+        remainingInterestPaise: 0,
+        status: CONSTANTS.COLLECTION_STATUS.CONFIRMED,
+        collectedBy: req.user?.username || 'admin',
+        remarks: remarks || `Renewal #${renewalNumber} Interest: ₹${toRupees(renewalPaymentPaise)} paid. Extended to ${newDueKolkata.toISODate()}`,
+        idempotencyKey: `RENEW-${loan.loanId}-${renewalNumber}-${Date.now()}`,
+      });
+
+      await collection.save(session ? { session } : undefined);
+
+      // 2. Create Ledger Transaction for Renewal Interest
+      const txn = new Transaction({
+        transactionId: colTxnId,
+        customerId: loan.customerId._id,
+        loanId: loan._id,
+        collectionId: collection._id,
+        date: payDate,
+        type: 'RENEWAL_INTEREST',
+        principalDebitPaise: 0,
+        principalCreditPaise: 0,
+        interestDebitPaise: 0,
+        interestCreditPaise: renewalPaymentPaise,
+        penaltyDebitPaise: 0,
+        penaltyCreditPaise: 0,
+        balancePrincipalPaise: loan.outstandingPrincipalPaise,
+        balanceInterestPaise: 0,
+        balancePenaltyPaise: 0,
+        balanceTotalPaise: loan.outstandingPrincipalPaise,
+        remarks: `Renewal #${renewalNumber} Interest: ₹${toRupees(renewalPaymentPaise)} (${loan.vattiType === 'MONTHLY' ? '1 Month' : '10 Days'} extension to ${newDueKolkata.toISODate()})`,
+        referenceId: upfrontReceiptNum,
+        performedBy: req.user?.username || 'admin',
+      });
+
+      await txn.save(session ? { session } : undefined);
+
+      // 3. Update Loan Record
+      loan.renewalCount = renewalNumber;
+      loan.currentPeriodStartDate = loan.dueDate;
+      loan.dueDate = newDueKolkata.toJSDate();
+      loan.currentPeriodDueDate = newDueKolkata.toJSDate();
+      loan.totalInterestPaidPaise = (loan.totalInterestPaidPaise || 0) + renewalPaymentPaise;
+
+      // Update status: If new due date is >= today, loan becomes ACTIVE; if still < today, remains OVERDUE
+      if (newDueKolkata >= todayKolkata) {
+        loan.status = CONSTANTS.LOAN_STATUS.ACTIVE;
+      } else {
+        loan.status = CONSTANTS.LOAN_STATUS.OVERDUE;
+      }
+
+      if (!loan.renewalHistory) {
+        loan.renewalHistory = [];
+      }
+
+      loan.renewalHistory.push({
+        renewalNumber,
+        renewalDate: payDate,
+        previousDueDate: prevDueKolkata.toJSDate(),
+        newDueDate: newDueKolkata.toJSDate(),
+        renewalInterestPaise: renewalPaymentPaise,
+        principalPaiseAtRenewal: loan.outstandingPrincipalPaise,
+        interestRatePercent: loan.interestRatePercent,
+        collectionId: collection._id,
+        receiptNumber: upfrontReceiptNum,
+        paymentMethod: paymentMethod || 'CASH',
+        remarks: remarks || '',
+        recordedBy: req.user?.username || 'admin',
+        createdAt: new Date(),
+      });
+
+      await loan.save(session ? { session } : undefined);
+
+      // 4. Update Customer record
+      const customer = await Customer.findById(loan.customerId._id);
+      if (customer) {
+        customer.totalInterestPaidPaise = (customer.totalInterestPaidPaise || 0) + renewalPaymentPaise;
+        await customer.save(session ? { session } : undefined);
+      }
+
+      return { loan, collection, receiptNumber: upfrontReceiptNum };
+    });
+
+    // 5. Invalidate caches and trigger notifications
+    invalidateDashboardCache();
+    evaluateDueNotifications().catch((err) => console.error('Notification evaluation error after renewal:', err));
+
+    await logAuditEvent({
+      action: 'RENEW_LOAN',
+      entityType: 'LOAN',
+      entityId: loan._id,
+      performedBy: req.user?.username || 'admin',
+      ipAddress: req.ip,
+      details: `Renewed ${loan.vattiType} loan ${loan.loanId} (Renewal #${renewalNumber}) with ₹${toRupees(renewalPaymentPaise)} interest paid. Extended to ${newDueKolkata.toISODate()}`,
+    });
+
+    res.json({
+      success: true,
+      message: `Loan successfully renewed (Renewal #${renewalNumber}). Extended to ${newDueKolkata.toISODate()}.`,
+      loan: result.loan,
+      collection: result.collection,
+      receiptNumber: result.receiptNumber,
+      renewalNumber,
+      previousDueDate: prevDueKolkata.toISODate(),
+      newDueDate: newDueKolkata.toISODate(),
+      renewalInterestRupees: toRupees(renewalPaymentPaise),
+      outstandingPrincipalRupees: toRupees(loan.outstandingPrincipalPaise),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 const deleteLoan = async (req, res, next) => {
   return reverseLoan(req, res, next);
 };
@@ -793,4 +1050,5 @@ module.exports = {
   amendInterestRate,
   reverseLoan,
   deleteLoan,
+  renewLoan,
 };

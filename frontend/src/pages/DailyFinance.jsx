@@ -22,6 +22,7 @@ import {
   FileText,
   User,
   Phone,
+  RefreshCw,
 } from 'lucide-react';
 import { formatINR, formatDate, formatDateTime, getStatusBadge } from '../utils/formatters';
 import SearchableCustomerSelect from '../components/SearchableCustomerSelect';
@@ -52,6 +53,8 @@ export default function DailyFinance({ onNavigate, preselectedCustomer }) {
   const [selectedCustomerId, setSelectedCustomerId] = useState(preselectedCustomer?._id || '');
   const [principalAmount, setPrincipalAmount] = useState('');
   const [upfrontRatePercent, setUpfrontRatePercent] = useState('2.0');
+  const [customInterestAmount, setCustomInterestAmount] = useState('');
+  const [isCustomInterest, setIsCustomInterest] = useState(false);
   const [durationDays, setDurationDays] = useState('10');
   const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
   const [dueDate, setDueDate] = useState('');
@@ -78,6 +81,18 @@ export default function DailyFinance({ onNavigate, preselectedCustomer }) {
   const [collectionSubmitting, setCollectionSubmitting] = useState(false);
   const [collectionError, setCollectionError] = useState('');
   const [collectionSuccess, setCollectionSuccess] = useState('');
+
+  // Modal States: Renew Loan
+  const [isRenewModalOpen, setIsRenewModalOpen] = useState(false);
+  const [selectedLoanForRenewal, setSelectedLoanForRenewal] = useState(null);
+  const [renewalInterestAmount, setRenewalInterestAmount] = useState('');
+  const [renewalPaymentMethod, setRenewalPaymentMethod] = useState('CASH');
+  const [renewalPaymentDate, setRenewalPaymentDate] = useState(new Date().toISOString().split('T')[0]);
+  const [renewalRemarks, setRenewalRemarks] = useState('');
+  const [renewalSubmitting, setRenewalSubmitting] = useState(false);
+  const [renewalError, setRenewalError] = useState('');
+  const [renewalSuccess, setRenewalSuccess] = useState('');
+  const [newProjectedDueDate, setNewProjectedDueDate] = useState('');
 
   // Synchronize Due Date when Start Date or Duration Days changes
   useEffect(() => {
@@ -184,31 +199,22 @@ export default function DailyFinance({ onNavigate, preselectedCustomer }) {
   // Live Calculation for Daily Finance Upfront Interest Model
   const pAmount = parseFloat(principalAmount) || 0;
   const ratePct = parseFloat(upfrontRatePercent) || 0;
-  const numDays = parseInt(durationDays, 10) > 0 ? parseInt(durationDays, 10) : 1;
+  const numDays = parseInt(durationDays, 10) > 0 ? parseInt(durationDays, 10) : 10;
 
   // 1. Upfront interest = Principal × Rate% / 100
-  const upfrontInterestDeducted = pAmount > 0 && ratePct >= 0 ? Math.round((pAmount * ratePct) / 100) : 0;
+  const autoCalculatedInterest = pAmount > 0 && ratePct >= 0 ? Math.round((pAmount * ratePct) / 100) : 0;
+  const actualUpfrontInterest = isCustomInterest && customInterestAmount !== ''
+    ? (parseFloat(customInterestAmount) || 0)
+    : autoCalculatedInterest;
 
   // 2. Net cash disbursed = Principal - Upfront Interest
-  const netCashGiven = Math.max(0, pAmount - upfrontInterestDeducted);
+  const netCashGiven = Math.max(0, pAmount - actualUpfrontInterest);
 
-  // 3. Total daily repayment = Full Principal
-  const totalDailyRepayment = pAmount;
+  // 3. Total repayable = Full Principal
+  const totalRepayableCash = pAmount;
 
-  // 4. Daily instalment = Principal ÷ Duration in days
+  // Daily instalment estimate if paid daily across the period
   const dailyCollectionAmount = pAmount > 0 && numDays > 0 ? Math.floor(pAmount / numDays) : 0;
-
-  // 5. Total interest collected = Upfront interest
-  const totalInterestCollected = upfrontInterestDeducted;
-
-  // 6. Total cash received from customer = Full Principal
-  const totalCashReceived = pAmount;
-
-  // 7. Total business receipt including upfront interest = Principal + Upfront interest
-  const totalBusinessReceipt = pAmount + upfrontInterestDeducted;
-
-  // 8. Total profit / interest = Upfront interest
-  const totalProfit = upfrontInterestDeducted;
 
   // Open Confirmation Modal
   const handleInitiateDisbursement = (e) => {
@@ -245,7 +251,7 @@ export default function DailyFinance({ onNavigate, preselectedCustomer }) {
     setDisbursing(true);
     setFormError('');
     try {
-      const res = await api.post('/loans', {
+      const payload = {
         customerId: selectedCustomerId,
         vattiType: 'DAILY',
         principalAmount: pAmount,
@@ -253,13 +259,20 @@ export default function DailyFinance({ onNavigate, preselectedCustomer }) {
         startDate,
         dueDate,
         remarks,
-      });
+      };
+      if (isCustomInterest && customInterestAmount !== '') {
+        payload.interestAmount = parseFloat(customInterestAmount);
+      }
+
+      const res = await api.post('/loans', payload);
 
       if (res.data?.success) {
         setIsConfirmModalOpen(false);
         setFormSuccess(`Daily Finance ${res.data.loan?.loanId || ''} disbursed successfully!`);
         // Reset form
         setPrincipalAmount('');
+        setCustomInterestAmount('');
+        setIsCustomInterest(false);
         setRemarks('');
         setSelectedCustomerId('');
         fetchDailyLoans();
@@ -273,6 +286,67 @@ export default function DailyFinance({ onNavigate, preselectedCustomer }) {
       setIsConfirmModalOpen(false);
     } finally {
       setDisbursing(false);
+    }
+  };
+
+  // Open Renew Loan Modal (10-Day Extension)
+  const handleOpenRenewModal = (loan) => {
+    setSelectedLoanForRenewal(loan);
+    const outstanding = (loan.outstandingPrincipalPaise || 0) / 100;
+    const rate = loan.interestRatePercent || 2.0;
+    const defaultInterest = loan.currentPeriodInterestRupees || Math.round((outstanding * rate) / 100);
+    setRenewalInterestAmount(String(defaultInterest));
+    setRenewalPaymentMethod('CASH');
+    setRenewalPaymentDate(new Date().toISOString().split('T')[0]);
+    setRenewalRemarks(`Renewal #${(loan.renewalCount || 0) + 1} (10-Day extension) interest collection`);
+    setRenewalError('');
+    setRenewalSuccess('');
+
+    // Projected new due date (+10 calendar days)
+    const baseDue = loan.currentPeriodDueDate || loan.dueDate || new Date();
+    const d = new Date(baseDue);
+    if (!isNaN(d.getTime())) {
+      d.setDate(d.getDate() + 10);
+      setNewProjectedDueDate(d.toISOString().split('T')[0]);
+    } else {
+      setNewProjectedDueDate('');
+    }
+    setIsRenewModalOpen(true);
+  };
+
+  // Submit Renewal Payment to Backend
+  const handleConfirmRenewal = async (e) => {
+    e.preventDefault();
+    if (!selectedLoanForRenewal) return;
+
+    const amt = parseFloat(renewalInterestAmount);
+    if (isNaN(amt) || amt < 0) {
+      setRenewalError('Please enter a valid renewal interest amount.');
+      return;
+    }
+
+    setRenewalSubmitting(true);
+    setRenewalError('');
+    try {
+      const res = await api.post(`/loans/${selectedLoanForRenewal._id}/renew`, {
+        renewalInterestAmount: amt,
+        paymentMethod: renewalPaymentMethod,
+        paymentDate: renewalPaymentDate,
+        remarks: renewalRemarks,
+      });
+
+      if (res.data?.success) {
+        setRenewalSuccess(`Loan extended by 10 days! New due date: ${formatDate(res.data.loan?.currentPeriodDueDate || res.data.loan?.dueDate)}`);
+        fetchDailyLoans();
+        setTimeout(() => {
+          setIsRenewModalOpen(false);
+          setSelectedLoanForRenewal(null);
+        }, 1200);
+      }
+    } catch (err) {
+      setRenewalError(err.response?.data?.message || err.message || 'Failed to renew loan');
+    } finally {
+      setRenewalSubmitting(false);
     }
   };
 
@@ -527,19 +601,19 @@ export default function DailyFinance({ onNavigate, preselectedCustomer }) {
               <table className="w-full text-left text-xs text-slate-600">
                 <thead className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200 uppercase tracking-wider text-[10px]">
                   <tr>
-                    <th className="px-4 py-3">Loan ID</th>
-                    <th className="px-4 py-3">Disbursed Date</th>
-                    <th className="px-4 py-3">Customer</th>
-                    <th className="px-4 py-3 text-right">Principal</th>
-                    <th className="px-4 py-3 text-right">Upfront Interest</th>
-                    <th className="px-4 py-3 text-right">Net Given</th>
-                    <th className="px-4 py-3 text-right">Daily Instalment</th>
-                    <th className="px-4 py-3 text-right">Daily Repaid</th>
-                    <th className="px-4 py-3 text-right">Outstanding Balance</th>
-                    <th className="px-4 py-3">Due Date</th>
-                    <th className="px-4 py-3 text-right">Overdue Penalty (2%)</th>
-                    <th className="px-4 py-3 text-center">Status</th>
-                    <th className="px-4 py-3 text-center">Actions</th>
+                    <th className="px-3 py-3">Loan ID</th>
+                    <th className="px-3 py-3">Disbursed</th>
+                    <th className="px-3 py-3">Customer</th>
+                    <th className="px-3 py-3 text-right">Principal</th>
+                    <th className="px-3 py-3 text-right">Upfront Interest</th>
+                    <th className="px-3 py-3 text-right">Net Given</th>
+                    <th className="px-3 py-3 text-right">Principal Repaid</th>
+                    <th className="px-3 py-3 text-right">Outstanding</th>
+                    <th className="px-3 py-3 text-right">10-Day Interest</th>
+                    <th className="px-3 py-3">Current Period Due</th>
+                    <th className="px-3 py-3 text-center">Renewals</th>
+                    <th className="px-3 py-3 text-center">Status</th>
+                    <th className="px-3 py-3 text-center">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -547,68 +621,73 @@ export default function DailyFinance({ onNavigate, preselectedCustomer }) {
                     const gross = (loan.grossPrincipalPaise || loan.principalPaise || 0) / 100;
                     const upfrontInterest = (loan.upfrontInterestPaise || (loan.dailyFinanceDetails?.upfrontInterestPaise) || 0) / 100;
                     const netGiven = loan.netDisbursementPaise !== undefined ? loan.netDisbursementPaise / 100 : Math.max(0, gross - upfrontInterest);
-                    const days = loan.totalDurationDays || loan.dailyFinanceDetails?.totalDurationDays || 10;
-                    const dailyInstalment = loan.dailyInstalmentPaise !== undefined ? loan.dailyInstalmentPaise / 100 : Math.floor(gross / days);
                     const repaid = (loan.totalPrincipalPaidPaise || 0) / 100;
                     const outstanding = (loan.outstandingPrincipalPaise || 0) / 100;
+                    const currentInterest = loan.currentPeriodInterestRupees || Math.round((outstanding * (loan.interestRatePercent || 0)) / 100);
+                    const currentDueDate = loan.currentPeriodDueDate || loan.dueDate;
+                    const isDueForRenewal = loan.status !== 'SETTLED' && outstanding > 0 && (
+                      loan.isDueForRenewal ||
+                      loan.status === 'OVERDUE' ||
+                      (currentDueDate && new Date(currentDueDate) <= new Date())
+                    );
                     const statusBadge = getStatusBadge(loan.status);
 
                     return (
                       <tr key={loan._id} className="hover:bg-slate-50/80 transition-colors">
-                        <td className="px-4 py-3 font-mono font-bold text-amber-700">
+                        <td className="px-3 py-3 font-mono font-bold text-amber-700">
                           {loan.loanId}
                         </td>
-                        <td className="px-4 py-3 text-slate-600 whitespace-nowrap">
+                        <td className="px-3 py-3 text-slate-600 whitespace-nowrap">
                           {formatDate(loan.startDate)}
                         </td>
-                        <td className="px-4 py-3">
+                        <td className="px-3 py-3">
                           <div className="font-bold text-slate-900">{loan.customerName}</div>
                           <div className="text-[11px] text-slate-500 font-mono flex items-center space-x-1 mt-0.5">
                             <Phone className="w-3 h-3 text-slate-400" />
                             <span>{loan.customerMobile}</span>
                           </div>
                         </td>
-                        <td className="px-4 py-3 text-right font-semibold text-slate-900">
+                        <td className="px-3 py-3 text-right font-semibold text-slate-900">
                           {formatINR(gross)}
                         </td>
-                        <td className="px-4 py-3 text-right font-semibold text-rose-600">
+                        <td className="px-3 py-3 text-right font-semibold text-rose-600">
                           - {formatINR(upfrontInterest)} ({loan.interestRatePercent}%)
                         </td>
-                        <td className="px-4 py-3 text-right font-bold text-emerald-700">
+                        <td className="px-3 py-3 text-right font-bold text-emerald-700">
                           {formatINR(netGiven)}
                         </td>
-                        <td className="px-4 py-3 text-right font-mono font-medium text-slate-800">
-                          {formatINR(dailyInstalment)} / day ({days}d)
-                        </td>
-                        <td className="px-4 py-3 text-right font-semibold text-emerald-600">
+                        <td className="px-3 py-3 text-right font-semibold text-emerald-600">
                           {formatINR(repaid)}
                         </td>
-                        <td className="px-4 py-3 text-right font-bold text-amber-800">
+                        <td className="px-3 py-3 text-right font-bold text-amber-800">
                           {formatINR(outstanding)}
                         </td>
-                        <td className="px-4 py-3 text-slate-600 whitespace-nowrap">
-                          {formatDate(loan.dueDate)}
+                        <td className="px-3 py-3 text-right font-bold text-indigo-700">
+                          {formatINR(currentInterest)}
                         </td>
-                        <td className="px-4 py-3 text-right">
-                          {loan.penaltyBreakdown && loan.penaltyBreakdown.overdueDays > 0 ? (
-                            <div>
-                              <span className="font-bold text-rose-700">
-                                {formatINR(loan.penaltyBreakdown.penaltyOutstandingRupees)}
-                              </span>
-                              <div className="text-[10px] text-rose-500 font-mono">
-                                {loan.penaltyBreakdown.overdueDays}d overdue ({formatINR(loan.penaltyBreakdown.dailyPenaltyRupees)}/d)
-                              </div>
-                            </div>
-                          ) : (
-                            <span className="text-slate-400 font-mono text-[11px]">₹0.00</span>
-                          )}
+                        <td className="px-3 py-3 text-slate-600 whitespace-nowrap">
+                          <div className="font-semibold text-slate-800">{formatDate(currentDueDate)}</div>
+                          <div className="text-[10px] text-slate-400">
+                            {(loan.renewalCount || 0) > 0 ? `Period #${(loan.renewalCount || 0) + 1} (10d)` : 'Initial 10-Days'}
+                          </div>
                         </td>
-                        <td className="px-4 py-3 text-center">
-                          <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold border ${statusBadge.bg}`}>
-                            {statusBadge.label}
+                        <td className="px-3 py-3 text-center font-mono">
+                          <span className="inline-block px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 text-xs font-bold">
+                            {loan.renewalCount || 0}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-center">
+                        <td className="px-3 py-3 text-center">
+                          {isDueForRenewal ? (
+                            <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold border bg-amber-50 text-amber-800 border-amber-300">
+                              Due for Renewal
+                            </span>
+                          ) : (
+                            <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold border ${statusBadge.bg}`}>
+                              {statusBadge.label}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-3 py-3 text-center">
                           <div className="flex items-center justify-center space-x-1.5">
                             <button
                               onClick={() => handleOpenDetails(loan)}
@@ -618,15 +697,25 @@ export default function DailyFinance({ onNavigate, preselectedCustomer }) {
                               <Eye className="w-4 h-4" />
                             </button>
 
-                            {loan.status === 'ACTIVE' && (
-                              <button
-                                onClick={() => handleOpenCollectionModal(loan)}
-                                className="px-2 py-1 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded text-[10px] transition-colors cursor-pointer flex items-center space-x-1"
-                                title="Record Daily Collection"
-                              >
-                                <Coins className="w-3 h-3" />
-                                <span>Collect</span>
-                              </button>
+                            {loan.status !== 'SETTLED' && outstanding > 0 && (
+                              <>
+                                <button
+                                  onClick={() => handleOpenRenewModal(loan)}
+                                  className="px-2 py-1 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded text-[10px] transition-colors cursor-pointer flex items-center space-x-1"
+                                  title="Renew Loan for 10 Days"
+                                >
+                                  <RefreshCw className="w-3 h-3" />
+                                  <span>Renew</span>
+                                </button>
+                                <button
+                                  onClick={() => handleOpenCollectionModal(loan)}
+                                  className="px-2 py-1 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded text-[10px] transition-colors cursor-pointer flex items-center space-x-1"
+                                  title="Record Principal Repayment"
+                                >
+                                  <Coins className="w-3 h-3" />
+                                  <span>Collect</span>
+                                </button>
+                              </>
                             )}
 
                             <button
@@ -738,8 +827,53 @@ export default function DailyFinance({ onNavigate, preselectedCustomer }) {
                     </span>
                   </div>
                   <p className="text-[10px] text-slate-400 mt-1">
-                    Deducted upfront: ₹{formatINR(upfrontInterestDeducted).replace('₹', '')}
+                    Deducted upfront: ₹{formatINR(autoCalculatedInterest).replace('₹', '')}
                   </p>
+                </div>
+              </div>
+
+              {/* Upfront Interest Deduction & Custom Adjustment */}
+              <div className="bg-slate-50 p-3 rounded-lg border border-slate-200">
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="font-semibold text-slate-700 text-xs">
+                    Upfront Interest Deducted (10 Days) (₹)
+                  </label>
+                  <label className="flex items-center space-x-1.5 text-[11px] text-slate-600 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={isCustomInterest}
+                      onChange={(e) => {
+                        setIsCustomInterest(e.target.checked);
+                        if (!e.target.checked) setCustomInterestAmount('');
+                        else setCustomInterestAmount(String(autoCalculatedInterest));
+                      }}
+                      className="rounded text-amber-600 focus:ring-amber-500"
+                    />
+                    <span>Adjust Interest Amount</span>
+                  </label>
+                </div>
+                {isCustomInterest ? (
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold">₹</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="any"
+                      placeholder="Custom upfront interest"
+                      value={customInterestAmount}
+                      onChange={(e) => setCustomInterestAmount(e.target.value)}
+                      className="w-full pl-8 pr-3 py-2 border border-amber-300 rounded-lg text-xs font-mono font-bold bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
+                    />
+                  </div>
+                ) : (
+                  <div className="flex justify-between items-center text-xs font-mono bg-white px-3 py-2 rounded border border-slate-200">
+                    <span className="text-slate-500">Auto ({upfrontRatePercent}%):</span>
+                    <span className="font-bold text-rose-600">- ₹{autoCalculatedInterest.toLocaleString('en-IN')}</span>
+                  </div>
+                )}
+                <div className="mt-1.5 flex justify-between text-[11px] font-sans">
+                  <span className="text-slate-500">Net Cash Handed to Customer:</span>
+                  <span className="font-bold font-mono text-emerald-700">₹{netCashGiven.toLocaleString('en-IN')}</span>
                 </div>
               </div>
 
@@ -849,63 +983,48 @@ export default function DailyFinance({ onNavigate, preselectedCustomer }) {
                 </div>
                 <div className="flex justify-between py-1 border-b border-slate-800">
                   <span className="text-slate-400 font-sans">Upfront Interest Deducted:</span>
-                  <span className="font-bold text-rose-400">- {formatINR(upfrontInterestDeducted)}</span>
+                  <span className="font-bold text-rose-400">- {formatINR(actualUpfrontInterest)}</span>
                 </div>
                 <div className="flex justify-between py-1.5 border-b border-slate-700 bg-emerald-950/40 px-2 rounded">
                   <span className="text-emerald-400 font-sans font-bold">Net Cash Given to Customer:</span>
                   <span className="font-black text-emerald-400 text-sm">{formatINR(netCashGiven)}</span>
                 </div>
                 <div className="flex justify-between py-1 border-b border-slate-800">
-                  <span className="text-slate-400 font-sans">Daily Collection Amount:</span>
-                  <span className="font-bold text-white">{formatINR(dailyCollectionAmount)} / day</span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-slate-800">
-                  <span className="text-slate-400 font-sans">Number of Collection Days:</span>
+                  <span className="text-slate-400 font-sans">Number of Days:</span>
                   <span className="font-bold text-amber-300">{numDays} Days</span>
                 </div>
                 <div className="flex justify-between py-1.5 border-b border-slate-700 bg-blue-950/40 px-2 rounded">
-                  <span className="text-blue-300 font-sans font-bold">Total Daily Repayment:</span>
-                  <span className="font-black text-blue-300 text-sm">{formatINR(totalDailyRepayment)}</span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-slate-800">
-                  <span className="text-slate-400 font-sans">Total Interest Collected:</span>
-                  <span className="font-bold text-purple-400">{formatINR(totalInterestCollected)}</span>
-                </div>
-                <div className="flex justify-between py-1 text-[11px] text-slate-400">
-                  <span className="font-sans">Total Business Receipt:</span>
-                  <span className="font-mono text-slate-300">{formatINR(totalBusinessReceipt)}</span>
+                  <span className="text-blue-300 font-sans font-bold">Total Customer Repayment:</span>
+                  <span className="font-black text-blue-300 text-sm">{formatINR(totalRepayableCash)}</span>
                 </div>
               </div>
 
               {/* Explanatory callout */}
-              <div className="mt-4 p-3 rounded-lg bg-amber-900/30 border border-amber-700/40 text-[11px] text-amber-200 space-y-1 font-sans">
+              <div className="mt-4 p-3 rounded-lg bg-amber-900/30 border border-amber-700/40 text-[11px] text-amber-200 space-y-1.5 font-sans">
                 <p className="font-bold flex items-center space-x-1.5 text-amber-300">
                   <CheckCircle className="w-3.5 h-3.5 shrink-0" />
-                  <span>Daily Finance Business Rules:</span>
+                  <span>Daily Finance Business Rules (10-Day Period):</span>
                 </p>
                 <p className="text-slate-300 text-[10px]">
                   • Principal − Upfront Interest = <strong className="text-emerald-300">Net Cash Given</strong>
                 </p>
                 <p className="text-slate-300 text-[10px]">
-                  • Full Original Principal = <strong className="text-blue-300">Total Daily Repayment</strong>
+                  • Full Original Principal = <strong className="text-blue-300">Total Repayable Principal</strong>
                 </p>
                 <p className="text-slate-400 text-[10px]">
-                  Interest is recorded as collected immediately at loan disbursement. Customer repays the full original principal through daily instalments. Upfront interest is never charged or accrued again.
+                  Interest for 10 days is deducted upfront. The customer receives net cash and repays the full original principal within 10 days.
                 </p>
 
                 <div className="pt-2 border-t border-amber-800/60 mt-2">
-                  <p className="font-bold flex items-center space-x-1.5 text-rose-300">
-                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                    <span>Client-Confirmed Daily Penalty Rule:</span>
+                  <p className="font-bold flex items-center space-x-1.5 text-indigo-300">
+                    <RefreshCw className="w-3.5 h-3.5 shrink-0" />
+                    <span>10-Day Renewal Workflow:</span>
                   </p>
                   <p className="text-slate-300 text-[10px] mt-0.5">
-                    • Daily Penalty = Daily Repayment Amount × 2 / 100 ({formatINR((pAmount > 0 && numDays > 0 ? Math.round((Math.floor(pAmount / numDays) * 2) / 100) : 0))}/day)
+                    • If principal is not repaid within 10 days, customer pays 10-day renewal interest to extend the loan by another 10 days.
                   </p>
                   <p className="text-slate-400 text-[10px]">
-                    • Starts strictly on Day D+1 (Day {numDays + 1}). Days 1 to {numDays} incur ₹0 penalty.
-                  </p>
-                  <p className="text-slate-400 text-[10px]">
-                    • Penalty is tracked separately from principal repayments and upfront profit.
+                    • Strictly NO daily penalty. Outstanding principal remains unchanged upon renewal.
                   </p>
                 </div>
               </div>
@@ -937,7 +1056,7 @@ export default function DailyFinance({ onNavigate, preselectedCustomer }) {
 
             <div className="p-5 space-y-4 text-xs">
               <p className="text-slate-600">
-                Please verify the Daily Finance details. Once confirmed, upfront interest will be recorded as collected and customer daily collection schedule will be initialized.
+                Please verify the Daily Finance details. Once confirmed, upfront interest will be recorded and loan schedule will be initialized.
               </p>
 
               <div className="bg-slate-50 p-3.5 rounded-lg border border-slate-200 space-y-2">
@@ -955,22 +1074,18 @@ export default function DailyFinance({ onNavigate, preselectedCustomer }) {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-500">Upfront Interest ({ratePct}%):</span>
-                  <span className="font-mono font-bold text-rose-600">- {formatINR(upfrontInterestDeducted)}</span>
+                  <span className="font-mono font-bold text-rose-600">- {formatINR(actualUpfrontInterest)}</span>
                 </div>
                 <div className="flex justify-between border-t border-slate-200 pt-1.5">
                   <span className="font-bold text-emerald-800">Net Cash Handed to Customer:</span>
                   <span className="font-mono font-black text-emerald-700 text-sm">{formatINR(netCashGiven)}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-500">Daily Instalment Amount:</span>
-                  <span className="font-mono font-bold text-slate-900">{formatINR(dailyCollectionAmount)} / day ({numDays} days)</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="font-bold text-blue-800">Total Daily Repayment Target:</span>
-                  <span className="font-mono font-black text-blue-700 text-sm">{formatINR(totalDailyRepayment)}</span>
+                  <span className="font-bold text-blue-800">Total Customer Repayable Principal:</span>
+                  <span className="font-mono font-black text-blue-700 text-sm">{formatINR(totalRepayableCash)}</span>
                 </div>
                 <div className="flex justify-between text-[11px] pt-1">
-                  <span className="text-slate-500">Repayment Due Date:</span>
+                  <span className="text-slate-500">10-Day Period Due Date:</span>
                   <span className="font-bold text-slate-700">{formatDate(dueDate)}</span>
                 </div>
               </div>
@@ -1163,6 +1278,48 @@ export default function DailyFinance({ onNavigate, preselectedCustomer }) {
                         Principal ({formatINR((selectedLoanForDetails.outstandingPrincipalPaise || 0) / 100)}) + Penalty ({formatINR(selectedLoanForDetails.penaltyBreakdown.penaltyOutstandingRupees)})
                       </p>
                     </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Renewal History Table */}
+              {selectedLoanForDetails.renewalHistory && selectedLoanForDetails.renewalHistory.length > 0 && (
+                <div>
+                  <h4 className="font-bold text-slate-800 mb-2 flex items-center space-x-1.5">
+                    <RefreshCw className="w-4 h-4 text-amber-600" />
+                    <span>Loan Renewal History ({selectedLoanForDetails.renewalHistory.length} 10-Day Extensions)</span>
+                  </h4>
+                  <div className="border border-slate-200 rounded-lg overflow-hidden mb-4">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200 text-[10px] uppercase">
+                        <tr>
+                          <th className="px-3 py-2">Renewal #</th>
+                          <th className="px-3 py-2">Renewal Date</th>
+                          <th className="px-3 py-2">Receipt #</th>
+                          <th className="px-3 py-2">Extended Due Date</th>
+                          <th className="px-3 py-2 text-right">Interest Paid</th>
+                          <th className="px-3 py-2">Method</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 font-mono">
+                        {selectedLoanForDetails.renewalHistory.map((rh, idx) => (
+                          <tr key={idx} className="hover:bg-slate-50">
+                            <td className="px-3 py-2 font-bold text-amber-700 font-sans">
+                              Renewal #{rh.renewalNumber || idx + 1}
+                            </td>
+                            <td className="px-3 py-2 text-slate-600 font-sans">{formatDate(rh.renewalDate)}</td>
+                            <td className="px-3 py-2 font-bold text-blue-700">{rh.receiptNumber || '—'}</td>
+                            <td className="px-3 py-2 text-slate-800 font-sans font-semibold">{formatDate(rh.newDueDate)}</td>
+                            <td className="px-3 py-2 text-right font-bold text-emerald-700">
+                              {formatINR((rh.renewalInterestPaise || 0) / 100)}
+                            </td>
+                            <td className="px-3 py-2 text-slate-600 uppercase text-[11px] font-sans">
+                              {rh.paymentMethod || 'CASH'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 </div>
               )}
@@ -1420,6 +1577,158 @@ export default function DailyFinance({ onNavigate, preselectedCustomer }) {
                     <>
                       <CheckCircle className="w-4 h-4" />
                       <span>Record Payment</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* RENEW LOAN MODAL (10-DAY EXTENSION) */}
+      {isRenewModalOpen && selectedLoanForRenewal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full border border-slate-200 overflow-hidden">
+            <div className="bg-slate-900 text-white px-5 py-4 flex items-center justify-between">
+              <h3 className="font-bold text-sm flex items-center space-x-2">
+                <RefreshCw className="w-4 h-4 text-amber-400" />
+                <span>Renew Daily Finance (10-Day Extension) · {selectedLoanForRenewal.loanId}</span>
+              </h3>
+              <button
+                onClick={() => setIsRenewModalOpen(false)}
+                className="text-slate-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmRenewal} className="p-5 space-y-4 text-xs">
+              {renewalError && (
+                <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-lg flex items-center space-x-2">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{renewalError}</span>
+                </div>
+              )}
+
+              {renewalSuccess && (
+                <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg flex items-center space-x-2">
+                  <CheckCircle className="w-4 h-4 shrink-0" />
+                  <span>{renewalSuccess}</span>
+                </div>
+              )}
+
+              {/* Loan Context & Period Extension Card */}
+              <div className="bg-slate-50 p-3.5 rounded-lg border border-slate-200 space-y-2">
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Customer:</span>
+                  <span className="font-bold text-slate-900">{selectedLoanForRenewal.customerName}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Outstanding Principal:</span>
+                  <span className="font-mono font-bold text-slate-900">
+                    {formatINR((selectedLoanForRenewal.outstandingPrincipalPaise || 0) / 100)}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">10-Day Interest Rate:</span>
+                  <span className="font-bold text-amber-700">{selectedLoanForRenewal.interestRatePercent}% / 10 Days</span>
+                </div>
+                <div className="flex justify-between text-[11px] border-t border-slate-200 pt-1.5">
+                  <span className="text-slate-500">Current Due Date:</span>
+                  <span className="font-bold text-slate-700">{formatDate(selectedLoanForRenewal.currentPeriodDueDate || selectedLoanForRenewal.dueDate)}</span>
+                </div>
+                <div className="flex justify-between text-[11px] bg-amber-50 px-2 py-1 rounded">
+                  <span className="font-bold text-amber-900">New Extended Due Date (+10 Days):</span>
+                  <span className="font-mono font-black text-amber-700">{formatDate(newProjectedDueDate)}</span>
+                </div>
+                <div className="text-[10px] text-slate-500">
+                  Renewal Count: <span className="font-bold text-slate-800">#{(selectedLoanForRenewal.renewalCount || 0) + 1}</span> · Principal remains unchanged at {formatINR((selectedLoanForRenewal.outstandingPrincipalPaise || 0) / 100)}.
+                </div>
+              </div>
+
+              {/* Renewal Interest Amount */}
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  10-Day Renewal Interest Amount (₹) *
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold">₹</span>
+                  <input
+                    type="number"
+                    required
+                    min="0"
+                    step="any"
+                    placeholder="Enter 10-day renewal interest"
+                    value={renewalInterestAmount}
+                    onChange={(e) => setRenewalInterestAmount(e.target.value)}
+                    className="w-full pl-8 pr-3 py-2 border border-slate-300 rounded-lg text-xs font-mono font-bold bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
+                  />
+                </div>
+                <p className="mt-1 text-[10px] text-slate-400">
+                  Payment is recorded as Renewal Interest collection and extends the loan by 10 calendar days.
+                </p>
+              </div>
+
+              {/* Payment Method & Date */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Payment Method *</label>
+                  <select
+                    value={renewalPaymentMethod}
+                    onChange={(e) => setRenewalPaymentMethod(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs bg-white focus:outline-none focus:border-blue-500"
+                  >
+                    <option value="CASH">CASH (பணம்)</option>
+                    <option value="UPI">UPI / GPay</option>
+                    <option value="BANK_TRANSFER">Bank Transfer</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Payment Date *</label>
+                  <input
+                    type="date"
+                    required
+                    value={renewalPaymentDate}
+                    onChange={(e) => setRenewalPaymentDate(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs bg-white focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+              </div>
+
+              {/* Remarks */}
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Remarks</label>
+                <input
+                  type="text"
+                  placeholder="e.g. 10-Day Renewal Interest received"
+                  value={renewalRemarks}
+                  onChange={(e) => setRenewalRemarks(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs bg-white focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              {/* Actions */}
+              <div className="flex justify-end space-x-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsRenewModalOpen(false)}
+                  className="px-4 py-2 border border-slate-300 rounded-lg text-slate-700 font-bold hover:bg-slate-50 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={renewalSubmitting}
+                  className="px-5 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-lg font-bold shadow-md shadow-amber-600/30 flex items-center space-x-2 cursor-pointer"
+                >
+                  {renewalSubmitting ? (
+                    <span>Renewing...</span>
+                  ) : (
+                    <>
+                      <RefreshCw className="w-4 h-4" />
+                      <span>Confirm 10-Day Renewal</span>
                     </>
                   )}
                 </button>

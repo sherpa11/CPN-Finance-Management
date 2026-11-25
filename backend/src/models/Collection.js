@@ -91,9 +91,18 @@ const collectionSchema = new mongoose.Schema(
       default: false,
       index: true,
     },
+    isRenewalInterest: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    renewalNumber: {
+      type: Number,
+      default: 0,
+    },
     collectionType: {
       type: String,
-      enum: ['REGULAR', 'UPFRONT_INTEREST'],
+      enum: ['REGULAR', 'UPFRONT_INTEREST', 'RENEWAL_INTEREST'],
       default: 'REGULAR',
       index: true,
     },

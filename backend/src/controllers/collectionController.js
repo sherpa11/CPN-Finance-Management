@@ -74,7 +74,7 @@ const previewCollection = async (req, res, next) => {
 
     let currentOutstandingPenaltyPaise = 0;
     let penaltyCalc = null;
-    if (loan.vattiType === 'DAILY') {
+    if (loan.vattiType === 'DAILY_COLLECTION' || loan.vattiType === 'MEATER') {
       const dailyInstalmentPaise = loan.dailyInstalmentPaise || (loan.totalDurationDays ? Math.floor((loan.principalPaise || 0) / loan.totalDurationDays) : Math.floor((loan.principalPaise || 0) / 10));
       penaltyCalc = calculateDailyPenalty({
         dailyRepaymentAmountPaise: dailyInstalmentPaise,
@@ -182,7 +182,7 @@ const recordCollection = async (req, res, next) => {
 
     let currentOutstandingPenaltyPaise = 0;
     let penaltyCalc = null;
-    if (loan.vattiType === 'DAILY') {
+    if (loan.vattiType === 'DAILY_COLLECTION' || loan.vattiType === 'MEATER') {
       const dailyInstalmentPaise = loan.dailyInstalmentPaise || (loan.totalDurationDays ? Math.floor((loan.principalPaise || 0) / loan.totalDurationDays) : Math.floor((loan.principalPaise || 0) / 10));
       penaltyCalc = calculateDailyPenalty({
         dailyRepaymentAmountPaise: dailyInstalmentPaise,
@@ -284,7 +284,8 @@ const recordCollection = async (req, res, next) => {
       loan.totalPrincipalPaidPaise = (loan.totalPrincipalPaidPaise || 0) + breakdown.principalAllocationPaise;
       loan.totalInterestPaidPaise = (loan.totalInterestPaidPaise || 0) + breakdown.interestAllocationPaise;
 
-      if (breakdown.isFullySettled) {
+      const isRenewalType = loan.vattiType === 'MONTHLY' || loan.vattiType === 'DAILY';
+      if (breakdown.isFullySettled || (isRenewalType && breakdown.remainingPrincipalPaise === 0)) {
         loan.status = CONSTANTS.LOAN_STATUS.SETTLED;
         loan.settledDate = new Date();
       }
@@ -305,7 +306,7 @@ const recordCollection = async (req, res, next) => {
       customer.totalInterestPaidPaise =
         (customer.totalInterestPaidPaise || 0) + breakdown.interestAllocationPaise;
 
-      if (breakdown.isFullySettled && customer.activeLoanCount > 0) {
+      if ((breakdown.isFullySettled || (isRenewalType && breakdown.remainingPrincipalPaise === 0)) && customer.activeLoanCount > 0) {
         customer.activeLoanCount -= 1;
       }
 
@@ -543,6 +544,9 @@ const listCollections = async (req, res, next) => {
             c.loanId?.upfrontInterestPaise > 0 &&
             c.interestAllocationPaise === c.loanId.upfrontInterestPaise);
 
+        const isRenewal = c.collectionType === 'RENEWAL_INTEREST' || c.isRenewalInterest === true;
+        const effectiveCollectionType = isUpfront ? 'UPFRONT_INTEREST' : isRenewal ? 'RENEWAL_INTEREST' : (c.collectionType || 'REGULAR');
+
         const grossP = c.loanId?.grossPrincipalPaise || c.loanId?.principalPaise || c.previousOutstandingPrincipalPaise || 0;
         const upfI = c.loanId?.upfrontInterestPaise || (isUpfront ? c.totalAmountPaise : 0);
         const netD = c.loanId?.netDisbursementPaise || (grossP > upfI ? grossP - upfI : 0);
@@ -552,7 +556,9 @@ const listCollections = async (req, res, next) => {
           customerName: c.customerName || c.customerId?.name || 'Customer',
           customerMobile: c.customerMobile || c.customerId?.mobileNumber || '',
           isUpfrontInterest: isUpfront,
-          collectionType: isUpfront ? 'UPFRONT_INTEREST' : 'REGULAR',
+          isRenewalInterest: isRenewal,
+          renewalNumber: c.renewalNumber || 0,
+          collectionType: effectiveCollectionType,
           vattiType: c.vattiType || c.loanId?.vattiType || (c.loanCode?.startsWith('CPR-DC') ? 'DAILY_COLLECTION' : 'MONTHLY'),
           totalAmountRupees: toRupees(c.totalAmountPaise),
           principalAllocationRupees: toRupees(c.principalAllocationPaise),

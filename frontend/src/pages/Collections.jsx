@@ -325,6 +325,7 @@ export default function Collections({ initialLoan }) {
           <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
             Collections History ({collections.filter((col) => {
               if (filterType === 'UPFRONT') return col.isUpfrontInterest || col.collectionType === 'UPFRONT_INTEREST';
+              if (filterType === 'RENEWAL') return col.isRenewalInterest || col.collectionType === 'RENEWAL_INTEREST';
               if (filterType === 'MONTHLY') return col.vattiType === 'MONTHLY';
               if (filterType === 'DAILY') return col.vattiType === 'DAILY';
               if (filterType === 'DAILY_COLLECTION') return col.vattiType === 'DAILY_COLLECTION';
@@ -345,6 +346,13 @@ export default function Collections({ initialLoan }) {
               className={`px-2.5 py-1 rounded text-xs font-semibold transition-colors cursor-pointer ${filterType === 'UPFRONT' ? 'bg-purple-600 text-white shadow-sm' : 'bg-purple-50 text-purple-700 hover:bg-purple-100'}`}
             >
               Upfront Interest
+            </button>
+            <button
+              type="button"
+              onClick={() => setFilterType('RENEWAL')}
+              className={`px-2.5 py-1 rounded text-xs font-semibold transition-colors cursor-pointer ${filterType === 'RENEWAL' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100'}`}
+            >
+              Renewal Interest
             </button>
             <button
               type="button"
@@ -402,6 +410,7 @@ export default function Collections({ initialLoan }) {
                 {collections
                   .filter((col) => {
                     if (filterType === 'UPFRONT') return col.isUpfrontInterest || col.collectionType === 'UPFRONT_INTEREST';
+                    if (filterType === 'RENEWAL') return col.isRenewalInterest || col.collectionType === 'RENEWAL_INTEREST';
                     if (filterType === 'MONTHLY') return col.vattiType === 'MONTHLY';
                     if (filterType === 'DAILY') return col.vattiType === 'DAILY';
                     if (filterType === 'DAILY_COLLECTION') return col.vattiType === 'DAILY_COLLECTION';
@@ -415,7 +424,11 @@ export default function Collections({ initialLoan }) {
                         <div className="flex flex-col gap-0.5">
                           <span className="font-mono text-xs">{col.receiptNumber}</span>
                           <div>
-                            {col.isUpfrontInterest || col.collectionType === 'UPFRONT_INTEREST' ? (
+                            {col.isRenewalInterest || col.collectionType === 'RENEWAL_INTEREST' ? (
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-indigo-100 text-indigo-700 border border-indigo-200">
+                                Renewal #{col.renewalNumber || 1} Interest
+                              </span>
+                            ) : col.isUpfrontInterest || col.collectionType === 'UPFRONT_INTEREST' ? (
                               <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-purple-100 text-purple-700 border border-purple-200">
                                 Upfront Interest (Retained)
                               </span>
@@ -453,9 +466,11 @@ export default function Collections({ initialLoan }) {
                       </td>
                       <td className="py-3 px-3 text-right font-mono font-medium text-emerald-700">
                         <div>{formatINR(col.interestAllocationPaise / 100)}</div>
-                        {col.isUpfrontInterest && (
+                        {col.isRenewalInterest ? (
+                          <div className="text-[9px] text-indigo-600 font-sans font-normal">Renewal #{col.renewalNumber || 1}</div>
+                        ) : col.isUpfrontInterest ? (
                           <div className="text-[9px] text-purple-600 font-sans font-normal">Retained at Disb.</div>
-                        )}
+                        ) : null}
                       </td>
                       <td className="py-3 px-3 text-right font-mono font-medium text-rose-700">
                         {col.penaltyAllocationPaise > 0 ? formatINR(col.penaltyAllocationPaise / 100) : '—'}

@@ -60,6 +60,8 @@ async function syncHistoricalUpfrontCollections({ dryRun = false } = {}) {
 
     for (const loan of loans) {
       const existing = await Collection.findOne({
+        isRenewalInterest: { $ne: true },
+        collectionType: { $ne: 'RENEWAL_INTEREST' },
         $or: [
           ...(loan.upfrontCollectionId ? [{ _id: loan.upfrontCollectionId }] : []),
           ...(loan.upfrontReceiptNumber ? [{ receiptNumber: loan.upfrontReceiptNumber }] : []),
@@ -146,6 +148,7 @@ async function syncHistoricalUpfrontCollections({ dryRun = false } = {}) {
         const existingInterestTxn = await Transaction.findOne({
           loanId: loan._id,
           interestCreditPaise: { $gt: 0 },
+          type: { $ne: 'RENEWAL_INTEREST' },
         });
 
         if (existingInterestTxn) {

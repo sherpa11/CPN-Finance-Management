@@ -93,14 +93,16 @@ const getDuesList = async (req, res, next) => {
     const formatted = loans.map((l) => {
       const dueKolkata = DateTime.fromJSDate(l.dueDate, { zone: TIMEZONE }).startOf('day');
       const diffDays = Math.round(dueKolkata.diff(today, 'days').days);
+      const isDueForRenewal = diffDays <= 0 && l.outstandingPrincipalPaise > 0;
+      const currentPeriodInterestPaise = Math.round((l.outstandingPrincipalPaise * l.interestRatePercent) / 100);
+
       // Confirmed Business Rule:
-      // Monthly Finance strictly has NO penalty under any circumstances.
-      // Only Due Management (maturity schedule, days overdue, tracking) and Notifications apply to Monthly Finance.
-      // Daily Finance & Daily Collection apply 2% daily repayment penalty starting on Day D+1.
-      const isDailyOrDc = l.vattiType === 'DAILY' || l.vattiType === 'DAILY_COLLECTION' || l.vattiType === 'MEATER';
+      // Monthly Finance & Daily Finance strictly have NO penalty under any circumstances (renewal workflows).
+      // Only Daily Collection (DC / 70-day, 100-day) has 2% daily repayment penalty starting on Day D+1.
+      const isDcWithPenalty = l.vattiType === 'DAILY_COLLECTION' || l.vattiType === 'MEATER';
 
       let penaltyCalc = null;
-      if (isDailyOrDc && l.vattiType !== 'MONTHLY') {
+      if (isDcWithPenalty) {
         const dailyInstalmentPaise = l.dailyInstalmentPaise || (l.totalDurationDays ? Math.floor((l.principalPaise || 0) / l.totalDurationDays) : Math.floor((l.principalPaise || 0) / 10));
         penaltyCalc = calculateDailyPenalty({
           dailyRepaymentAmountPaise: dailyInstalmentPaise,
@@ -133,7 +135,10 @@ const getDuesList = async (req, res, next) => {
         totalOutstandingRupees: toRupees(l.outstandingPrincipalPaise + l.outstandingInterestPaise),
         penaltyOutstandingRupees,
         totalAmountToCloseRupees,
-        penaltyBreakdown: isDailyOrDc && penaltyCalc ? {
+        renewalCount: l.renewalCount || 0,
+        currentPeriodInterestRupees: toRupees(currentPeriodInterestPaise),
+        isDueForRenewal,
+        penaltyBreakdown: isDcWithPenalty && penaltyCalc ? {
           isPenaltyApplicable: true,
           penaltyRatePercent: penaltyCalc.penaltyRatePercent,
           overdueDays: penaltyCalc.overdueDays,

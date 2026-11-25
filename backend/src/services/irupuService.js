@@ -287,6 +287,8 @@ async function getIrupuSummary({ startDate, endDate, period = 'all' } = {}) {
 
   // Multi-layered upfront interest detection helper
   const checkIsUpfront = (col) => {
+    // Renewal interest is fresh physical cash inflow and must never be treated as upfront interest
+    if (col.isRenewalInterest === true || col.collectionType === 'RENEWAL_INTEREST') return false;
     if (col.isUpfrontInterest === true) return true;
     if (col.collectionType === 'UPFRONT_INTEREST') return true;
     if (col.accountedInDisbursement === true) return true;
@@ -480,8 +482,11 @@ async function getIrupuSummary({ startDate, endDate, period = 'all' } = {}) {
         periodDailyCollectionCashPaise += amt;
       }
 
+      const isRenewal = col.collectionType === 'RENEWAL_INTEREST' || col.isRenewalInterest === true;
       const typeLabel = vType === 'DAILY' ? 'Daily Finance (D.I)' : vType === 'DAILY_COLLECTION' ? 'Daily Collection (D.C)' : 'Monthly Finance (Mon)';
-      const particulars = `${vType === 'DAILY' ? 'Daily Finance' : vType === 'DAILY_COLLECTION' ? 'Daily Collection' : 'Monthly Finance'} Cash Collection – ${col.customerName} (${col.loanCode})`;
+      const particulars = isRenewal
+        ? `${vType === 'DAILY' ? 'Daily Finance' : 'Monthly Finance'} Renewal Interest #${col.renewalNumber || 1} – ${col.customerName} (${col.loanCode})`
+        : `${vType === 'DAILY' ? 'Daily Finance' : vType === 'DAILY_COLLECTION' ? 'Daily Collection' : 'Monthly Finance'} Cash Collection – ${col.customerName} (${col.loanCode})`;
 
       registerEntries.push({
         id: col.receiptNumber || col.collectionId,

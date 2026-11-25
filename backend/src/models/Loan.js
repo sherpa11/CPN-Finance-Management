@@ -225,6 +225,74 @@ const loanSchema = new mongoose.Schema(
       type: String,
       index: true,
     },
+    // Renewal Tracking for Monthly and Daily Finance
+    renewalCount: {
+      type: Number,
+      default: 0,
+      min: 0,
+      index: true,
+    },
+    currentPeriodStartDate: {
+      type: Date,
+    },
+    currentPeriodDueDate: {
+      type: Date,
+    },
+    renewalHistory: [
+      {
+        renewalNumber: {
+          type: Number,
+          required: true,
+        },
+        renewalDate: {
+          type: Date,
+          required: true,
+        },
+        previousDueDate: {
+          type: Date,
+          required: true,
+        },
+        newDueDate: {
+          type: Date,
+          required: true,
+        },
+        renewalInterestPaise: {
+          type: Number,
+          required: true,
+        },
+        principalPaiseAtRenewal: {
+          type: Number,
+          required: true,
+        },
+        interestRatePercent: {
+          type: Number,
+          required: true,
+        },
+        collectionId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: 'Collection',
+        },
+        receiptNumber: {
+          type: String,
+        },
+        paymentMethod: {
+          type: String,
+          enum: ['CASH', 'UPI', 'BANK_TRANSFER', 'OTHER'],
+          default: 'CASH',
+        },
+        remarks: {
+          type: String,
+          default: '',
+        },
+        recordedBy: {
+          type: String,
+        },
+        createdAt: {
+          type: Date,
+          default: Date.now,
+        },
+      },
+    ],
   },
   {
     timestamps: true,

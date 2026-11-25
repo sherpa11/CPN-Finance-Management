@@ -253,18 +253,38 @@ export default function DueManagement({ onNavigate, onOpenCollection }) {
                         )}
                       </td>
                       <td className="py-3 px-4 text-right">
-                        <button
-                          onClick={() => {
-                            if (onOpenCollection) {
-                              onOpenCollection(d);
-                            } else {
-                              onNavigate('collections');
-                            }
-                          }}
-                          className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded text-[11px] transition-colors cursor-pointer"
-                        >
-                          Collect
-                        </button>
+                        <div className="flex items-center justify-end space-x-1.5">
+                          {(d.financeType === 'MONTHLY' || d.vattiType === 'MONTHLY') && (
+                            <button
+                              onClick={() => onNavigate && onNavigate('monthly')}
+                              className="px-2 py-1 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded text-[11px] transition-colors cursor-pointer"
+                              title="Go to Monthly Finance to Renew"
+                            >
+                              Renew
+                            </button>
+                          )}
+                          {(d.financeType === 'DAILY' || d.vattiType === 'DAILY') && (
+                            <button
+                              onClick={() => onNavigate && onNavigate('daily')}
+                              className="px-2 py-1 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded text-[11px] transition-colors cursor-pointer"
+                              title="Go to Daily Finance to Renew"
+                            >
+                              Renew
+                            </button>
+                          )}
+                          <button
+                            onClick={() => {
+                              if (onOpenCollection) {
+                                onOpenCollection(d);
+                              } else if (onNavigate) {
+                                onNavigate('collections');
+                              }
+                            }}
+                            className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded text-[11px] transition-colors cursor-pointer"
+                          >
+                            Collect
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
