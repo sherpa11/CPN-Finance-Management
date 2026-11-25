@@ -94,13 +94,9 @@ export default function ExistingLoanModal({
     ? Number(originalNetGiven)
     : autoNetGiven;
 
-  // Auto-calculated Renewal Interest per period based on current outstanding principal
-  const effectiveOutstanding = outstandingPrincipal !== ''
-    ? Number(outstandingPrincipal)
-    : Number(originalPrincipal || 0);
-
-  const autoRenewalInterest = effectiveOutstanding && interestRatePercent
-    ? Math.round((effectiveOutstanding * Number(interestRatePercent)) / 100)
+  // Auto-calculated Renewal Interest per period based on original gross principal (Original Gross Principal × Rate)
+  const autoRenewalInterest = originalPrincipal && interestRatePercent
+    ? Math.round((Number(originalPrincipal) * Number(interestRatePercent)) / 100)
     : 0;
 
   const effectiveRenewalInterest = isCustomRenewalInterest && renewalInterestAmount !== ''

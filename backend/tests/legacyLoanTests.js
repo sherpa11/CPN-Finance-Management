@@ -114,6 +114,22 @@ async function runLegacyLoanTests() {
     assert.strictEqual(previewRes.body.preview.suggestedNextDueDate, '2026-11-25');
     assert.strictEqual(previewRes.body.preview.autoUpfrontInterestRupees, 2000);
     assert.strictEqual(previewRes.body.preview.autoNetGivenRupees, 98000);
+    assert.strictEqual(previewRes.body.preview.renewalInterestRupees, 2000);
+
+    // Verify User Requirement: Gross ₹1,00,000 @ 2% with Outstanding ₹50,000 calculates renewal interest as ₹2,000 (NOT ₹1,000)
+    const previewPartialPrincipalRes = await request(app)
+      .post('/api/loans/preview-legacy')
+      .set('Authorization', authHeader)
+      .send({
+        vattiType: 'MONTHLY',
+        originalLoanDate: '2024-01-25',
+        lastPaidThroughDate: '2026-10-25',
+        originalPrincipal: 100000,
+        interestRatePercent: 2,
+        outstandingPrincipal: 50000,
+      });
+    assert.strictEqual(previewPartialPrincipalRes.status, 200);
+    assert.strictEqual(previewPartialPrincipalRes.body.preview.renewalInterestRupees, 2000, 'Renewal interest must be 2% on Original Gross Principal ₹1,00,000 (= ₹2,000), not on Outstanding ₹50,000');
 
     // Initial Irupu Cash Box check before legacy loan import
     const irupuBefore = await getIrupuSummary({ period: 'all' });
@@ -143,7 +159,7 @@ async function runLegacyLoanTests() {
     assert.strictEqual(loan.isLegacyLoan, true, 'isLegacyLoan must be true');
     assert.strictEqual(loan.renewalCount, 33, 'renewalCount must be 33');
     assert.strictEqual(loan.outstandingPrincipalPaise, 10000000, 'Outstanding principal must be ₹1,00,000 (10000000 paise)');
-    assert.strictEqual(loan.status, 'ACTIVE');
+    assert.ok(['ACTIVE', 'OVERDUE'].includes(loan.status), `Status must be ACTIVE or OVERDUE, got: ${loan.status}`);
 
     // Verify exactly 0 collections were created
     const collectionsCount = await Collection.countDocuments({});

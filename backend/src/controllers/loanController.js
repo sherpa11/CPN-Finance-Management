@@ -959,8 +959,9 @@ const renewLoan = async (req, res, next) => {
       });
     }
 
-    // Calculate standard renewal interest based on current remaining principal (or custom period interest):
-    const standardRenewalInterestPaise = loan.currentPeriodInterestPaise || Math.round((loan.outstandingPrincipalPaise * loan.interestRatePercent) / 100);
+    // Calculate standard renewal interest based on original gross principal (or custom period interest):
+    const grossPrincipal = loan.grossPrincipalPaise || loan.originalPrincipalPaise || loan.principalPaise || loan.outstandingPrincipalPaise;
+    const standardRenewalInterestPaise = loan.currentPeriodInterestPaise || Math.round((grossPrincipal * loan.interestRatePercent) / 100);
     const amountToCharge = paymentAmount !== undefined && paymentAmount !== ''
       ? paymentAmount
       : renewalInterestAmount;
@@ -1316,8 +1317,8 @@ const createLegacyLoan = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Interest rate cannot be negative.' });
     }
 
-    // Renewal interest per period
-    const standardRenewalInterestPaise = Math.round((outPrincipalPaise * rate) / 100);
+    // Renewal interest per period (Original Gross Principal × Rate)
+    const standardRenewalInterestPaise = Math.round((origPrincipalPaise * rate) / 100);
     const renewalInterestPaise = renewalInterestAmount !== undefined && renewalInterestAmount !== '' && !isNaN(renewalInterestAmount)
       ? toPaise(renewalInterestAmount)
       : standardRenewalInterestPaise;
