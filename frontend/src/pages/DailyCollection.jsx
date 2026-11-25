@@ -635,13 +635,13 @@ export default function DailyCollection({ onNavigate }) {
                 </div>
               </div>
 
-              {/* Overdue Daily Penalty Breakdown Block (Account-Specific Rate on Gross Principal) */}
+              {/* Overdue Daily Penalty Breakdown Block (Matches loan interest on Gross Principal) */}
               {selectedAccountData.penaltyBreakdown && (
                 <div className="bg-rose-50/50 border border-rose-200 p-4 rounded-xl space-y-3">
                   <div className="flex items-center justify-between border-b border-rose-200/60 pb-2">
                     <h4 className="font-bold text-rose-900 text-xs flex items-center space-x-1.5">
                       <AlertCircle className="w-4 h-4 text-rose-600" />
-                      <span>Overdue Penalty Breakdown ({selectedAccountData.overduePenaltyRate || selectedAccountData.penaltyBreakdown.penaltyRatePercent || 2}% per day on Gross Principal)</span>
+                      <span>Overdue Penalty Breakdown ({selectedAccountData.overduePenaltyRate || selectedAccountData.penaltyBreakdown.penaltyRatePercent || selectedAccountData.upfrontInterestPercent || 10}% per day on Gross Principal)</span>
                     </h4>
                     <span className="text-[10px] font-bold text-rose-700 bg-rose-100 px-2.5 py-0.5 rounded-full border border-rose-200">
                       {selectedAccountData.penaltyBreakdown.overdueDays > 0
@@ -666,9 +666,12 @@ export default function DailyCollection({ onNavigate }) {
                     </div>
 
                     <div className="bg-white p-2.5 rounded-lg border border-rose-100">
-                      <p className="text-[10px] text-rose-600 font-sans font-medium">Daily Penalty ({selectedAccountData.overduePenaltyRate || selectedAccountData.penaltyBreakdown.penaltyRatePercent || 2}%)</p>
+                      <p className="text-[10px] text-rose-600 font-sans font-medium">Daily Penalty ({selectedAccountData.overduePenaltyRate || selectedAccountData.penaltyBreakdown.penaltyRatePercent || selectedAccountData.upfrontInterestPercent || 10}%)</p>
                       <p className="font-bold font-mono text-rose-700 text-sm mt-0.5">
                         {formatINR(selectedAccountData.penaltyBreakdown.dailyPenaltyRupees)} / day
+                      </p>
+                      <p className="text-[9px] text-slate-400 font-sans">
+                        Matches loan interest
                       </p>
                     </div>
 
@@ -787,7 +790,7 @@ export default function DailyCollection({ onNavigate }) {
                         <span>Overdue Penalty Schedule (Day {(selectedAccountData.totalDurationDays || 100) + 1}+)</span>
                       </h5>
                       <span className="text-[11px] font-mono text-rose-600">
-                        2% Daily Penalty: {formatINR(selectedAccountData.penaltyBreakdown?.dailyPenaltyRupees || 0)} / overdue day
+                        Daily Penalty ({selectedAccountData.overduePenaltyRate || selectedAccountData.penaltyBreakdown?.penaltyRatePercent || selectedAccountData.upfrontInterestPercent || 10}%): {formatINR(selectedAccountData.penaltyBreakdown?.dailyPenaltyRupees || 0)} / overdue day
                       </span>
                     </div>
 

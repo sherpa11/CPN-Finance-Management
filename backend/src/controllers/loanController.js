@@ -25,6 +25,23 @@ const CONSTANTS = require('../config/constants');
 const { escapeRegex } = require('../utils/sanitize');
 const { invalidateDashboardCache } = require('./dashboardController');
 
+function getLoanDailyPenaltyRate(loan) {
+  if (loan.overduePenaltyRate !== undefined && loan.overduePenaltyRate !== null && !isNaN(loan.overduePenaltyRate) && Number(loan.overduePenaltyRate) > 0) {
+    return Number(loan.overduePenaltyRate);
+  }
+  if (loan.interestRatePercent !== undefined && loan.interestRatePercent !== null && Number(loan.interestRatePercent) > 0) {
+    return Number(loan.interestRatePercent);
+  }
+  if (loan.upfrontInterestPaise > 0 && (loan.grossPrincipalPaise > 0 || loan.principalPaise > 0)) {
+    const gross = loan.grossPrincipalPaise || loan.principalPaise;
+    return Number(((loan.upfrontInterestPaise / gross) * 100).toFixed(4));
+  }
+  if (loan.penaltyRatePercent !== undefined && loan.penaltyRatePercent !== null && Number(loan.penaltyRatePercent) > 0 && Number(loan.penaltyRatePercent) !== 2.0) {
+    return Number(loan.penaltyRatePercent);
+  }
+  return 10.0;
+}
+
 // Generate sequential Loan ID e.g. CPN-LN-0001 (collision-safe across Loan, Collection, and Transaction)
 async function generateLoanId() {
   const [loanList, collectionList, txnList] = await Promise.all([
@@ -518,7 +535,7 @@ const listLoans = async (req, res, next) => {
           isFullyRepaid: loan.outstandingPrincipalPaise === 0,
           fullRepaymentDate: loan.settledDate || null,
           penaltyPaidPaise: loan.penaltyPaidPaise || 0,
-          penaltyRatePercent: loan.overduePenaltyRate !== undefined && loan.overduePenaltyRate !== null ? loan.overduePenaltyRate : (loan.penaltyRatePercent || 2.0),
+          penaltyRatePercent: getLoanDailyPenaltyRate(loan),
         });
         return {
           ...loan,
@@ -624,7 +641,7 @@ const getLoanById = async (req, res, next) => {
         isFullyRepaid: loan.outstandingPrincipalPaise === 0,
         fullRepaymentDate: loan.settledDate || null,
         penaltyPaidPaise: loan.penaltyPaidPaise || 0,
-        penaltyRatePercent: loan.overduePenaltyRate !== undefined && loan.overduePenaltyRate !== null ? loan.overduePenaltyRate : (loan.penaltyRatePercent || 2.0),
+        penaltyRatePercent: getLoanDailyPenaltyRate(loan),
       });
     }
 

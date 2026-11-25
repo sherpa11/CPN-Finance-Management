@@ -29,7 +29,8 @@ export default function NewVatti({ preselectedCustomer, onNavigate }) {
   const [totalDurationDays, setTotalDurationDays] = useState(100);
   const [upfrontInterestRupees, setUpfrontInterestRupees] = useState('');
   const [upfrontInterestPercent, setUpfrontInterestPercent] = useState('10.0');
-  const [overduePenaltyRate, setOverduePenaltyRate] = useState('');
+  const [overduePenaltyRate, setOverduePenaltyRate] = useState('10.0');
+  const [isCustomPenaltyRate, setIsCustomPenaltyRate] = useState(false);
 
   // Live Preview State
   const [preview, setPreview] = useState(null);
@@ -68,6 +69,9 @@ export default function NewVatti({ preselectedCustomer, onNavigate }) {
     if (p > 0 && !isNaN(rupees) && val !== '') {
       const pct = ((rupees / p) * 100).toFixed(2);
       setUpfrontInterestPercent(pct);
+      if (!isCustomPenaltyRate) {
+        setOverduePenaltyRate(pct);
+      }
     }
   };
 
@@ -78,6 +82,9 @@ export default function NewVatti({ preselectedCustomer, onNavigate }) {
     if (p > 0 && !isNaN(pct) && val !== '') {
       const rupees = Math.round((p * pct) / 100);
       setUpfrontInterestRupees(String(rupees));
+      if (!isCustomPenaltyRate) {
+        setOverduePenaltyRate(val);
+      }
     }
   };
 
@@ -553,7 +560,7 @@ export default function NewVatti({ preselectedCustomer, onNavigate }) {
                 )}
               </div>
 
-              {/* Overdue Penalty Rate (% per day) - Account-specific required field for Daily Collection */}
+              {/* Overdue Penalty Rate (% per day) - Matches loan interest on entire principal */}
               {vattiType === 'DAILY_COLLECTION' && (
                 <div className="p-3.5 bg-amber-50/70 border border-amber-200 rounded-xl space-y-2">
                   <div className="flex items-center justify-between">
@@ -561,7 +568,7 @@ export default function NewVatti({ preselectedCustomer, onNavigate }) {
                       Overdue Penalty Rate (% per day) *
                     </label>
                     <span className="text-[10px] font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded border border-amber-200">
-                      Account-Specific
+                      Matches Loan Interest ({overduePenaltyRate || upfrontInterestPercent}%)
                     </span>
                   </div>
                   <div className="relative max-w-xs">
@@ -570,21 +577,24 @@ export default function NewVatti({ preselectedCustomer, onNavigate }) {
                       required
                       min="0.01"
                       step="0.01"
-                      placeholder="e.g. 2, 5, 10"
+                      placeholder={`Default: ${upfrontInterestPercent}%`}
                       value={overduePenaltyRate}
-                      onChange={(e) => setOverduePenaltyRate(e.target.value)}
+                      onChange={(e) => {
+                        setOverduePenaltyRate(e.target.value);
+                        setIsCustomPenaltyRate(true);
+                      }}
                       className="w-full pr-8 pl-3 py-2 border border-amber-300 bg-white rounded-lg text-sm font-mono font-bold text-slate-900 focus:ring-2 focus:ring-amber-500"
                     />
                     <span className="absolute right-3 top-2 font-bold text-slate-400">%</span>
                   </div>
                   <p className="text-[11px] text-slate-600">
                     Calculated on <span className="font-semibold text-slate-800">Original Gross Principal</span> (₹{formatINR(Number(principalAmount) || 0).replace('₹', '')}). 
-                    {principalAmount && overduePenaltyRate ? (
+                    {principalAmount && (overduePenaltyRate || upfrontInterestPercent) ? (
                       <span className="font-bold text-rose-700 ml-1">
-                        = {formatINR(Math.round(((Number(principalAmount) || 0) * (Number(overduePenaltyRate) || 0)) / 100))} per overdue day.
+                        = {formatINR(Math.round(((Number(principalAmount) || 0) * (Number(overduePenaltyRate || upfrontInterestPercent) || 0)) / 100))} per overdue day.
                       </span>
                     ) : (
-                      ' e.g. Gross ₹1,00,000 @ 10% = ₹10,000/day; overdue 3 days = ₹30,000.'
+                      ' Interest amount put for entire principal is the overdue penalty.'
                     )}
                   </p>
                 </div>

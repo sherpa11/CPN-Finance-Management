@@ -23,6 +23,33 @@ const CONSTANTS = require('../config/constants');
 const { DateTime } = require('luxon');
 const { escapeRegex } = require('../utils/sanitize');
 
+// Resolve the overdue penalty rate for a Daily Collection account:
+// The overdue penalty matches the interest amount/rate that was put for the entire principal amount (not a 2% constant)
+function getDailyCollectionPenaltyRate(acc) {
+  if (acc.overduePenaltyRate !== undefined && acc.overduePenaltyRate !== null && !isNaN(acc.overduePenaltyRate) && Number(acc.overduePenaltyRate) > 0) {
+    return Number(acc.overduePenaltyRate);
+  }
+  // Upfront interest percent that was put for the entire principal amount (e.g. 10%)
+  if (acc.upfrontInterestPercent !== undefined && acc.upfrontInterestPercent !== null && Number(acc.upfrontInterestPercent) > 0) {
+    return Number(acc.upfrontInterestPercent);
+  }
+  // If upfrontInterestPaise is present and grossPrincipalPaise > 0
+  if (acc.upfrontInterestPaise > 0 && acc.grossPrincipalPaise > 0) {
+    return Number(((acc.upfrontInterestPaise / acc.grossPrincipalPaise) * 100).toFixed(4));
+  }
+  // If Scheme B additional interest days (e.g. 10 days = 10%)
+  if (acc.additionalInterestDays > 0) {
+    return Number(acc.additionalInterestDays * 1);
+  }
+  if (acc.interestRatePercent !== undefined && acc.interestRatePercent !== null && Number(acc.interestRatePercent) > 0) {
+    return Number(acc.interestRatePercent);
+  }
+  if (acc.penaltyRatePercent !== undefined && acc.penaltyRatePercent !== null && Number(acc.penaltyRatePercent) > 0 && Number(acc.penaltyRatePercent) !== 2.0) {
+    return Number(acc.penaltyRatePercent);
+  }
+  return 10.0;
+}
+
 // Generate sequential Account ID e.g. CPN-DC-0001 (collision-safe)
 async function generateDailyCollectionAccountId() {
   const [accList, collectionList] = await Promise.all([
@@ -220,10 +247,12 @@ const previewDailyCollection = async (req, res, next) => {
       totalDurationDays: duration,
     });
 
-    const penaltyRate = overduePenaltyRate !== undefined && overduePenaltyRate !== ''
+    const penaltyRate = overduePenaltyRate !== undefined && overduePenaltyRate !== '' && !isNaN(overduePenaltyRate)
       ? Number(overduePenaltyRate)
-      : (penaltyRatePercent !== undefined && penaltyRatePercent !== '' ? Number(penaltyRatePercent) : null);
-    const dailyPenaltyPaise = penaltyRate !== null ? Math.round((calculation.grossPrincipalPaise * penaltyRate) / 100) : 0;
+      : (penaltyRatePercent !== undefined && penaltyRatePercent !== '' && !isNaN(penaltyRatePercent)
+        ? Number(penaltyRatePercent)
+        : (calculation.upfrontInterestPercent || 10.0));
+    const dailyPenaltyPaise = Math.round((calculation.grossPrincipalPaise * penaltyRate) / 100);
 
     res.json({
       success: true,
@@ -299,19 +328,19 @@ const createDailyCollectionAccount = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Gross principal must be greater than zero.' });
     }
 
-    let effectivePenaltyRate = 2.0;
+    let userSpecifiedPenaltyRate = null;
     if (overduePenaltyRate !== undefined && overduePenaltyRate !== '') {
       const parsed = Number(overduePenaltyRate);
       if (isNaN(parsed) || parsed < 0) {
         return res.status(400).json({ success: false, message: 'Overdue Penalty Rate (% per day) must be a valid non-negative number.' });
       }
-      effectivePenaltyRate = parsed;
+      userSpecifiedPenaltyRate = parsed;
     } else if (penaltyRatePercent !== undefined && penaltyRatePercent !== '') {
       const parsed = Number(penaltyRatePercent);
       if (isNaN(parsed) || parsed < 0) {
         return res.status(400).json({ success: false, message: 'Overdue Penalty Rate (% per day) must be a valid non-negative number.' });
       }
-      effectivePenaltyRate = parsed;
+      userSpecifiedPenaltyRate = parsed;
     }
 
     let calc;
@@ -332,6 +361,11 @@ const createDailyCollectionAccount = async (req, res, next) => {
         totalDurationDays: duration,
       });
     }
+
+    // Default overdue penalty rate matches the interest rate that was put for the entire principal amount (not a 2% constant)
+    const effectivePenaltyRate = userSpecifiedPenaltyRate !== null
+      ? userSpecifiedPenaltyRate
+      : (calc.scheme === 'UPFRONT_DEDUCTION' ? (calc.upfrontInterestPercent || 10.0) : (calc.additionalInterestDays * 1 || 10.0));
 
     const accountId = await generateDailyCollectionAccountId();
     const loanId = await generateLoanId();
@@ -617,9 +651,7 @@ const getDailyCollectionAccounts = async (req, res, next) => {
     ]);
 
     const accountsWithPenalty = accounts.map((acc) => {
-      const penaltyRate = acc.overduePenaltyRate !== undefined && acc.overduePenaltyRate !== null
-        ? acc.overduePenaltyRate
-        : (acc.penaltyRatePercent || 2.0);
+      const penaltyRate = getDailyCollectionPenaltyRate(acc);
       const penaltyCalc = calculateDailyPenalty({
         grossPrincipalPaise: acc.grossPrincipalPaise,
         dailyRepaymentAmountPaise: acc.dailyInstalmentPaise,
@@ -704,9 +736,7 @@ const getDailyCollectionAccountById = async (req, res, next) => {
       .lean();
 
     // Calculate live daily penalty on gross principal if overdue
-    const penaltyRate = account.overduePenaltyRate !== undefined && account.overduePenaltyRate !== null
-      ? account.overduePenaltyRate
-      : (account.penaltyRatePercent || 2.0);
+    const penaltyRate = getDailyCollectionPenaltyRate(account);
     const penaltyCalc = calculateDailyPenalty({
       grossPrincipalPaise: account.grossPrincipalPaise,
       dailyRepaymentAmountPaise: account.dailyInstalmentPaise,
@@ -871,9 +901,7 @@ const recordDailyCollectionPayment = async (req, res, next) => {
     }
 
     // Calculate live penalty status
-    const penaltyRate = account.overduePenaltyRate !== undefined && account.overduePenaltyRate !== null
-      ? account.overduePenaltyRate
-      : (account.penaltyRatePercent || 2.0);
+    const penaltyRate = getDailyCollectionPenaltyRate(account);
     const penaltyCalc = calculateDailyPenalty({
       grossPrincipalPaise: account.grossPrincipalPaise,
       dailyRepaymentAmountPaise: account.dailyInstalmentPaise,

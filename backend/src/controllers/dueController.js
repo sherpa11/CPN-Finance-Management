@@ -6,6 +6,23 @@ const { escapeRegex } = require('../utils/sanitize');
 
 const TIMEZONE = CONSTANTS.DEFAULT_TIMEZONE;
 
+function getLoanDailyPenaltyRate(loan) {
+  if (loan.overduePenaltyRate !== undefined && loan.overduePenaltyRate !== null && !isNaN(loan.overduePenaltyRate) && Number(loan.overduePenaltyRate) > 0) {
+    return Number(loan.overduePenaltyRate);
+  }
+  if (loan.interestRatePercent !== undefined && loan.interestRatePercent !== null && Number(loan.interestRatePercent) > 0) {
+    return Number(loan.interestRatePercent);
+  }
+  if (loan.upfrontInterestPaise > 0 && (loan.grossPrincipalPaise > 0 || loan.principalPaise > 0)) {
+    const gross = loan.grossPrincipalPaise || loan.principalPaise;
+    return Number(((loan.upfrontInterestPaise / gross) * 100).toFixed(4));
+  }
+  if (loan.penaltyRatePercent !== undefined && loan.penaltyRatePercent !== null && Number(loan.penaltyRatePercent) > 0 && Number(loan.penaltyRatePercent) !== 2.0) {
+    return Number(loan.penaltyRatePercent);
+  }
+  return 10.0;
+}
+
 const getDuesList = async (req, res, next) => {
   try {
     const vattiType = req.query.financeType || req.query.vattiType;
@@ -112,7 +129,7 @@ const getDuesList = async (req, res, next) => {
           isFullyRepaid: l.outstandingPrincipalPaise === 0,
           fullRepaymentDate: l.settledDate || null,
           penaltyPaidPaise: l.penaltyPaidPaise || 0,
-          penaltyRatePercent: l.overduePenaltyRate !== undefined && l.overduePenaltyRate !== null ? l.overduePenaltyRate : (l.penaltyRatePercent || 2.0),
+          penaltyRatePercent: getLoanDailyPenaltyRate(l),
         });
       }
 

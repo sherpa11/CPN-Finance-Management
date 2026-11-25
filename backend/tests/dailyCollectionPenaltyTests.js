@@ -247,8 +247,39 @@ async function runDailyCollectionPenaltyTests() {
   assert.strictEqual(previewRes.body.preview.dailyPenaltyRupees, 10000, 'Preview daily penalty must be ₹10,000');
   logPass('Scenario 12: Preview API returns accurate daily penalty forecast on gross principal.');
 
+  // Scenario 13: Murugan's Exact Case (Screenshot Verification):
+  // Gross ₹1,00,000, Upfront Interest 10% (₹10,000), created without explicit overduePenaltyRate.
+  // Overdue penalty MUST be ₹10,000/day (the interest amount put for entire principal), NOT 2% constant (₹20 or ₹2,000).
+  const muruganRes = await request(app)
+    .post('/api/daily-collections')
+    .set('Authorization', `Bearer ${token}`)
+    .send({
+      customerId,
+      grossPrincipal: 100000,
+      upfrontInterestPercent: 10,
+      upfrontInterestRupees: 10000,
+      totalDurationDays: 100,
+      startDate: DateTime.now().setZone(TIMEZONE).minus({ days: 104 }).toISODate(), // 100-day schedule ends at day-99 -> exactly 5 days overdue
+    });
+  assert.strictEqual(muruganRes.status, 201, 'Murugan account created');
+  const muruganId = muruganRes.body.account._id;
+
+  const muruganFetch = await request(app)
+    .get(`/api/daily-collections/${muruganId}`)
+    .set('Authorization', `Bearer ${token}`);
+  assert.strictEqual(muruganFetch.status, 200, 'Murugan fetch succeed');
+  const muruganData = muruganFetch.body.account;
+  const breakdown = muruganData.penaltyBreakdown;
+
+  assert.strictEqual(breakdown.dailyPenaltyRupees, 10000, 'Daily penalty must be ₹10,000/day (matching the interest amount for entire principal)');
+  assert.strictEqual(breakdown.overdueDays, 5, 'Must be exactly 5 days overdue');
+  assert.strictEqual(breakdown.cumulativePenaltyRupees, 50000, 'Cumulative penalty for 5 days must be ₹50,000 (5 × ₹10,000), NOT ₹100');
+  assert.strictEqual(breakdown.penaltyOutstandingRupees, 50000, 'Penalty outstanding must be ₹50,000');
+  assert.strictEqual(breakdown.totalAmountToCloseRupees, 150000, 'Total amount to close must be ₹1,50,000 (₹1,00,000 principal + ₹50,000 penalty)');
+  logPass('Scenario 13: User Screenshot Verified – Murugan account: ₹10,000 interest amount becomes daily penalty; 5 days overdue = ₹50,000 penalty (NOT 2% / ₹20 / ₹100).');
+
   console.log('\n================================================================');
-  console.log('  ALL 12 DAILY COLLECTION PENALTY TESTS PASSED SUCCESSFULLY!   ');
+  console.log('  ALL 13 DAILY COLLECTION PENALTY TESTS PASSED SUCCESSFULLY!   ');
   console.log('================================================================');
 
   await mongoose.connection.close();

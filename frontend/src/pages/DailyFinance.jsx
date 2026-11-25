@@ -1258,13 +1258,13 @@ export default function DailyFinance({ onNavigate, preselectedCustomer }) {
                 </div>
               </div>
 
-              {/* Overdue Daily Penalty Breakdown (Client-Confirmed 2% Rule) */}
+              {/* Overdue Daily Penalty Breakdown */}
               {selectedLoanForDetails.penaltyBreakdown && (
                 <div className="bg-rose-50/50 border border-rose-200 p-4 rounded-xl space-y-3">
                   <div className="flex items-center justify-between border-b border-rose-200/60 pb-2">
                     <h4 className="font-bold text-rose-900 text-xs flex items-center space-x-1.5">
                       <AlertCircle className="w-4 h-4 text-rose-600" />
-                      <span>Overdue Daily Penalty Breakdown (Client-Confirmed 2% Rule)</span>
+                      <span>Overdue Daily Penalty Breakdown</span>
                     </h4>
                     <span className="text-[10px] font-bold text-rose-700 bg-rose-100 px-2.5 py-0.5 rounded-full border border-rose-200">
                       {selectedLoanForDetails.penaltyBreakdown.overdueDays > 0
@@ -1289,7 +1289,7 @@ export default function DailyFinance({ onNavigate, preselectedCustomer }) {
                     </div>
 
                     <div className="bg-white p-2.5 rounded-lg border border-rose-100">
-                      <p className="text-[10px] text-rose-600 font-sans font-medium">Daily Penalty Rate (2%)</p>
+                      <p className="text-[10px] text-rose-600 font-sans font-medium">Daily Penalty</p>
                       <p className="font-bold font-mono text-rose-700 text-sm mt-0.5">
                         {formatINR(selectedLoanForDetails.penaltyBreakdown.dailyPenaltyRupees)} / day
                       </p>
@@ -1477,7 +1477,7 @@ export default function DailyFinance({ onNavigate, preselectedCustomer }) {
                 {collectionTargetLoan.penaltyBreakdown && collectionTargetLoan.penaltyBreakdown.penaltyOutstandingRupees > 0 && (
                   <>
                     <div className="flex justify-between text-rose-700">
-                      <span className="font-bold">Overdue Penalty (2%/day):</span>
+                      <span className="font-bold">Overdue Penalty ({collectionTargetLoan.penaltyBreakdown.penaltyRatePercent || collectionTargetLoan.overduePenaltyRate || 10}%/day):</span>
                       <span className="font-mono font-black text-rose-700 text-sm">
                         {formatINR(collectionTargetLoan.penaltyBreakdown.penaltyOutstandingRupees)}
                       </span>
