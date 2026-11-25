@@ -111,7 +111,7 @@ export default function Sidebar({ currentTab, onNavigate, onClose }) {
       {/* Business Footnote */}
       <div className="p-3 sm:p-4 border-t border-slate-800 text-[11px] text-slate-400 shrink-0">
         <p className="font-semibold text-slate-200">CPN Raja Finance Business</p>
-        <p className="text-[10px] text-slate-500">Financial Engine v1.0 • Integer Precision</p>
+        <p className="text-[10px] text-slate-500">Financial Engine v2.1 • Integer Precision</p>
       </div>
     </aside>
   );
