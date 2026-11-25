@@ -472,32 +472,34 @@ export default function DailyFinance({ onNavigate, preselectedCustomer }) {
           </p>
         </div>
 
-        {/* View Switcher Tabs */}
-        <div className="flex items-center bg-slate-100 p-1 rounded-xl self-start sm:self-auto">
-          <button
-            onClick={() => setActiveTab('roster')}
-            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-              activeTab === 'roster'
-                ? 'bg-white text-amber-700 shadow-sm'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            📋 Daily Loans Roster
-          </button>
-          <button
-            onClick={() => setActiveTab('disburse')}
-            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center space-x-1.5 ${
-              activeTab === 'disburse'
-                ? 'bg-amber-600 text-white shadow-sm'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <Plus className="w-4 h-4" />
-            <span>+ Disburse Daily Finance</span>
-          </button>
+        {/* View Switcher Tabs & Actions */}
+        <div className="flex items-center gap-2 flex-wrap self-start sm:self-auto">
+          <div className="flex items-center bg-slate-100 p-1 rounded-xl">
+            <button
+              onClick={() => setActiveTab('roster')}
+              className={`px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                activeTab === 'roster'
+                  ? 'bg-white text-amber-700 shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              📋 Daily Loans Roster
+            </button>
+            <button
+              onClick={() => setActiveTab('disburse')}
+              className={`px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center space-x-1.5 ${
+                activeTab === 'disburse'
+                  ? 'bg-amber-600 text-white shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Plus className="w-4 h-4" />
+              <span>+ Disburse Daily Finance</span>
+            </button>
+          </div>
           <button
             onClick={() => setIsLegacyModalOpen(true)}
-            className="px-3.5 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center space-x-1.5 bg-amber-500 hover:bg-amber-600 text-white shadow-xs"
+            className="px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center space-x-1.5 bg-amber-500 hover:bg-amber-600 text-white shadow-xs"
           >
             <Layers className="w-4 h-4" />
             <span>+ Add Existing Loan</span>
