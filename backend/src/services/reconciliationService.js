@@ -68,6 +68,7 @@ async function syncHistoricalUpfrontCollections({ dryRun = false } = {}) {
     // Quick pre-flight check: Are there ANY loans or DC accounts that might have unhealed upfront collections?
     if (!dryRun) {
       const hasUnsyncedLoan = await Loan.exists({
+        isLegacyLoan: { $ne: true },
         upfrontInterestPaise: { $gt: 0 },
         status: { $nin: ['CANCELLED', 'REVERSED'] },
       });
@@ -83,6 +84,7 @@ async function syncHistoricalUpfrontCollections({ dryRun = false } = {}) {
     }
     // 1. Process Monthly and Daily Loans with Upfront Interest
     const loans = await Loan.find({
+      isLegacyLoan: { $ne: true },
       upfrontInterestPaise: { $gt: 0 },
       status: { $nin: ['CANCELLED', 'REVERSED'] },
     }).lean();

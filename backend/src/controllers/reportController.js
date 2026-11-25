@@ -23,6 +23,7 @@ const getDailyReport = async (req, res, next) => {
 
     // 1. Loans issued on this day (optimized: lean, no redundant populate)
     const loansIssued = await Loan.find({
+      isLegacyLoan: { $ne: true },
       startDate: { $gte: startOfDay, $lte: endOfDay },
     }).lean();
 
@@ -124,6 +125,7 @@ const getMonthlyReport = async (req, res, next) => {
     // Run monthly queries in parallel with optimized projections
     const [loans, collections, activeLoans] = await Promise.all([
       Loan.find({
+        isLegacyLoan: { $ne: true },
         startDate: { $gte: startOfMonth.toJSDate(), $lte: endOfMonth.toJSDate() },
       })
         .select('principalPaise grossPrincipalPaise netDisbursementPaise upfrontInterestPaise vattiType loanId')
@@ -216,6 +218,7 @@ const getYearlyReport = async (req, res, next) => {
     // Run yearly queries in parallel with optimized projections
     const [loans, collections, activeLoans] = await Promise.all([
       Loan.find({
+        isLegacyLoan: { $ne: true },
         startDate: { $gte: startOfYear.toJSDate(), $lte: endOfYear.toJSDate() },
       })
         .select('principalPaise vattiType')

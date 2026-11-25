@@ -597,7 +597,7 @@ export default function Collections({ initialLoan }) {
                   {selectedLoanObj.penaltyBreakdown?.isPenaltyApplicable && (
                     <div>
                       <span className="text-[10px] text-rose-600 font-sans block font-semibold">
-                        Overdue Penalty (2%/day):
+                        Overdue Penalty ({selectedLoanObj.penaltyBreakdown?.penaltyRatePercent || selectedLoanObj.overduePenaltyRate || selectedLoanObj.penaltyRatePercent || 2}%/day):
                       </span>
                       <span className="text-sm font-bold text-rose-700">
                         {formatINR(selectedLoanObj.penaltyBreakdown?.penaltyOutstandingRupees || (selectedLoanObj.penaltyOutstandingPaise || 0) / 100)}

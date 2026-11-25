@@ -240,6 +240,7 @@ async function getIrupuSummary({ startDate, endDate, period = 'all' } = {}) {
   };
 
   const loanDisbursementFilter = {
+    isLegacyLoan: { $ne: true },
     status: { $nin: ['CANCELLED', 'cancelled', 'REVERSED', 'reversed'] },
     $or: [
       { disbursementPaymentMethod: 'CASH' },
@@ -252,7 +253,7 @@ async function getIrupuSummary({ startDate, endDate, period = 'all' } = {}) {
 
   // Pre-load reference maps for 100% accurate vattiType mapping and upfront interest tracking
   const [allLoansLookup, allDcAccountsLookup] = await Promise.all([
-    Loan.find({}, '_id loanId vattiType upfrontReceiptNumber upfrontCollectionId upfrontInterestPaise').lean(),
+    Loan.find({ isLegacyLoan: { $ne: true } }, '_id loanId vattiType upfrontReceiptNumber upfrontCollectionId upfrontInterestPaise').lean(),
     DailyCollectionAccount.find({}, '_id accountId upfrontReceiptNumber upfrontInterestPaise').lean(),
   ]);
 

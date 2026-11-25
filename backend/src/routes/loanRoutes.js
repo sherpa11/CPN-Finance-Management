@@ -6,6 +6,8 @@ const { authMiddleware } = require('../middleware/auth');
 router.use(authMiddleware);
 
 router.post('/preview', loanController.previewLoan);
+router.post('/preview-legacy', loanController.previewLegacyLoan);
+router.post('/legacy', loanController.createLegacyLoan);
 router.post('/', loanController.createLoan);
 router.get('/', loanController.listLoans);
 router.get('/:id', loanController.getLoanById);

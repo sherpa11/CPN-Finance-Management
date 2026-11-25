@@ -224,7 +224,7 @@ export default function DueManagement({ onNavigate, onOpenCollection }) {
                       <td className="py-3 px-3 text-right font-mono">
                         <div className="font-bold text-rose-700">{formatINR(d.totalOutstandingRupees)}</div>
                         {d.penaltyBreakdown?.isPenaltyApplicable && d.penaltyOutstandingRupees > 0 && (
-                          <div className="text-[10px] text-rose-600 font-semibold" title={`Daily Penalty: ₹${d.penaltyBreakdown.dailyPenaltyRupees}/day`}>
+                          <div className="text-[10px] text-rose-600 font-semibold" title={`Daily Penalty: ₹${d.penaltyBreakdown.dailyPenaltyRupees}/day (${d.penaltyBreakdown.penaltyRatePercent || 2}%)`}>
                             + Pen: {formatINR(d.penaltyOutstandingRupees)}
                           </div>
                         )}
@@ -248,7 +248,7 @@ export default function DueManagement({ onNavigate, onOpenCollection }) {
                         </span>
                         {d.penaltyBreakdown?.isPenaltyApplicable && d.penaltyBreakdown.overdueDays > 0 && (
                           <div className="text-[10px] text-rose-600 font-bold mt-0.5">
-                            Penalty: {formatINR(d.penaltyOutstandingRupees)} ({d.penaltyBreakdown.overdueDays}d @ ₹{d.penaltyBreakdown.dailyPenaltyRupees}/d)
+                            Penalty: {formatINR(d.penaltyOutstandingRupees)} ({d.penaltyBreakdown.overdueDays}d @ ₹{d.penaltyBreakdown.dailyPenaltyRupees}/d @ {d.penaltyBreakdown.penaltyRatePercent || 2}%)
                           </div>
                         )}
                       </td>

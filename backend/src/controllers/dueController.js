@@ -84,7 +84,7 @@ const getDuesList = async (req, res, next) => {
 
     const total = await Loan.countDocuments(query);
     const loans = await Loan.find(query)
-      .select('loanId customerId customerCode customerName customerMobile vattiType principalPaise interestRatePercent accruedInterestPaise outstandingPrincipalPaise outstandingInterestPaise dailyInstalmentPaise totalDurationDays penaltyPaidPaise penaltyRatePercent settledDate startDate dueDate status')
+      .select('loanId customerId customerCode customerName customerMobile vattiType principalPaise grossPrincipalPaise interestRatePercent accruedInterestPaise outstandingPrincipalPaise outstandingInterestPaise dailyInstalmentPaise totalDurationDays penaltyPaidPaise overduePenaltyRate penaltyRatePercent settledDate startDate dueDate status')
       .sort(sort)
       .skip((page - 1) * limit)
       .limit(Number(limit))
@@ -98,20 +98,21 @@ const getDuesList = async (req, res, next) => {
 
       // Confirmed Business Rule:
       // Monthly Finance & Daily Finance strictly have NO penalty under any circumstances (renewal workflows).
-      // Only Daily Collection (DC / 70-day, 100-day) has 2% daily repayment penalty starting on Day D+1.
+      // Only Daily Collection (DC / 70-day, 100-day) has account-specific penalty starting on Day D+1.
       const isDcWithPenalty = l.vattiType === 'DAILY_COLLECTION' || l.vattiType === 'MEATER';
 
       let penaltyCalc = null;
       if (isDcWithPenalty) {
         const dailyInstalmentPaise = l.dailyInstalmentPaise || (l.totalDurationDays ? Math.floor((l.principalPaise || 0) / l.totalDurationDays) : Math.floor((l.principalPaise || 0) / 10));
         penaltyCalc = calculateDailyPenalty({
+          grossPrincipalPaise: l.grossPrincipalPaise || l.principalPaise,
           dailyRepaymentAmountPaise: dailyInstalmentPaise,
           dueDate: l.dueDate,
           asOfDate: today.toJSDate(),
           isFullyRepaid: l.outstandingPrincipalPaise === 0,
           fullRepaymentDate: l.settledDate || null,
           penaltyPaidPaise: l.penaltyPaidPaise || 0,
-          penaltyRatePercent: l.penaltyRatePercent || 2.0,
+          penaltyRatePercent: l.overduePenaltyRate !== undefined && l.overduePenaltyRate !== null ? l.overduePenaltyRate : (l.penaltyRatePercent || 2.0),
         });
       }
 

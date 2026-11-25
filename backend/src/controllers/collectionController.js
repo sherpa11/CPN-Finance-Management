@@ -77,13 +77,14 @@ const previewCollection = async (req, res, next) => {
     if (loan.vattiType === 'DAILY_COLLECTION' || loan.vattiType === 'MEATER') {
       const dailyInstalmentPaise = loan.dailyInstalmentPaise || (loan.totalDurationDays ? Math.floor((loan.principalPaise || 0) / loan.totalDurationDays) : Math.floor((loan.principalPaise || 0) / 10));
       penaltyCalc = calculateDailyPenalty({
+        grossPrincipalPaise: loan.grossPrincipalPaise || loan.principalPaise,
         dailyRepaymentAmountPaise: dailyInstalmentPaise,
         dueDate: loan.dueDate,
         asOfDate: new Date(),
         isFullyRepaid: loan.outstandingPrincipalPaise === 0,
         fullRepaymentDate: loan.settledDate || null,
         penaltyPaidPaise: loan.penaltyPaidPaise || 0,
-        penaltyRatePercent: loan.penaltyRatePercent || 2.0,
+        penaltyRatePercent: loan.overduePenaltyRate !== undefined && loan.overduePenaltyRate !== null ? loan.overduePenaltyRate : (loan.penaltyRatePercent || 2.0),
       });
       currentOutstandingPenaltyPaise = penaltyCalc.penaltyOutstandingPaise;
     }
@@ -185,13 +186,14 @@ const recordCollection = async (req, res, next) => {
     if (loan.vattiType === 'DAILY_COLLECTION' || loan.vattiType === 'MEATER') {
       const dailyInstalmentPaise = loan.dailyInstalmentPaise || (loan.totalDurationDays ? Math.floor((loan.principalPaise || 0) / loan.totalDurationDays) : Math.floor((loan.principalPaise || 0) / 10));
       penaltyCalc = calculateDailyPenalty({
+        grossPrincipalPaise: loan.grossPrincipalPaise || loan.principalPaise,
         dailyRepaymentAmountPaise: dailyInstalmentPaise,
         dueDate: loan.dueDate,
         asOfDate: paymentDate ? new Date(paymentDate) : new Date(),
         isFullyRepaid: loan.outstandingPrincipalPaise === 0,
         fullRepaymentDate: loan.settledDate || null,
         penaltyPaidPaise: loan.penaltyPaidPaise || 0,
-        penaltyRatePercent: loan.penaltyRatePercent || 2.0,
+        penaltyRatePercent: loan.overduePenaltyRate !== undefined && loan.overduePenaltyRate !== null ? loan.overduePenaltyRate : (loan.penaltyRatePercent || 2.0),
       });
       currentOutstandingPenaltyPaise = penaltyCalc.penaltyOutstandingPaise;
     }

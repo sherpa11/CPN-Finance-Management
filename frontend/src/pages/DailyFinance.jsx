@@ -23,9 +23,11 @@ import {
   User,
   Phone,
   RefreshCw,
+  Layers,
 } from 'lucide-react';
 import { formatINR, formatDate, formatDateTime, getStatusBadge } from '../utils/formatters';
 import SearchableCustomerSelect from '../components/SearchableCustomerSelect';
+import ExistingLoanModal from '../components/ExistingLoanModal';
 import api from '../api';
 
 export default function DailyFinance({ onNavigate, preselectedCustomer }) {
@@ -93,6 +95,9 @@ export default function DailyFinance({ onNavigate, preselectedCustomer }) {
   const [renewalError, setRenewalError] = useState('');
   const [renewalSuccess, setRenewalSuccess] = useState('');
   const [newProjectedDueDate, setNewProjectedDueDate] = useState('');
+
+  // Legacy / Existing Loan Modal State
+  const [isLegacyModalOpen, setIsLegacyModalOpen] = useState(false);
 
   // Synchronize Due Date when Start Date or Duration Days changes
   useEffect(() => {
@@ -490,6 +495,13 @@ export default function DailyFinance({ onNavigate, preselectedCustomer }) {
             <Plus className="w-4 h-4" />
             <span>+ Disburse Daily Finance</span>
           </button>
+          <button
+            onClick={() => setIsLegacyModalOpen(true)}
+            className="px-3.5 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center space-x-1.5 bg-amber-500 hover:bg-amber-600 text-white shadow-xs"
+          >
+            <Layers className="w-4 h-4" />
+            <span>+ Add Existing Loan</span>
+          </button>
         </div>
       </div>
 
@@ -635,7 +647,14 @@ export default function DailyFinance({ onNavigate, preselectedCustomer }) {
                     return (
                       <tr key={loan._id} className="hover:bg-slate-50/80 transition-colors">
                         <td className="px-3 py-3 font-mono font-bold text-amber-700">
-                          {loan.loanId}
+                          <div className="flex items-center space-x-1">
+                            <span>{loan.loanId}</span>
+                            {loan.isLegacyLoan && (
+                              <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-300">
+                                Existing
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="px-3 py-3 text-slate-600 whitespace-nowrap">
                           {formatDate(loan.startDate)}
@@ -1179,6 +1198,34 @@ export default function DailyFinance({ onNavigate, preselectedCustomer }) {
                   <p className="text-slate-600">Collection Duration: <span className="font-bold text-slate-900">{selectedLoanForDetails.totalDurationDays || 10} Days</span></p>
                 </div>
               </div>
+
+              {/* Existing / Legacy Loan Banner */}
+              {selectedLoanForDetails.isLegacyLoan && (
+                <div className="bg-amber-50/80 border border-amber-300 rounded-lg p-3.5 space-y-2">
+                  <div className="flex items-center space-x-2 text-amber-900 font-bold">
+                    <Layers className="w-4 h-4 text-amber-600" />
+                    <span>Existing / Legacy Loan Opening Record</span>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
+                    <div>
+                      <span className="text-slate-500 block">Original Loan Date:</span>
+                      <span className="font-bold text-slate-800">{formatDate(selectedLoanForDetails.originalLoanDate || selectedLoanForDetails.startDate)}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 block">Original Principal:</span>
+                      <span className="font-bold font-mono text-slate-800">{formatINR((selectedLoanForDetails.originalPrincipalPaise || selectedLoanForDetails.principalPaise) / 100)}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 block">Last Paid-Through:</span>
+                      <span className="font-bold font-mono text-slate-800">{formatDate(selectedLoanForDetails.legacyLastPaidThroughDate || selectedLoanForDetails.currentPeriodStartDate)}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 block">Completed Renewals:</span>
+                      <span className="font-bold font-mono text-indigo-700">{selectedLoanForDetails.legacyRenewalCount || selectedLoanForDetails.renewalCount} renewals</span>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Financial Balance Summary */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -1737,6 +1784,19 @@ export default function DailyFinance({ onNavigate, preselectedCustomer }) {
           </div>
         </div>
       )}
+
+      {/* Existing / Legacy Loan Modal */}
+      <ExistingLoanModal
+        isOpen={isLegacyModalOpen}
+        onClose={() => setIsLegacyModalOpen(false)}
+        vattiType="DAILY"
+        customers={customers}
+        onSuccess={(newLoan) => {
+          setFormSuccess(`Existing Daily Finance loan ${newLoan.loanId} imported successfully!`);
+          fetchLoans();
+          setActiveTab('roster');
+        }}
+      />
     </div>
   );
 }

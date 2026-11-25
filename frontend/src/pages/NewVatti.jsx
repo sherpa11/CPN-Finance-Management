@@ -29,6 +29,7 @@ export default function NewVatti({ preselectedCustomer, onNavigate }) {
   const [totalDurationDays, setTotalDurationDays] = useState(100);
   const [upfrontInterestRupees, setUpfrontInterestRupees] = useState('');
   const [upfrontInterestPercent, setUpfrontInterestPercent] = useState('10.0');
+  const [overduePenaltyRate, setOverduePenaltyRate] = useState('');
 
   // Live Preview State
   const [preview, setPreview] = useState(null);
@@ -129,6 +130,8 @@ export default function NewVatti({ preselectedCustomer, onNavigate }) {
             grossPrincipal: Number(principalAmount),
             upfrontInterestRupees: upfrontInterestRupees !== '' ? Number(upfrontInterestRupees) : undefined,
             upfrontInterestPercent: upfrontInterestPercent !== '' ? Number(upfrontInterestPercent) : undefined,
+            overduePenaltyRate: overduePenaltyRate !== '' ? Number(overduePenaltyRate) : undefined,
+            penaltyRatePercent: overduePenaltyRate !== '' ? Number(overduePenaltyRate) : undefined,
             totalDurationDays: Number(totalDurationDays),
             startDate,
           });
@@ -176,6 +179,7 @@ export default function NewVatti({ preselectedCustomer, onNavigate }) {
     dueDate,
     upfrontInterestRupees,
     upfrontInterestPercent,
+    overduePenaltyRate,
     totalDurationDays,
   ]);
 
@@ -190,6 +194,10 @@ export default function NewVatti({ preselectedCustomer, onNavigate }) {
       return;
     }
     if (vattiType === 'DAILY_COLLECTION') {
+      if (!overduePenaltyRate || Number(overduePenaltyRate) <= 0 || isNaN(Number(overduePenaltyRate))) {
+        setError('Please enter a valid Overdue Penalty Rate (% per day).');
+        return;
+      }
       if (Number(upfrontInterestRupees) > Number(principalAmount)) {
         setError('Upfront interest deduction cannot exceed gross loan amount.');
         return;
@@ -215,6 +223,8 @@ export default function NewVatti({ preselectedCustomer, onNavigate }) {
           grossPrincipal: Number(principalAmount),
           upfrontInterestRupees: Number(upfrontInterestRupees) || 0,
           upfrontInterestPercent: Number(upfrontInterestPercent) || 0,
+          overduePenaltyRate: Number(overduePenaltyRate),
+          penaltyRatePercent: Number(overduePenaltyRate),
           totalDurationDays: Number(totalDurationDays),
           additionalInterestDays: 0,
           startDate,
@@ -543,6 +553,43 @@ export default function NewVatti({ preselectedCustomer, onNavigate }) {
                 )}
               </div>
 
+              {/* Overdue Penalty Rate (% per day) - Account-specific required field for Daily Collection */}
+              {vattiType === 'DAILY_COLLECTION' && (
+                <div className="p-3.5 bg-amber-50/70 border border-amber-200 rounded-xl space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="block font-bold text-slate-800 text-xs">
+                      Overdue Penalty Rate (% per day) *
+                    </label>
+                    <span className="text-[10px] font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded border border-amber-200">
+                      Account-Specific
+                    </span>
+                  </div>
+                  <div className="relative max-w-xs">
+                    <input
+                      type="number"
+                      required
+                      min="0.01"
+                      step="0.01"
+                      placeholder="e.g. 2, 5, 10"
+                      value={overduePenaltyRate}
+                      onChange={(e) => setOverduePenaltyRate(e.target.value)}
+                      className="w-full pr-8 pl-3 py-2 border border-amber-300 bg-white rounded-lg text-sm font-mono font-bold text-slate-900 focus:ring-2 focus:ring-amber-500"
+                    />
+                    <span className="absolute right-3 top-2 font-bold text-slate-400">%</span>
+                  </div>
+                  <p className="text-[11px] text-slate-600">
+                    Calculated on <span className="font-semibold text-slate-800">Original Gross Principal</span> (₹{formatINR(Number(principalAmount) || 0).replace('₹', '')}). 
+                    {principalAmount && overduePenaltyRate ? (
+                      <span className="font-bold text-rose-700 ml-1">
+                        = {formatINR(Math.round(((Number(principalAmount) || 0) * (Number(overduePenaltyRate) || 0)) / 100))} per overdue day.
+                      </span>
+                    ) : (
+                      ' e.g. Gross ₹1,00,000 @ 10% = ₹10,000/day; overdue 3 days = ₹30,000.'
+                    )}
+                  </p>
+                </div>
+              )}
+
               {/* Dates */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
@@ -657,6 +704,15 @@ export default function NewVatti({ preselectedCustomer, onNavigate }) {
                     <span className="text-slate-500">Expected End Date:</span>
                     <span className="font-bold text-slate-900">{formatDate(preview.expectedCompletionDate)}</span>
                   </div>
+
+                  {overduePenaltyRate && (
+                    <div className="flex justify-between py-1 border-b border-slate-200/60 font-sans text-amber-800">
+                      <span className="font-medium">Overdue Penalty Rate:</span>
+                      <span className="font-bold">
+                        {overduePenaltyRate}% / day ({formatINR(Math.round(((Number(principalAmount) || 0) * (Number(overduePenaltyRate) || 0)) / 100))}/d)
+                      </span>
+                    </div>
+                  )}
 
                   <div className="flex justify-between py-2 border-t-2 border-slate-300 font-sans text-slate-950 font-bold">
                     <span>Total Repayment:</span>
@@ -785,6 +841,13 @@ export default function NewVatti({ preselectedCustomer, onNavigate }) {
                   <div className="flex justify-between font-sans">
                     <span className="text-slate-500">Total Duration:</span>
                     <span className="font-bold text-slate-900">{totalDurationDays} Calendar Days</span>
+                  </div>
+
+                  <div className="flex justify-between font-sans text-amber-800 bg-amber-50 px-2 py-1 rounded border border-amber-200">
+                    <span className="font-semibold">Overdue Penalty Rate:</span>
+                    <span className="font-bold">
+                      {overduePenaltyRate}% / day ({formatINR(Math.round(((Number(principalAmount) || 0) * (Number(overduePenaltyRate) || 0)) / 100))} / overdue day)
+                    </span>
                   </div>
                 </>
               )}

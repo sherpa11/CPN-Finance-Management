@@ -33,7 +33,16 @@ const transactionSchema = new mongoose.Schema(
     },
     type: {
       type: String,
-      enum: ['LOAN_DISBURSEMENT', 'INTEREST_ACCRUAL', 'COLLECTION', 'RENEWAL_INTEREST', 'REVERSAL', 'ADJUSTMENT', 'PENALTY_ASSESSMENT'],
+      enum: [
+        'LOAN_DISBURSEMENT',
+        'INTEREST_ACCRUAL',
+        'COLLECTION',
+        'RENEWAL_INTEREST',
+        'REVERSAL',
+        'ADJUSTMENT',
+        'PENALTY_ASSESSMENT',
+        'LEGACY_LOAN_OPENING',
+      ],
       required: true,
       index: true,
     },

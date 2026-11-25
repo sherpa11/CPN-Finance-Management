@@ -13,6 +13,8 @@ const {
   calculateLoanInterest,
   calculateDailyPenalty,
   getKolkataDate,
+  calculateLegacyMonthlyDates,
+  calculateLegacyDailyDates,
 } = require('../services/calculationEngine');
 const { evaluateDueNotifications } = require('../services/notificationService');
 const {
@@ -504,18 +506,19 @@ const listLoans = async (req, res, next) => {
       const dueKolkata = DateTime.fromJSDate(loan.dueDate, { zone: CONSTANTS.DEFAULT_TIMEZONE }).startOf('day');
       const diffDays = Math.round(dueKolkata.diff(todayKolkata, 'days').days);
       const isDueForRenewal = diffDays <= 0 && loan.outstandingPrincipalPaise > 0;
-      const currentPeriodInterestPaise = Math.round((loan.outstandingPrincipalPaise * loan.interestRatePercent) / 100);
+      const currentPeriodInterestPaise = loan.currentPeriodInterestPaise || Math.round((loan.outstandingPrincipalPaise * loan.interestRatePercent) / 100);
 
       if (isDailyCollection) {
         const dailyInstalmentPaise = loan.dailyInstalmentPaise || (loan.totalDurationDays ? Math.floor((loan.principalPaise || 0) / loan.totalDurationDays) : Math.floor((loan.principalPaise || 0) / 10));
         const penaltyCalc = calculateDailyPenalty({
+          grossPrincipalPaise: loan.grossPrincipalPaise || loan.principalPaise,
           dailyRepaymentAmountPaise: dailyInstalmentPaise,
           dueDate: loan.dueDate,
           asOfDate: new Date(),
           isFullyRepaid: loan.outstandingPrincipalPaise === 0,
           fullRepaymentDate: loan.settledDate || null,
           penaltyPaidPaise: loan.penaltyPaidPaise || 0,
-          penaltyRatePercent: loan.penaltyRatePercent || 2.0,
+          penaltyRatePercent: loan.overduePenaltyRate !== undefined && loan.overduePenaltyRate !== null ? loan.overduePenaltyRate : (loan.penaltyRatePercent || 2.0),
         });
         return {
           ...loan,
@@ -614,13 +617,14 @@ const getLoanById = async (req, res, next) => {
     if (isDailyCollection) {
       const dailyInstalmentPaise = loan.dailyInstalmentPaise || (loan.totalDurationDays ? Math.floor((loan.principalPaise || 0) / loan.totalDurationDays) : Math.floor((loan.principalPaise || 0) / 10));
       penaltyCalc = calculateDailyPenalty({
+        grossPrincipalPaise: loan.grossPrincipalPaise || loan.principalPaise,
         dailyRepaymentAmountPaise: dailyInstalmentPaise,
         dueDate: loan.dueDate,
         asOfDate: new Date(),
         isFullyRepaid: loan.outstandingPrincipalPaise === 0,
         fullRepaymentDate: loan.settledDate || null,
         penaltyPaidPaise: loan.penaltyPaidPaise || 0,
-        penaltyRatePercent: loan.penaltyRatePercent || 2.0,
+        penaltyRatePercent: loan.overduePenaltyRate !== undefined && loan.overduePenaltyRate !== null ? loan.overduePenaltyRate : (loan.penaltyRatePercent || 2.0),
       });
     }
 
@@ -662,7 +666,7 @@ const getLoanById = async (req, res, next) => {
     const dueKolkata = DateTime.fromJSDate(loan.dueDate, { zone: CONSTANTS.DEFAULT_TIMEZONE }).startOf('day');
     const diffDays = Math.round(dueKolkata.diff(todayKolkata, 'days').days);
     const isDueForRenewal = diffDays <= 0 && loan.outstandingPrincipalPaise > 0;
-    const currentPeriodInterestPaise = Math.round((loan.outstandingPrincipalPaise * loan.interestRatePercent) / 100);
+    const currentPeriodInterestPaise = loan.currentPeriodInterestPaise || Math.round((loan.outstandingPrincipalPaise * loan.interestRatePercent) / 100);
 
     const loanObj = loan.toObject ? loan.toObject() : loan;
     loanObj.penaltyBreakdown = penaltyBreakdown;
@@ -938,9 +942,8 @@ const renewLoan = async (req, res, next) => {
       });
     }
 
-    // Calculate standard renewal interest based on current remaining principal:
-    // Renewal Interest = Outstanding Principal × Rate / 100
-    const standardRenewalInterestPaise = Math.round((loan.outstandingPrincipalPaise * loan.interestRatePercent) / 100);
+    // Calculate standard renewal interest based on current remaining principal (or custom period interest):
+    const standardRenewalInterestPaise = loan.currentPeriodInterestPaise || Math.round((loan.outstandingPrincipalPaise * loan.interestRatePercent) / 100);
     const amountToCharge = paymentAmount !== undefined && paymentAmount !== ''
       ? paymentAmount
       : renewalInterestAmount;
@@ -1107,6 +1110,368 @@ const renewLoan = async (req, res, next) => {
   }
 };
 
+/**
+ * Preview Legacy Loan calculation & date suggestions
+ */
+const previewLegacyLoan = async (req, res, next) => {
+  try {
+    const {
+      vattiType = 'MONTHLY',
+      originalLoanDate,
+      lastPaidThroughDate,
+      originalPrincipal,
+      interestRatePercent,
+      renewalInterestAmount,
+      outstandingPrincipal,
+    } = req.body;
+
+    if (!originalLoanDate) {
+      return res.status(400).json({ success: false, message: 'Original loan date is required.' });
+    }
+    if (!lastPaidThroughDate) {
+      return res.status(400).json({ success: false, message: 'Last interest-paid date is required.' });
+    }
+
+    const origDate = new Date(originalLoanDate);
+    const lastPaidDate = new Date(lastPaidThroughDate);
+
+    if (isNaN(origDate.getTime()) || isNaN(lastPaidDate.getTime())) {
+      return res.status(400).json({ success: false, message: 'Invalid date format provided.' });
+    }
+
+    if (lastPaidDate < origDate) {
+      return res.status(400).json({
+        success: false,
+        message: 'Last interest-paid date cannot be earlier than the original loan date.',
+      });
+    }
+
+    let dateCalc;
+    if (vattiType === 'DAILY') {
+      dateCalc = calculateLegacyDailyDates({ originalLoanDate, lastPaidThroughDate });
+    } else {
+      dateCalc = calculateLegacyMonthlyDates({ originalLoanDate, lastPaidThroughDate });
+    }
+
+    const origPrincipalPaise = toPaise(originalPrincipal || 0);
+    const rate = Number(interestRatePercent) || 0;
+
+    // Upfront interest on original principal
+    const autoUpfrontPaise = Math.round((origPrincipalPaise * rate) / 100);
+    const autoNetGivenPaise = Math.max(0, origPrincipalPaise - autoUpfrontPaise);
+
+    // Standard renewal interest per period
+    const standardRenewalInterestPaise = Math.round((origPrincipalPaise * rate) / 100);
+    const renewalInterestPaise = renewalInterestAmount !== undefined && renewalInterestAmount !== '' && !isNaN(renewalInterestAmount)
+      ? toPaise(renewalInterestAmount)
+      : standardRenewalInterestPaise;
+
+    // Outstanding principal
+    const outPrincipalPaise = outstandingPrincipal !== undefined && outstandingPrincipal !== '' && !isNaN(outstandingPrincipal)
+      ? toPaise(outstandingPrincipal)
+      : origPrincipalPaise;
+
+    // Suggested historical interest paid
+    const historicalInterestPaise = (dateCalc.suggestedRenewals * renewalInterestPaise) + autoUpfrontPaise;
+
+    // Status check
+    const todayKolkata = DateTime.now().setZone(CONSTANTS.DEFAULT_TIMEZONE).startOf('day');
+    const nextDueKolkata = DateTime.fromISO(dateCalc.suggestedNextDueDate, { zone: CONSTANTS.DEFAULT_TIMEZONE }).startOf('day');
+    let calculatedStatus = 'ACTIVE';
+    if (outPrincipalPaise === 0) {
+      calculatedStatus = 'SETTLED';
+    } else if (nextDueKolkata < todayKolkata) {
+      calculatedStatus = 'OVERDUE';
+    }
+
+    res.json({
+      success: true,
+      preview: {
+        vattiType,
+        originalLoanDate: dateCalc.originalLoanDate,
+        lastPaidThroughDate: dateCalc.lastPaidThroughDate,
+        suggestedNextDueDate: dateCalc.suggestedNextDueDate,
+        suggestedRenewalCount: dateCalc.suggestedRenewals,
+        originalPrincipalRupees: toRupees(origPrincipalPaise),
+        outstandingPrincipalRupees: toRupees(outPrincipalPaise),
+        interestRatePercent: rate,
+        renewalInterestRupees: toRupees(renewalInterestPaise),
+        autoUpfrontInterestRupees: toRupees(autoUpfrontPaise),
+        autoNetGivenRupees: toRupees(autoNetGivenPaise),
+        estimatedHistoricalInterestRupees: toRupees(historicalInterestPaise),
+        calculatedStatus,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Create Existing / Legacy Loan
+ * Opening account migration without touching Cash in Hand (Irupu)
+ */
+const createLegacyLoan = async (req, res, next) => {
+  try {
+    const {
+      customerId,
+      vattiType = 'MONTHLY',
+      originalLoanDate,
+      originalPrincipal,
+      interestRatePercent,
+      originalUpfrontInterest,
+      originalNetGiven,
+      currentOutstandingPrincipal,
+      renewalInterestAmount,
+      lastPaidThroughDate,
+      nextDueDate,
+      completedRenewals,
+      paymentMethod = 'CASH',
+      historicalReference,
+      remarks,
+    } = req.body;
+
+    // 1. Validation
+    if (!customerId) {
+      return res.status(400).json({ success: false, message: 'Borrower / Customer selection is required.' });
+    }
+    const customer = await Customer.findById(customerId);
+    if (!customer) {
+      return res.status(404).json({ success: false, message: 'Customer record not found.' });
+    }
+    if (customer.status === CONSTANTS.CUSTOMER_STATUS.INACTIVE) {
+      return res.status(400).json({ success: false, message: 'Cannot add loan for an inactive customer.' });
+    }
+
+    if (vattiType !== 'MONTHLY' && vattiType !== 'DAILY') {
+      return res.status(400).json({
+        success: false,
+        message: 'Existing loan entry is only available for Monthly Finance and Daily Finance.',
+      });
+    }
+
+    if (!originalLoanDate) {
+      return res.status(400).json({ success: false, message: 'Original loan date is required.' });
+    }
+    if (!lastPaidThroughDate) {
+      return res.status(400).json({ success: false, message: 'Last interest-paid date is required.' });
+    }
+    if (!nextDueDate) {
+      return res.status(400).json({ success: false, message: 'Next renewal due date is required.' });
+    }
+
+    const origDate = new Date(originalLoanDate);
+    const lastPaidDate = new Date(lastPaidThroughDate);
+    const dueDate = new Date(nextDueDate);
+
+    if (isNaN(origDate.getTime()) || isNaN(lastPaidDate.getTime()) || isNaN(dueDate.getTime())) {
+      return res.status(400).json({ success: false, message: 'Invalid dates provided.' });
+    }
+
+    if (lastPaidDate < origDate) {
+      return res.status(400).json({
+        success: false,
+        message: 'Last interest-paid date cannot be earlier than the original loan date.',
+      });
+    }
+
+    const origPrincipalPaise = toPaise(originalPrincipal);
+    if (origPrincipalPaise <= 0) {
+      return res.status(400).json({ success: false, message: 'Original principal must be greater than zero.' });
+    }
+
+    const outPrincipalPaise = currentOutstandingPrincipal !== undefined && currentOutstandingPrincipal !== ''
+      ? toPaise(currentOutstandingPrincipal)
+      : origPrincipalPaise;
+
+    if (outPrincipalPaise < 0) {
+      return res.status(400).json({ success: false, message: 'Current outstanding principal cannot be negative.' });
+    }
+    if (outPrincipalPaise > origPrincipalPaise) {
+      return res.status(400).json({
+        success: false,
+        message: `Current outstanding principal (₹${toRupees(outPrincipalPaise)}) cannot exceed original principal (₹${toRupees(origPrincipalPaise)}).`,
+      });
+    }
+
+    const rate = Number(interestRatePercent) || 0;
+    if (rate < 0) {
+      return res.status(400).json({ success: false, message: 'Interest rate cannot be negative.' });
+    }
+
+    // Renewal interest per period
+    const standardRenewalInterestPaise = Math.round((outPrincipalPaise * rate) / 100);
+    const renewalInterestPaise = renewalInterestAmount !== undefined && renewalInterestAmount !== '' && !isNaN(renewalInterestAmount)
+      ? toPaise(renewalInterestAmount)
+      : standardRenewalInterestPaise;
+
+    // Upfront interest & net given
+    const autoUpfrontPaise = Math.round((origPrincipalPaise * rate) / 100);
+    const upfrontPaise = originalUpfrontInterest !== undefined && originalUpfrontInterest !== '' && !isNaN(originalUpfrontInterest)
+      ? toPaise(originalUpfrontInterest)
+      : autoUpfrontPaise;
+
+    const netGivenPaise = originalNetGiven !== undefined && originalNetGiven !== '' && !isNaN(originalNetGiven)
+      ? toPaise(originalNetGiven)
+      : Math.max(0, origPrincipalPaise - upfrontPaise);
+
+    const renewalsCount = completedRenewals !== undefined && completedRenewals !== '' && !isNaN(completedRenewals)
+      ? Math.max(0, parseInt(completedRenewals, 10))
+      : 0;
+
+    // Check duplicate legacy loan
+    const existingDuplicate = await Loan.findOne({
+      customerId: customer._id,
+      vattiType,
+      isLegacyLoan: true,
+      status: { $in: ['ACTIVE', 'OVERDUE'] },
+      startDate: origDate,
+      principalPaise: origPrincipalPaise,
+    });
+    if (existingDuplicate) {
+      return res.status(400).json({
+        success: false,
+        message: `A legacy ${vattiType} loan (${existingDuplicate.loanId}) already exists for customer ${customer.name} with original principal ₹${formatINR(toRupees(origPrincipalPaise))} dated ${originalLoanDate}.`,
+      });
+    }
+
+    // Determine status
+    const todayKolkata = DateTime.now().setZone(CONSTANTS.DEFAULT_TIMEZONE).startOf('day');
+    const dueKolkata = DateTime.fromJSDate(dueDate, { zone: CONSTANTS.DEFAULT_TIMEZONE }).startOf('day');
+    let loanStatus = CONSTANTS.LOAN_STATUS.ACTIVE;
+    if (outPrincipalPaise === 0) {
+      loanStatus = CONSTANTS.LOAN_STATUS.SETTLED;
+    } else if (dueKolkata < todayKolkata) {
+      loanStatus = CONSTANTS.LOAN_STATUS.OVERDUE;
+    }
+
+    const loanId = await generateLoanId();
+    const txnId = await generateTransactionId();
+
+    const principalPaidPaise = Math.max(0, origPrincipalPaise - outPrincipalPaise);
+    const historicalInterestPaise = (renewalsCount * renewalInterestPaise) + upfrontPaise;
+
+    const result = await runInTransaction(async (session) => {
+      // 1. Create Loan document
+      const loan = new Loan({
+        loanId,
+        customerId: customer._id,
+        customerCode: customer.customerId,
+        customerName: customer.name,
+        customerMobile: customer.mobileNumber,
+        vattiType,
+        principalPaise: origPrincipalPaise,
+        originalPrincipalPaise: origPrincipalPaise,
+        outstandingPrincipalPaise: outPrincipalPaise,
+        interestRatePercent: rate,
+        startDate: origDate,
+        dueDate: dueDate,
+        currentPeriodStartDate: lastPaidDate,
+        currentPeriodDueDate: dueDate,
+        renewalCount: renewalsCount,
+        status: loanStatus,
+        isLegacyLoan: true,
+        legacyOpeningDate: new Date(),
+        originalLoanDate: origDate,
+        legacyLastPaidThroughDate: lastPaidDate,
+        legacyRenewalCount: renewalsCount,
+        legacyHistoricalInterestPaise: historicalInterestPaise,
+        legacyHistoricalUpfrontInterestPaise: upfrontPaise,
+        legacyOriginalNetGivenPaise: netGivenPaise,
+        legacyImportRemarks: remarks || '',
+        legacyReference: historicalReference || '',
+        currentPeriodInterestPaise: renewalInterestPaise,
+        upfrontInterestPaise: 0, // No uncollected upfront collection
+        netDisbursementPaise: netGivenPaise,
+        grossPrincipalPaise: origPrincipalPaise,
+        totalPrincipalPaidPaise: principalPaidPaise,
+        totalInterestPaidPaise: historicalInterestPaise,
+        disbursementPaymentMethod: paymentMethod || 'CASH',
+        remarks: remarks || `Existing / Legacy ${vattiType} loan opening balance`,
+        calculationConfigSnapshot: {
+          isLegacyLoan: true,
+          vattiType,
+          originalLoanDate,
+          originalPrincipalRupees: toRupees(origPrincipalPaise),
+          outstandingPrincipalRupees: toRupees(outPrincipalPaise),
+          interestRatePercent: rate,
+          renewalInterestRupees: toRupees(renewalInterestPaise),
+          lastPaidThroughDate,
+          nextDueDate,
+          completedRenewals: renewalsCount,
+          importedAt: new Date(),
+        },
+      });
+
+      await loan.save(session ? { session } : undefined);
+
+      // 2. Create LEGACY_LOAN_OPENING transaction for customer ledger
+      const txn = new Transaction({
+        transactionId: txnId,
+        customerId: customer._id,
+        loanId: loan._id,
+        date: origDate,
+        type: CONSTANTS.TRANSACTION_TYPES.LEGACY_LOAN_OPENING,
+        principalDebitPaise: outPrincipalPaise,
+        principalCreditPaise: 0,
+        interestDebitPaise: 0,
+        interestCreditPaise: 0,
+        penaltyDebitPaise: 0,
+        penaltyCreditPaise: 0,
+        balancePrincipalPaise: outPrincipalPaise,
+        balanceInterestPaise: 0,
+        balancePenaltyPaise: 0,
+        balanceTotalPaise: outPrincipalPaise,
+        referenceId: loan.loanId,
+        remarks: `Existing Loan / Legacy Loan / Opening Balance (Original Principal: ₹${formatINR(toRupees(origPrincipalPaise))}, Completed Renewals: ${renewalsCount})`,
+        performedBy: req.user?.username || 'admin',
+      });
+
+      await txn.save(session ? { session } : undefined);
+
+      // 3. Update Customer financial aggregates
+      await Customer.findByIdAndUpdate(
+        customer._id,
+        {
+          $inc: {
+            totalLentPaise: origPrincipalPaise,
+            outstandingPrincipalPaise: outPrincipalPaise,
+            totalPrincipalPaidPaise: principalPaidPaise,
+            totalInterestPaidPaise: historicalInterestPaise,
+            totalLoanCount: 1,
+            activeLoanCount: loanStatus === 'ACTIVE' || loanStatus === 'OVERDUE' ? 1 : 0,
+          },
+        },
+        session ? { session } : undefined
+      );
+
+      return { loan, txn };
+    });
+
+    // 4. Invalidate cache & audit
+    invalidateDashboardCache();
+    evaluateDueNotifications().catch((err) => console.error('Notification evaluation error after legacy loan:', err));
+
+    await logAuditEvent({
+      action: 'CREATE_LEGACY_LOAN',
+      entityType: 'LOAN',
+      entityId: result.loan._id,
+      performedBy: req.user?.username || 'admin',
+      ipAddress: req.ip,
+      details: `Imported legacy ${vattiType} loan ${result.loan.loanId} for ${customer.name}: Original ₹${formatINR(toRupees(origPrincipalPaise))}, Outstanding ₹${formatINR(toRupees(outPrincipalPaise))}, Renewals: ${renewalsCount}`,
+    });
+
+    res.status(201).json({
+      success: true,
+      message: `Existing ${vattiType === 'DAILY' ? 'Daily Finance' : 'Monthly Finance'} loan ${result.loan.loanId} imported successfully.`,
+      loan: result.loan,
+      transaction: result.txn,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 const deleteLoan = async (req, res, next) => {
   return reverseLoan(req, res, next);
 };
@@ -1114,6 +1479,8 @@ const deleteLoan = async (req, res, next) => {
 module.exports = {
   previewLoan,
   createLoan,
+  previewLegacyLoan,
+  createLegacyLoan,
   listLoans,
   getLoanById,
   amendInterestRate,

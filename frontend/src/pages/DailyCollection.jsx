@@ -440,7 +440,7 @@ export default function DailyCollection({ onNavigate }) {
                   <th className="py-3 px-3 text-center">Progress</th>
                   <th className="py-3 px-3 text-right">Collected</th>
                   <th className="py-3 px-3 text-right">Outstanding</th>
-                  <th className="py-3 px-3 text-right">Overdue Penalty (2%)</th>
+                  <th className="py-3 px-3 text-right">Overdue Penalty</th>
                   <th className="py-3 px-3 text-center">Status</th>
                   <th className="py-3 px-3 text-center">Actions</th>
                 </tr>
@@ -448,13 +448,13 @@ export default function DailyCollection({ onNavigate }) {
               <tbody className="divide-y divide-slate-100">
                 {loadingAccounts ? (
                   <tr>
-                    <td colSpan="10" className="py-8 text-center text-slate-400">
+                    <td colSpan="11" className="py-8 text-center text-slate-400">
                       Loading Daily Collection accounts...
                     </td>
                   </tr>
                 ) : !accounts || accounts.length === 0 ? (
                   <tr>
-                    <td colSpan="10" className="py-12 text-center text-slate-400">
+                    <td colSpan="11" className="py-12 text-center text-slate-400">
                       <CalendarDays className="w-10 h-10 mx-auto mb-2 opacity-30 text-slate-400" />
                       <p className="font-semibold text-slate-700 text-sm">No Daily Collection accounts added yet</p>
                       <p className="text-slate-400 text-xs mt-1">
@@ -513,11 +513,16 @@ export default function DailyCollection({ onNavigate }) {
                                 {formatINR(acc.penaltyBreakdown.penaltyOutstandingRupees)}
                               </span>
                               <div className="text-[10px] text-rose-500 font-mono">
-                                {acc.penaltyBreakdown.overdueDays}d overdue ({formatINR(acc.penaltyBreakdown.dailyPenaltyRupees)}/d)
+                                {acc.penaltyBreakdown.overdueDays}d overdue ({formatINR(acc.penaltyBreakdown.dailyPenaltyRupees)}/d @ {acc.overduePenaltyRate || acc.penaltyRatePercent || 2}%)
                               </div>
                             </div>
                           ) : (
-                            <span className="text-slate-400 font-mono text-[11px]">₹0.00</span>
+                            <div>
+                              <span className="text-slate-400 font-mono text-[11px]">₹0.00</span>
+                              <div className="text-[9px] text-slate-400 font-sans">
+                                ({acc.overduePenaltyRate || acc.penaltyRatePercent || 2}%/day)
+                              </div>
+                            </div>
                           )}
                         </td>
                         <td className="py-3 px-3 text-center font-sans">
@@ -630,13 +635,13 @@ export default function DailyCollection({ onNavigate }) {
                 </div>
               </div>
 
-              {/* Overdue Daily Penalty Breakdown Block (Client-Confirmed 2% Rule) */}
+              {/* Overdue Daily Penalty Breakdown Block (Account-Specific Rate on Gross Principal) */}
               {selectedAccountData.penaltyBreakdown && (
                 <div className="bg-rose-50/50 border border-rose-200 p-4 rounded-xl space-y-3">
                   <div className="flex items-center justify-between border-b border-rose-200/60 pb-2">
                     <h4 className="font-bold text-rose-900 text-xs flex items-center space-x-1.5">
                       <AlertCircle className="w-4 h-4 text-rose-600" />
-                      <span>Overdue Penalty Breakdown (Client-Confirmed 2% Rule)</span>
+                      <span>Overdue Penalty Breakdown ({selectedAccountData.overduePenaltyRate || selectedAccountData.penaltyBreakdown.penaltyRatePercent || 2}% per day on Gross Principal)</span>
                     </h4>
                     <span className="text-[10px] font-bold text-rose-700 bg-rose-100 px-2.5 py-0.5 rounded-full border border-rose-200">
                       {selectedAccountData.penaltyBreakdown.overdueDays > 0
@@ -647,21 +652,21 @@ export default function DailyCollection({ onNavigate }) {
 
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
                     <div className="bg-white p-2.5 rounded-lg border border-rose-100">
-                      <p className="text-[10px] text-slate-500 font-sans">Scheduled Duration</p>
+                      <p className="text-[10px] text-slate-500 font-sans">Gross Principal</p>
                       <p className="font-bold font-mono text-slate-800 text-sm mt-0.5">
-                        {selectedAccountData.totalDurationDays || 100} Days
+                        {formatINR(selectedAccountData.grossPrincipalRupees)}
                       </p>
                     </div>
 
                     <div className="bg-white p-2.5 rounded-lg border border-rose-100">
-                      <p className="text-[10px] text-slate-500 font-sans">Daily Repayment Amount</p>
+                      <p className="text-[10px] text-slate-500 font-sans">Daily Instalment</p>
                       <p className="font-bold font-mono text-slate-800 text-sm mt-0.5">
-                        {formatINR(selectedAccountData.penaltyBreakdown.dailyRepaymentAmountRupees)}
+                        {formatINR(selectedAccountData.dailyInstalmentRupees)}
                       </p>
                     </div>
 
                     <div className="bg-white p-2.5 rounded-lg border border-rose-100">
-                      <p className="text-[10px] text-rose-600 font-sans font-medium">Daily Penalty Rate (2%)</p>
+                      <p className="text-[10px] text-rose-600 font-sans font-medium">Daily Penalty ({selectedAccountData.overduePenaltyRate || selectedAccountData.penaltyBreakdown.penaltyRatePercent || 2}%)</p>
                       <p className="font-bold font-mono text-rose-700 text-sm mt-0.5">
                         {formatINR(selectedAccountData.penaltyBreakdown.dailyPenaltyRupees)} / day
                       </p>

@@ -158,10 +158,15 @@ const dailyCollectionAccountSchema = new mongoose.Schema(
       default: 0,
       min: 0,
     },
-    // Penalty Tracking for Daily Collection (2% of daily instalment per overdue day)
+    // Penalty Tracking for Daily Collection (Account-specific overdue penalty rate on gross principal)
+    overduePenaltyRate: {
+      type: Number,
+      min: 0,
+    },
     penaltyRatePercent: {
       type: Number,
       default: 2.0,
+      min: 0,
     },
     penaltyAssessedPaise: {
       type: Number,

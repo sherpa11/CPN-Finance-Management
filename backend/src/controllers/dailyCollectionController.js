@@ -198,6 +198,8 @@ const previewDailyCollection = async (req, res, next) => {
       grossPrincipal,
       upfrontInterestRupees,
       upfrontInterestPercent,
+      overduePenaltyRate,
+      penaltyRatePercent,
       totalDurationDays = 100,
       startDate = new Date(),
     } = req.body;
@@ -218,6 +220,11 @@ const previewDailyCollection = async (req, res, next) => {
       totalDurationDays: duration,
     });
 
+    const penaltyRate = overduePenaltyRate !== undefined && overduePenaltyRate !== ''
+      ? Number(overduePenaltyRate)
+      : (penaltyRatePercent !== undefined && penaltyRatePercent !== '' ? Number(penaltyRatePercent) : null);
+    const dailyPenaltyPaise = penaltyRate !== null ? Math.round((calculation.grossPrincipalPaise * penaltyRate) / 100) : 0;
+
     res.json({
       success: true,
       preview: {
@@ -228,6 +235,10 @@ const previewDailyCollection = async (req, res, next) => {
         upfrontInterestRupees: toRupees(calculation.upfrontInterestPaise),
         upfrontInterestPaise: calculation.upfrontInterestPaise,
         upfrontInterestPercent: calculation.upfrontInterestPercent,
+        overduePenaltyRate: penaltyRate,
+        penaltyRatePercent: penaltyRate,
+        dailyPenaltyRupees: toRupees(dailyPenaltyPaise),
+        dailyPenaltyPaise,
         netDisbursementRupees: toRupees(calculation.netDisbursementPaise),
         netDisbursementPaise: calculation.netDisbursementPaise,
         dailyInstalmentRupees: toRupees(calculation.dailyInstalmentPaise),
@@ -265,6 +276,8 @@ const createDailyCollectionAccount = async (req, res, next) => {
       grossPrincipal,
       upfrontInterestRupees,
       upfrontInterestPercent,
+      overduePenaltyRate,
+      penaltyRatePercent,
       additionalInterestDays,
       totalDurationDays = 100,
       startDate = new Date(),
@@ -284,6 +297,21 @@ const createDailyCollectionAccount = async (req, res, next) => {
     const grossPaise = toPaise(grossPrincipal);
     if (grossPaise <= 0) {
       return res.status(400).json({ success: false, message: 'Gross principal must be greater than zero.' });
+    }
+
+    let effectivePenaltyRate = 2.0;
+    if (overduePenaltyRate !== undefined && overduePenaltyRate !== '') {
+      const parsed = Number(overduePenaltyRate);
+      if (isNaN(parsed) || parsed < 0) {
+        return res.status(400).json({ success: false, message: 'Overdue Penalty Rate (% per day) must be a valid non-negative number.' });
+      }
+      effectivePenaltyRate = parsed;
+    } else if (penaltyRatePercent !== undefined && penaltyRatePercent !== '') {
+      const parsed = Number(penaltyRatePercent);
+      if (isNaN(parsed) || parsed < 0) {
+        return res.status(400).json({ success: false, message: 'Overdue Penalty Rate (% per day) must be a valid non-negative number.' });
+      }
+      effectivePenaltyRate = parsed;
     }
 
     let calc;
@@ -343,6 +371,8 @@ const createDailyCollectionAccount = async (req, res, next) => {
         outstandingPrincipalPaise: calc.grossPrincipalPaise,
         outstandingInterestPaise: calc.additionalInterestPaise || 0,
         totalOutstandingPaise: calc.totalRepaymentPaise,
+        overduePenaltyRate: effectivePenaltyRate,
+        penaltyRatePercent: effectivePenaltyRate,
         startDate: new Date(calc.startDate),
         expectedCompletionDate: new Date(calc.expectedCompletionDate),
         status: 'ACTIVE',
@@ -367,6 +397,8 @@ const createDailyCollectionAccount = async (req, res, next) => {
         grossPrincipalPaise: calc.grossPrincipalPaise,
         upfrontInterestPaise: calc.scheme === 'UPFRONT_DEDUCTION' ? (calc.upfrontInterestPaise || 0) : 0,
         interestRatePercent: calc.scheme === 'UPFRONT_DEDUCTION' ? calc.upfrontInterestPercent : (calc.additionalInterestDays * 1),
+        overduePenaltyRate: effectivePenaltyRate,
+        penaltyRatePercent: effectivePenaltyRate,
         startDate: new Date(calc.startDate),
         dueDate: new Date(calc.expectedCompletionDate),
         status: CONSTANTS.LOAN_STATUS.ACTIVE,
@@ -376,6 +408,8 @@ const createDailyCollectionAccount = async (req, res, next) => {
           additionalInterestDays: calc.additionalInterestDays,
           dailyInstalmentPaise: calc.dailyInstalmentPaise,
           totalDurationDays: calc.totalDurationDays,
+          overduePenaltyRate: effectivePenaltyRate,
+          penaltyRatePercent: effectivePenaltyRate,
         },
         outstandingPrincipalPaise: calc.grossPrincipalPaise,
         accruedInterestPaise: calc.additionalInterestPaise || 0,
@@ -392,6 +426,8 @@ const createDailyCollectionAccount = async (req, res, next) => {
           netDisbursementPaise: calc.netDisbursementPaise,
           dailyInstalmentPaise: calc.dailyInstalmentPaise,
           totalDurationDays: calc.totalDurationDays,
+          overduePenaltyRate: effectivePenaltyRate,
+          penaltyRatePercent: effectivePenaltyRate,
         },
       });
 
@@ -581,18 +617,24 @@ const getDailyCollectionAccounts = async (req, res, next) => {
     ]);
 
     const accountsWithPenalty = accounts.map((acc) => {
+      const penaltyRate = acc.overduePenaltyRate !== undefined && acc.overduePenaltyRate !== null
+        ? acc.overduePenaltyRate
+        : (acc.penaltyRatePercent || 2.0);
       const penaltyCalc = calculateDailyPenalty({
+        grossPrincipalPaise: acc.grossPrincipalPaise,
         dailyRepaymentAmountPaise: acc.dailyInstalmentPaise,
         dueDate: acc.expectedCompletionDate,
         asOfDate: new Date(),
         isFullyRepaid: acc.status === 'COMPLETED' || acc.totalOutstandingPaise === 0,
         fullRepaymentDate: acc.actualCompletionDate,
         penaltyPaidPaise: acc.penaltyPaidPaise || 0,
-        penaltyRatePercent: acc.penaltyRatePercent || 2.0,
+        penaltyRatePercent: penaltyRate,
       });
 
       return {
         ...acc,
+        overduePenaltyRate: penaltyRate,
+        penaltyRatePercent: penaltyRate,
         grossPrincipalRupees: toRupees(acc.grossPrincipalPaise),
         netDisbursementRupees: toRupees(acc.netDisbursementPaise),
         dailyInstalmentRupees: toRupees(acc.dailyInstalmentPaise),
@@ -603,7 +645,10 @@ const getDailyCollectionAccounts = async (req, res, next) => {
           : 0,
         penaltyBreakdown: {
           isPenaltyApplicable: true,
+          overduePenaltyRate: penaltyRate,
           penaltyRatePercent: penaltyCalc.penaltyRatePercent,
+          grossPrincipalRupees: toRupees(acc.grossPrincipalPaise),
+          grossPrincipalPaise: acc.grossPrincipalPaise,
           dailyRepaymentAmountRupees: toRupees(penaltyCalc.dailyRepaymentAmountPaise),
           dailyPenaltyRupees: toRupees(penaltyCalc.dailyPenaltyPaise),
           overdueDays: penaltyCalc.overdueDays,
@@ -658,15 +703,19 @@ const getDailyCollectionAccountById = async (req, res, next) => {
       .sort({ dayNumber: 1, paymentDate: 1 })
       .lean();
 
-    // Calculate live 2% daily penalty if overdue
+    // Calculate live daily penalty on gross principal if overdue
+    const penaltyRate = account.overduePenaltyRate !== undefined && account.overduePenaltyRate !== null
+      ? account.overduePenaltyRate
+      : (account.penaltyRatePercent || 2.0);
     const penaltyCalc = calculateDailyPenalty({
+      grossPrincipalPaise: account.grossPrincipalPaise,
       dailyRepaymentAmountPaise: account.dailyInstalmentPaise,
       dueDate: account.expectedCompletionDate,
       asOfDate: new Date(),
       isFullyRepaid: account.status === 'COMPLETED' || account.totalOutstandingPaise === 0,
       fullRepaymentDate: account.actualCompletionDate,
       penaltyPaidPaise: account.penaltyPaidPaise || 0,
-      penaltyRatePercent: account.penaltyRatePercent || 2.0,
+      penaltyRatePercent: penaltyRate,
     });
 
     // Build schedule list with overdue rows beyond scheduled duration if overdue
@@ -702,14 +751,17 @@ const getDailyCollectionAccountById = async (req, res, next) => {
           collectedPaise,
           collectedRupees: toRupees(collectedPaise),
           status,
-          remarks: `Overdue Penalty Day ${i} (2% of daily repayment)`,
+          remarks: `Overdue Penalty Day ${i} (${penaltyRate}% of gross principal)`,
         });
       }
     }
 
     const penaltyBreakdown = {
       isPenaltyApplicable: true,
+      overduePenaltyRate: penaltyRate,
       penaltyRatePercent: penaltyCalc.penaltyRatePercent,
+      grossPrincipalRupees: toRupees(account.grossPrincipalPaise),
+      grossPrincipalPaise: account.grossPrincipalPaise,
       dailyRepaymentAmountRupees: toRupees(penaltyCalc.dailyRepaymentAmountPaise),
       dailyPenaltyRupees: toRupees(penaltyCalc.dailyPenaltyPaise),
       overdueDays: penaltyCalc.overdueDays,
@@ -819,13 +871,17 @@ const recordDailyCollectionPayment = async (req, res, next) => {
     }
 
     // Calculate live penalty status
+    const penaltyRate = account.overduePenaltyRate !== undefined && account.overduePenaltyRate !== null
+      ? account.overduePenaltyRate
+      : (account.penaltyRatePercent || 2.0);
     const penaltyCalc = calculateDailyPenalty({
+      grossPrincipalPaise: account.grossPrincipalPaise,
       dailyRepaymentAmountPaise: account.dailyInstalmentPaise,
       dueDate: account.expectedCompletionDate,
       asOfDate: paymentDate ? new Date(paymentDate) : new Date(),
       isFullyRepaid: false,
       penaltyPaidPaise: account.penaltyPaidPaise || 0,
-      penaltyRatePercent: account.penaltyRatePercent || 2.0,
+      penaltyRatePercent: penaltyRate,
     });
 
     if (isPenaltyDay && penaltyCalc.penaltyOutstandingPaise > 0 && amountPaise > penaltyCalc.penaltyOutstandingPaise) {
@@ -894,7 +950,7 @@ const recordDailyCollectionPayment = async (req, res, next) => {
         }
       } else if (isPenaltyDay) {
         account.penaltyPaidPaise = (account.penaltyPaidPaise || 0) + penaltyAllocationPaise;
-        const expectedPenaltyPaise = Math.round((account.dailyInstalmentPaise * (account.penaltyRatePercent || 2.0)) / 100);
+        const expectedPenaltyPaise = penaltyCalc.dailyPenaltyPaise;
         account.schedule.push({
           dayNumber: Number(dayNumber),
           scheduledDate,
@@ -904,7 +960,7 @@ const recordDailyCollectionPayment = async (req, res, next) => {
           status: status === 'MISSED' ? 'MISSED' : (amountPaise >= expectedPenaltyPaise ? 'PAID' : 'PARTIAL'),
           paymentDate: status === 'MISSED' ? undefined : new Date(paymentDate),
           paymentId: payment.paymentId,
-          remarks: remarks || `Overdue Penalty Day ${Number(dayNumber) - account.totalDurationDays}`,
+          remarks: remarks || `Overdue Penalty Day ${Number(dayNumber) - account.totalDurationDays} (${penaltyRate}%)`,
         });
       }
 

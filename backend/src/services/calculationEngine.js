@@ -507,8 +507,8 @@ function calculateDailyCollectionSchemeB({
  * 1. Monthly Finance: NO penalty under any circumstances (1-month renewal workflow).
  * 2. Daily Finance: NO penalty under any circumstances (10-day renewal workflow).
  * 3. Daily Collection (Scheme A & Scheme B):
- *    - Rate: 2% of the daily repayment amount per overdue day.
- *    - Formula: Daily Penalty = Daily Repayment Amount × 2 / 100
+ *    - Rate: Account-specific penalty rate (configurable per account, e.g. 2%, 5%, 10%).
+ *    - Formula: Daily Penalty = Original Gross Principal × (Penalty Rate / 100)
  *    - Penalty Start Date: Day D+1 (e.g. Day 101 for 100-day collection, or Day 71 for 70-day collection).
  *    - Days 1 through D: No penalty. Never apply penalty on Day D.
  *    - Day D+1: 1 overdue day (1 × Daily Penalty).
@@ -525,6 +525,7 @@ function calculateDailyCollectionSchemeB({
  * - Assessed penalty is NOT counted as collected cash until customer actually pays it.
  */
 function calculateDailyPenalty({
+  grossPrincipalPaise,
   dailyRepaymentAmountPaise,
   dueDate,
   asOfDate,
@@ -533,11 +534,18 @@ function calculateDailyPenalty({
   penaltyPaidPaise = 0,
   penaltyRatePercent = 2.0,
 }) {
+  const rate = Number(penaltyRatePercent) >= 0 ? Number(penaltyRatePercent) : 2.0;
+  const gross = grossPrincipalPaise !== undefined && grossPrincipalPaise !== null ? Math.round(grossPrincipalPaise) : 0;
   const dailyInstalment = Math.round(dailyRepaymentAmountPaise || 0);
-  if (dailyInstalment <= 0) {
+  const basePaise = gross > 0 ? gross : dailyInstalment;
+
+  if (basePaise <= 0) {
     return {
       isPenaltyApplicable: false,
-      dailyRepaymentAmountPaise: 0,
+      penaltyRatePercent: rate,
+      overduePenaltyRate: rate,
+      grossPrincipalPaise: 0,
+      dailyRepaymentAmountPaise: dailyInstalment,
       dailyPenaltyPaise: 0,
       overdueDays: 0,
       cumulativePenaltyPaise: 0,
@@ -546,8 +554,8 @@ function calculateDailyPenalty({
     };
   }
 
-  // Daily Penalty = Daily Repayment Amount × 2 / 100
-  const dailyPenaltyPaise = Math.round((dailyInstalment * penaltyRatePercent) / 100);
+  // Daily Penalty = Original Gross Principal × (Penalty Rate / 100)
+  const dailyPenaltyPaise = Math.round((basePaise * rate) / 100);
 
   const due = getKolkataDate(dueDate);
   // If loan was fully repaid, penalties stop accruing on full repayment date
@@ -567,7 +575,9 @@ function calculateDailyPenalty({
 
   return {
     isPenaltyApplicable: true,
-    penaltyRatePercent,
+    penaltyRatePercent: rate,
+    overduePenaltyRate: rate,
+    grossPrincipalPaise: basePaise,
     dailyRepaymentAmountPaise: dailyInstalment,
     dailyPenaltyPaise,
     overdueDays,
@@ -732,6 +742,68 @@ function validateAndAllocatePayment({
   };
 }
 
+/**
+ * Calculate suggested dates & renewal count for Legacy Monthly Finance Loan
+ */
+function calculateLegacyMonthlyDates({ originalLoanDate, lastPaidThroughDate }) {
+  const orig = DateTime.fromISO(new Date(originalLoanDate).toISOString().split('T')[0], { zone: CONSTANTS.DEFAULT_TIMEZONE }).startOf('day');
+  const lastPaid = DateTime.fromISO(new Date(lastPaidThroughDate).toISOString().split('T')[0], { zone: CONSTANTS.DEFAULT_TIMEZONE }).startOf('day');
+
+  if (lastPaid < orig) {
+    throw new Error('Last interest-paid date cannot be earlier than original loan date.');
+  }
+
+  // Next renewal due date is 1 calendar month after last interest-paid date
+  const suggestedNextDueDate = lastPaid.plus({ months: 1 }).toISODate();
+
+  // Completed renewals: count of months from original loan date to last paid through date
+  // e.g. 2024-01-25 to 2026-10-25 => 33 renewals
+  let monthsDiff = (lastPaid.year - orig.year) * 12 + (lastPaid.month - orig.month);
+  if (lastPaid.day < orig.day) {
+    const origDaysInMonth = orig.daysInMonth;
+    const lastPaidDaysInMonth = lastPaid.daysInMonth;
+    if (!(orig.day === origDaysInMonth && lastPaid.day === lastPaidDaysInMonth)) {
+      monthsDiff = Math.max(0, monthsDiff - 1);
+    }
+  }
+
+  const suggestedRenewals = Math.max(0, monthsDiff);
+
+  return {
+    suggestedNextDueDate,
+    suggestedRenewals,
+    originalLoanDate: orig.toISODate(),
+    lastPaidThroughDate: lastPaid.toISODate(),
+  };
+}
+
+/**
+ * Calculate suggested dates & renewal count for Legacy Daily Finance Loan (10-day periods)
+ */
+function calculateLegacyDailyDates({ originalLoanDate, lastPaidThroughDate }) {
+  const orig = DateTime.fromISO(new Date(originalLoanDate).toISOString().split('T')[0], { zone: CONSTANTS.DEFAULT_TIMEZONE }).startOf('day');
+  const lastPaid = DateTime.fromISO(new Date(lastPaidThroughDate).toISOString().split('T')[0], { zone: CONSTANTS.DEFAULT_TIMEZONE }).startOf('day');
+
+  if (lastPaid < orig) {
+    throw new Error('Last interest-paid date cannot be earlier than original loan date.');
+  }
+
+  // Next renewal due date is exactly 10 calendar days after last interest-paid date
+  const suggestedNextDueDate = lastPaid.plus({ days: 10 }).toISODate();
+
+  // Completed renewals: total elapsed days divided by 10
+  const daysDiff = Math.round(lastPaid.diff(orig, 'days').days);
+  const suggestedRenewals = Math.max(0, Math.floor(daysDiff / 10));
+
+  return {
+    suggestedNextDueDate,
+    suggestedRenewals,
+    elapsedDays: daysDiff,
+    originalLoanDate: orig.toISODate(),
+    lastPaidThroughDate: lastPaid.toISODate(),
+  };
+}
+
 module.exports = {
   toPaise,
   toRupees,
@@ -745,4 +817,6 @@ module.exports = {
   calculateLoanInterest,
   calculateDailyPenalty,
   validateAndAllocatePayment,
+  calculateLegacyMonthlyDates,
+  calculateLegacyDailyDates,
 };

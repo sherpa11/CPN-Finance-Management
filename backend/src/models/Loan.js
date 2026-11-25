@@ -123,10 +123,15 @@ const loanSchema = new mongoose.Schema(
       default: 0,
       min: 0,
     },
-    // Daily Finance Penalty Tracking (Strictly 2% of daily repayment amount per overdue day)
+    // Daily Finance Penalty Tracking (Strictly account-specific % of gross principal per overdue day for DC)
+    overduePenaltyRate: {
+      type: Number,
+      min: 0,
+    },
     penaltyRatePercent: {
       type: Number,
       default: 2.0,
+      min: 0,
     },
     penaltyAssessedPaise: {
       type: Number,
@@ -238,6 +243,53 @@ const loanSchema = new mongoose.Schema(
     currentPeriodDueDate: {
       type: Date,
     },
+    currentPeriodInterestPaise: {
+      type: Number,
+      default: 0,
+    },
+    // Existing / Legacy Loan Specific Attributes
+    isLegacyLoan: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    legacyOpeningDate: {
+      type: Date,
+    },
+    originalLoanDate: {
+      type: Date,
+    },
+    originalPrincipalPaise: {
+      type: Number,
+      min: 0,
+    },
+    legacyLastPaidThroughDate: {
+      type: Date,
+    },
+    legacyRenewalCount: {
+      type: Number,
+      default: 0,
+    },
+    legacyHistoricalInterestPaise: {
+      type: Number,
+      default: 0,
+    },
+    legacyHistoricalUpfrontInterestPaise: {
+      type: Number,
+      default: 0,
+    },
+    legacyOriginalNetGivenPaise: {
+      type: Number,
+      default: 0,
+    },
+    legacyImportRemarks: {
+      type: String,
+      default: '',
+    },
+    legacyReference: {
+      type: String,
+      default: '',
+    },
     renewalHistory: [
       {
         renewalNumber: {
@@ -308,5 +360,6 @@ loanSchema.index({ status: 1, settledDate: -1 });
 loanSchema.index({ vattiType: 1, status: 1, createdAt: -1 });
 loanSchema.index({ status: 1, disbursementPaymentMethod: 1, startDate: -1 });
 loanSchema.index({ startDate: -1 });
+loanSchema.index({ isLegacyLoan: 1, status: 1 });
 
 module.exports = mongoose.model('Loan', loanSchema);

@@ -253,7 +253,9 @@ export default function Ledger() {
                       <td className="py-2.5 px-2.5 font-bold text-blue-700">{t.loanCode}</td>
                       <td className="py-2.5 px-3 font-sans">
                         <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                          t.type === 'LOAN_DISBURSEMENT'
+                          t.type === 'LEGACY_LOAN_OPENING'
+                            ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                            : t.type === 'LOAN_DISBURSEMENT'
                             ? 'bg-blue-100 text-blue-800'
                             : t.type === 'COLLECTION'
                             ? 'bg-emerald-100 text-emerald-800'
@@ -265,7 +267,7 @@ export default function Ledger() {
                             ? 'bg-rose-100 text-rose-800'
                             : 'bg-purple-100 text-purple-800'
                         }`}>
-                          {t.type === 'RENEWAL_INTEREST' ? 'RENEWAL_INTEREST' : t.type}
+                          {t.type === 'LEGACY_LOAN_OPENING' ? 'Existing Loan / Opening Balance' : t.type === 'RENEWAL_INTEREST' ? 'RENEWAL_INTEREST' : t.type}
                         </span>
                       </td>
                       <td className="py-2.5 px-3 text-right font-medium text-slate-900">
