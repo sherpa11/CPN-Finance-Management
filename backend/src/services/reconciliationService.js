@@ -34,6 +34,37 @@ async function syncHistoricalUpfrontCollections({ dryRun = false } = {}) {
   };
 
   try {
+    // Self-healing: clean up orphan upfront collections whose parent loan was deleted
+    if (!dryRun) {
+      try {
+        const orphanUpfronts = await Collection.find({
+          $or: [
+            { isUpfrontInterest: true },
+            { collectionType: 'UPFRONT_INTEREST' },
+            { idempotencyKey: { $regex: /^UPFRONT-/ } },
+          ],
+        }).select('_id loanId loanCode idempotencyKey').lean();
+
+        for (const col of orphanUpfronts) {
+          let activeExists = false;
+          if (col.loanId) {
+            activeExists = (await Loan.exists({ _id: col.loanId })) ||
+                           (await DailyCollectionAccount.exists({ $or: [{ _id: col.loanId }, { loanId: col.loanId }] }));
+          }
+          if (!activeExists && col.loanCode) {
+            activeExists = (await Loan.exists({ loanId: col.loanCode })) ||
+                           (await DailyCollectionAccount.exists({ $or: [{ accountId: col.loanCode }, { loanCode: col.loanCode }] }));
+          }
+          if (!activeExists) {
+            await Collection.deleteOne({ _id: col._id });
+            await Transaction.deleteMany({ collectionId: col._id });
+          }
+        }
+      } catch (cleanErr) {
+        console.warn('[syncHistoricalUpfrontCollections] Orphan cleanup warning:', cleanErr.message);
+      }
+    }
+
     // Quick pre-flight check: Are there ANY loans or DC accounts that might have unhealed upfront collections?
     if (!dryRun) {
       const hasUnsyncedLoan = await Loan.exists({
@@ -66,6 +97,7 @@ async function syncHistoricalUpfrontCollections({ dryRun = false } = {}) {
           ...(loan.upfrontCollectionId ? [{ _id: loan.upfrontCollectionId }] : []),
           ...(loan.upfrontReceiptNumber ? [{ receiptNumber: loan.upfrontReceiptNumber }] : []),
           { idempotencyKey: `UPFRONT-${loan.loanId}` },
+          { idempotencyKey: `UPFRONT-${loan.loanId}-${loan._id}` },
           { loanId: loan._id, isUpfrontInterest: true },
           { loanId: loan._id, principalAllocationPaise: 0, interestAllocationPaise: loan.upfrontInterestPaise },
           { loanCode: loan.loanId, principalAllocationPaise: 0, interestAllocationPaise: loan.upfrontInterestPaise },
@@ -80,7 +112,7 @@ async function syncHistoricalUpfrontCollections({ dryRun = false } = {}) {
               accountedInDisbursement: true,
               collectionType: 'UPFRONT_INTEREST',
               vattiType: loan.vattiType || existing.vattiType || 'MONTHLY',
-              idempotencyKey: existing.idempotencyKey || `UPFRONT-${loan.loanId}`,
+              idempotencyKey: existing.idempotencyKey || `UPFRONT-${loan.loanId}-${loan._id}`,
             });
           }
           report.loansFixed += 1;
@@ -110,6 +142,12 @@ async function syncHistoricalUpfrontCollections({ dryRun = false } = {}) {
         const upfrontReceiptNum = await generateReceiptNumber();
         const txnId = await generateTransactionId();
 
+        // Clean up any stale collection with matching idempotency key not belonging to this loan
+        await Collection.deleteMany({
+          idempotencyKey: { $in: [`UPFRONT-${loan.loanId}`, `UPFRONT-${loan.loanId}-${loan._id}`] },
+          loanId: { $ne: loan._id },
+        });
+
         const newCol = new Collection({
           collectionId: upfrontColId,
           receiptNumber: upfrontReceiptNum,
@@ -134,7 +172,7 @@ async function syncHistoricalUpfrontCollections({ dryRun = false } = {}) {
           status: CONSTANTS.COLLECTION_STATUS.CONFIRMED,
           collectedBy: 'admin',
           remarks: 'Upfront interest deducted during disbursement (Historical Reconciliation)',
-          idempotencyKey: `UPFRONT-${loan.loanId}`,
+          idempotencyKey: `UPFRONT-${loan.loanId}-${loan._id}`,
         });
 
         await newCol.save();
@@ -210,6 +248,8 @@ async function syncHistoricalUpfrontCollections({ dryRun = false } = {}) {
         $or: [
           ...(dc.upfrontReceiptNumber ? [{ receiptNumber: dc.upfrontReceiptNumber }] : []),
           { idempotencyKey: `UPFRONT-${dc.accountId}` },
+          { idempotencyKey: `UPFRONT-${dc.accountId}-${dc._id}` },
+          ...(dc.loanId ? [{ idempotencyKey: `UPFRONT-${dc.loanCode}-${dc.loanId}` }] : []),
           { loanCode: targetLoanCode, isUpfrontInterest: true },
           ...(dc.loanId ? [{ loanId: dc.loanId, isUpfrontInterest: true }] : []),
           { loanCode: targetLoanCode, principalAllocationPaise: 0, interestAllocationPaise: dc.upfrontInterestPaise },
@@ -225,7 +265,7 @@ async function syncHistoricalUpfrontCollections({ dryRun = false } = {}) {
               accountedInDisbursement: true,
               collectionType: 'UPFRONT_INTEREST',
               vattiType: 'DAILY_COLLECTION',
-              idempotencyKey: existing.idempotencyKey || `UPFRONT-${dc.accountId}`,
+              idempotencyKey: existing.idempotencyKey || `UPFRONT-${dc.accountId}-${dc._id}`,
             });
           }
           report.dcAccountsFixed += 1;
@@ -261,6 +301,12 @@ async function syncHistoricalUpfrontCollections({ dryRun = false } = {}) {
         const upfrontReceiptNum = await generateReceiptNumber();
         const txnId = await generateTransactionId();
 
+        // Clean up any stale collection with matching idempotency key not belonging to this account
+        await Collection.deleteMany({
+          idempotencyKey: { $in: [`UPFRONT-${dc.accountId}`, `UPFRONT-${dc.accountId}-${dc._id}`] },
+          loanId: { $nin: [dc._id, dc.loanId].filter(Boolean) },
+        });
+
         const newCol = new Collection({
           collectionId: upfrontColId,
           receiptNumber: upfrontReceiptNum,
@@ -285,7 +331,7 @@ async function syncHistoricalUpfrontCollections({ dryRun = false } = {}) {
           status: CONSTANTS.COLLECTION_STATUS.CONFIRMED,
           collectedBy: 'admin',
           remarks: 'Upfront interest deducted during disbursement (Historical Reconciliation)',
-          idempotencyKey: `UPFRONT-${dc.accountId}`,
+          idempotencyKey: `UPFRONT-${dc.accountId}-${dc._id}`,
         });
 
         await newCol.save();

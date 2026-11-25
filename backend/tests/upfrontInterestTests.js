@@ -205,7 +205,13 @@ async function runUpfrontInterestTests() {
     assert.strictEqual(dcAccount.netDisbursementPaise, 9000000);
     assert(dcAccount.upfrontReceiptNumber, 'DailyCollectionAccount must have upfrontReceiptNumber');
 
-    const dcCol = await Collection.findOne({ idempotencyKey: `UPFRONT-${dcAccount.accountId}` }).lean();
+    const dcCol = await Collection.findOne({
+      $or: [
+        { idempotencyKey: `UPFRONT-${dcAccount.accountId}` },
+        { idempotencyKey: { $regex: new RegExp(`^UPFRONT-${dcAccount.accountId}`) } },
+        { receiptNumber: dcAccount.upfrontReceiptNumber },
+      ],
+    }).lean();
     assert(dcCol, 'Daily Collection upfront collection not found');
     assert.strictEqual(dcCol.vattiType, 'DAILY_COLLECTION');
     assert.strictEqual(dcCol.interestAllocationPaise, 1000000);

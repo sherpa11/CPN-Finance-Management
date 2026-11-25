@@ -23,59 +23,170 @@ const CONSTANTS = require('../config/constants');
 const { DateTime } = require('luxon');
 const { escapeRegex } = require('../utils/sanitize');
 
-// Generate sequential Account ID e.g. CPN-DC-0001
+// Generate sequential Account ID e.g. CPN-DC-0001 (collision-safe)
 async function generateDailyCollectionAccountId() {
-  const lastAcc = await DailyCollectionAccount.findOne().sort({ accountId: -1 });
-  if (!lastAcc || !lastAcc.accountId) {
-    return 'CPN-DC-0001';
+  const [accList, collectionList] = await Promise.all([
+    DailyCollectionAccount.find({}, { accountId: 1 }).lean(),
+    Collection.find({ idempotencyKey: { $regex: /^UPFRONT-CPN-DC-/ } }, { idempotencyKey: 1, loanCode: 1 }).lean(),
+  ]);
+
+  let maxSeq = 0;
+  for (const a of accList) {
+    if (a.accountId) {
+      const match = a.accountId.match(/CPN-DC-(\d+)/);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > maxSeq) maxSeq = num;
+      }
+    }
   }
-  const match = lastAcc.accountId.match(/CPN-DC-(\d+)/);
-  if (match) {
-    const nextSeq = parseInt(match[1], 10) + 1;
-    return `CPN-DC-${String(nextSeq).padStart(4, '0')}`;
+
+  for (const c of collectionList) {
+    if (c.loanCode) {
+      const match = c.loanCode.match(/CPN-DC-(\d+)/);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > maxSeq) maxSeq = num;
+      }
+    }
+    if (c.idempotencyKey) {
+      const match = c.idempotencyKey.match(/UPFRONT-CPN-DC-(\d+)/);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > maxSeq) maxSeq = num;
+      }
+    }
   }
-  return `CPN-DC-${Date.now().toString().slice(-4)}`;
+
+  let nextSeq = maxSeq + 1;
+  let candidate = `CPN-DC-${String(nextSeq).padStart(4, '0')}`;
+
+  while (
+    (await DailyCollectionAccount.exists({ accountId: candidate })) ||
+    (await Collection.exists({
+      $or: [
+        { loanCode: candidate },
+        { idempotencyKey: `UPFRONT-${candidate}` },
+        { idempotencyKey: { $regex: new RegExp(`^UPFRONT-${candidate}`) } },
+      ],
+    }))
+  ) {
+    nextSeq++;
+    candidate = `CPN-DC-${String(nextSeq).padStart(4, '0')}`;
+  }
+
+  return candidate;
 }
 
 // Generate sequential Payment ID e.g. DCP-2026-0001
 async function generateDailyPaymentId() {
   const year = DateTime.now().setZone(CONSTANTS.DEFAULT_TIMEZONE).year;
   const lastPayment = await DailyCollectionPayment.findOne().sort({ paymentId: -1 });
-  if (!lastPayment || !lastPayment.paymentId) {
-    return `DCP-${year}-0001`;
+  let maxSeq = 0;
+  if (lastPayment && lastPayment.paymentId) {
+    const match = lastPayment.paymentId.match(/DCP-\d+-(\d+)/);
+    if (match) {
+      maxSeq = parseInt(match[1], 10);
+    }
   }
-  const match = lastPayment.paymentId.match(/DCP-\d+-(\d+)/);
-  if (match) {
-    const nextSeq = parseInt(match[1], 10) + 1;
-    return `DCP-${year}-${String(nextSeq).padStart(4, '0')}`;
+  let nextSeq = maxSeq + 1;
+  let candidate = `DCP-${year}-${String(nextSeq).padStart(4, '0')}`;
+
+  while (await DailyCollectionPayment.exists({ paymentId: candidate })) {
+    nextSeq++;
+    candidate = `DCP-${year}-${String(nextSeq).padStart(4, '0')}`;
   }
-  return `DCP-${year}-${Date.now().toString().slice(-4)}`;
+
+  return candidate;
 }
 
 async function generateLoanId() {
-  const lastLoan = await Loan.findOne().sort({ loanId: -1 });
-  if (!lastLoan || !lastLoan.loanId) {
-    return 'CPN-LN-0001';
+  const [loanList, collectionList, txnList] = await Promise.all([
+    Loan.find({}, { loanId: 1 }).lean(),
+    Collection.find({}, { loanCode: 1, idempotencyKey: 1 }).lean(),
+    Transaction.find({ referenceId: { $regex: /^CPN-LN-\d+/ } }, { referenceId: 1 }).lean(),
+  ]);
+
+  let maxSeq = 0;
+  for (const l of loanList) {
+    if (l.loanId) {
+      const match = l.loanId.match(/CPN-LN-(\d+)/);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > maxSeq) maxSeq = num;
+      }
+    }
   }
-  const match = lastLoan.loanId.match(/CPN-LN-(\d+)/);
-  if (match) {
-    const nextSeq = parseInt(match[1], 10) + 1;
-    return `CPN-LN-${String(nextSeq).padStart(4, '0')}`;
+
+  for (const c of collectionList) {
+    if (c.loanCode) {
+      const match = c.loanCode.match(/CPN-LN-(\d+)/);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > maxSeq) maxSeq = num;
+      }
+    }
+    if (c.idempotencyKey) {
+      const match = c.idempotencyKey.match(/UPFRONT-CPN-LN-(\d+)/);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > maxSeq) maxSeq = num;
+      }
+    }
   }
-  return `CPN-LN-${Date.now().toString().slice(-4)}`;
+
+  for (const t of txnList) {
+    if (t.referenceId) {
+      const match = t.referenceId.match(/CPN-LN-(\d+)/);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > maxSeq) maxSeq = num;
+      }
+    }
+  }
+
+  let nextSeq = maxSeq + 1;
+  let candidate = `CPN-LN-${String(nextSeq).padStart(4, '0')}`;
+
+  while (
+    (await Loan.exists({ loanId: candidate })) ||
+    (await Collection.exists({
+      $or: [
+        { loanCode: candidate },
+        { idempotencyKey: `UPFRONT-${candidate}` },
+        { idempotencyKey: { $regex: new RegExp(`^UPFRONT-${candidate}`) } },
+      ],
+    }))
+  ) {
+    nextSeq++;
+    candidate = `CPN-LN-${String(nextSeq).padStart(4, '0')}`;
+  }
+
+  return candidate;
 }
 
 async function generateTransactionId(offset = 0) {
-  const lastTxn = await Transaction.findOne().sort({ transactionId: -1 });
-  if (!lastTxn || !lastTxn.transactionId) {
-    return `CPN-TXN-${String(1 + offset).padStart(5, '0')}`;
+  const txnList = await Transaction.find({}, { transactionId: 1 }).lean();
+  let maxSeq = 0;
+  for (const t of txnList) {
+    if (t.transactionId) {
+      const match = t.transactionId.match(/CPN-TXN-(\d+)/);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > maxSeq) maxSeq = num;
+      }
+    }
   }
-  const match = lastTxn.transactionId.match(/CPN-TXN-(\d+)/);
-  if (match) {
-    const nextSeq = parseInt(match[1], 10) + 1 + offset;
-    return `CPN-TXN-${String(nextSeq).padStart(5, '0')}`;
+
+  let nextSeq = maxSeq + 1 + offset;
+  let candidate = `CPN-TXN-${String(nextSeq).padStart(5, '0')}`;
+
+  while (await Transaction.exists({ transactionId: candidate })) {
+    nextSeq++;
+    candidate = `CPN-TXN-${String(nextSeq).padStart(5, '0')}`;
   }
-  return `CPN-TXN-${(Date.now() + offset).toString().slice(-5)}`;
+
+  return candidate;
 }
 
 /**
@@ -315,6 +426,12 @@ const createDailyCollectionAccount = async (req, res, next) => {
         dcAccount.upfrontReceiptNumber = dcUpfrontReceiptNum;
         loan.upfrontReceiptNumber = dcUpfrontReceiptNum;
 
+        // Clean up any stale orphan collections sharing this idempotency key
+        await Collection.deleteMany({
+          idempotencyKey: { $in: [`UPFRONT-${accountId}`, `UPFRONT-${accountId}-${loan._id}`] },
+          loanId: { $ne: loan._id },
+        });
+
         const upfrontCollection = new Collection({
           collectionId: dcUpfrontColId,
           receiptNumber: dcUpfrontReceiptNum,
@@ -339,7 +456,7 @@ const createDailyCollectionAccount = async (req, res, next) => {
           status: CONSTANTS.COLLECTION_STATUS.CONFIRMED,
           collectedBy: req.user ? req.user.username : 'system',
           remarks: 'Upfront interest deducted during disbursement',
-          idempotencyKey: `UPFRONT-${accountId}`,
+          idempotencyKey: `UPFRONT-${accountId}-${loan._id}`,
         });
 
         await upfrontCollection.save(session ? { session } : undefined);
