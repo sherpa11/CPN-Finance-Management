@@ -450,7 +450,22 @@
     "user": "User",
     "action": "Action",
     "details": "Details",
-    "ipAddress": "IP Address"
+    "ipAddress": "IP Address",
+    "changePassword": {
+      "title": "Admin Security & Password",
+      "subtitle": "Change the administrator login password for this portal",
+      "currentPassword": "Current Password",
+      "currentPasswordPlaceholder": "Enter current password",
+      "newPassword": "New Password",
+      "newPasswordPlaceholder": "Enter new password (min 6 characters)",
+      "confirmPassword": "Confirm New Password",
+      "confirmPasswordPlaceholder": "Re-enter new password",
+      "updateButton": "Update Password",
+      "updating": "Updating...",
+      "matchError": "New password and confirm password do not match.",
+      "lengthError": "New password must be at least 6 characters long.",
+      "successMessage": "Admin password updated successfully! Please use your new password on your next login."
+    }
   },
   "existingLoan": {
     "modalTitle": "+ Add Existing Monthly Finance Loan",

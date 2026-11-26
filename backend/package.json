@@ -21,7 +21,8 @@
     "test:penalty": "node tests/penaltyTests.js",
     "test:upfront": "node tests/upfrontInterestTests.js",
     "test:legacy": "node tests/legacyLoanTests.js",
-    "test": "jest tests/calculationEngine.test.js && node tests/runApiTests.js && node tests/moiSeerApiTests.js && node tests/dailyCollectionApiTests.js && node tests/chitFundApiTests.js && node tests/systemAuditTests.js && node tests/customerDeleteTests.js && node tests/irupuTests.js && node tests/penaltyTests.js && node tests/upfrontInterestTests.js && node tests/renewalWorkflowTests.js && node tests/legacyLoanTests.js"
+    "test:password": "node tests/passwordChangeTests.js",
+    "test": "jest tests/calculationEngine.test.js && node tests/runApiTests.js && node tests/moiSeerApiTests.js && node tests/dailyCollectionApiTests.js && node tests/chitFundApiTests.js && node tests/systemAuditTests.js && node tests/customerDeleteTests.js && node tests/irupuTests.js && node tests/penaltyTests.js && node tests/upfrontInterestTests.js && node tests/renewalWorkflowTests.js && node tests/legacyLoanTests.js && node tests/passwordChangeTests.js"
   },
   "keywords": [],
   "author": "",
