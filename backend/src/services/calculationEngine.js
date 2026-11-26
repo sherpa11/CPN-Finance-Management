@@ -527,6 +527,8 @@ function calculateDailyCollectionSchemeB({
 function calculateDailyPenalty({
   grossPrincipalPaise,
   dailyRepaymentAmountPaise,
+  totalDurationDays = 100,
+  upfrontInterestPaise = null,
   dueDate,
   asOfDate,
   isFullyRepaid = false,
@@ -537,7 +539,11 @@ function calculateDailyPenalty({
   const rate = Number(penaltyRatePercent) >= 0 ? Number(penaltyRatePercent) : 2.0;
   const gross = grossPrincipalPaise !== undefined && grossPrincipalPaise !== null ? Math.round(grossPrincipalPaise) : 0;
   const dailyInstalment = Math.round(dailyRepaymentAmountPaise || 0);
-  const basePaise = gross > 0 ? gross : dailyInstalment;
+  const basePaise = gross > 0 ? gross : (dailyInstalment > 0 ? dailyInstalment * (Number(totalDurationDays) > 0 ? Number(totalDurationDays) : 100) : 0);
+
+  const days = Number(totalDurationDays) > 0
+    ? Number(totalDurationDays)
+    : (gross > 0 && dailyInstalment > 0 ? Math.round(gross / dailyInstalment) : 100);
 
   if (basePaise <= 0) {
     return {
@@ -546,6 +552,8 @@ function calculateDailyPenalty({
       overduePenaltyRate: rate,
       grossPrincipalPaise: 0,
       dailyRepaymentAmountPaise: dailyInstalment,
+      totalDurationDays: days,
+      totalInterestPaise: 0,
       dailyPenaltyPaise: 0,
       overdueDays: 0,
       cumulativePenaltyPaise: 0,
@@ -554,8 +562,13 @@ function calculateDailyPenalty({
     };
   }
 
-  // Daily Penalty = Original Gross Principal × (Penalty Rate / 100)
-  const dailyPenaltyPaise = Math.round((basePaise * rate) / 100);
+  // Interest of total principal
+  const totalInterestPaise = Math.round((basePaise * rate) / 100);
+
+  // Due per day = interest of total principal / number of days
+  const dailyPenaltyPaise = days > 0
+    ? Math.round(totalInterestPaise / days)
+    : totalInterestPaise;
 
   const due = getKolkataDate(dueDate);
   // If loan was fully repaid, penalties stop accruing on full repayment date
@@ -579,6 +592,8 @@ function calculateDailyPenalty({
     overduePenaltyRate: rate,
     grossPrincipalPaise: basePaise,
     dailyRepaymentAmountPaise: dailyInstalment,
+    totalDurationDays: days,
+    totalInterestPaise,
     dailyPenaltyPaise,
     overdueDays,
     cumulativePenaltyPaise,

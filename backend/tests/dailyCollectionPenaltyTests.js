@@ -44,80 +44,88 @@ async function runDailyCollectionPenaltyTests() {
 
   console.log('[SECTION 1: Pure Calculation Engine Tests]');
 
-  // Test 1: Account A: ₹1,00,000 @ 2% -> ₹2,000/day
+  // Test 1: Account A: ₹1,00,000 @ 2% for 100 days -> Interest = ₹2,000 -> Due per day = ₹2,000 / 100 = ₹20/day
   const test1 = calculateDailyPenalty({
     grossPrincipalPaise: toPaise(100000),
     dailyRepaymentAmountPaise: toPaise(1000),
+    totalDurationDays: 100,
     dueDate,
     asOfDate: baseDate.plus({ days: 101 }).toJSDate(),
     penaltyRatePercent: 2.0,
   });
   assert.strictEqual(test1.overdueDays, 1, 'Test 1: Overdue days must be 1 on Day 101');
-  assert.strictEqual(test1.dailyPenaltyPaise, toPaise(2000), 'Test 1: Daily penalty must be ₹2,000 (2% of ₹1,00,000)');
-  assert.strictEqual(test1.cumulativePenaltyPaise, toPaise(2000), 'Test 1: Cumulative penalty for 1 day must be ₹2,000');
-  logPass('Scenario 1: Gross ₹1,00,000 @ 2% = ₹2,000/day penalty.');
+  assert.strictEqual(test1.dailyPenaltyPaise, toPaise(20), 'Test 1: Daily penalty must be ₹20 (₹2,000 interest ÷ 100 days)');
+  assert.strictEqual(test1.cumulativePenaltyPaise, toPaise(20), 'Test 1: Cumulative penalty for 1 day must be ₹20');
+  logPass('Scenario 1: Gross ₹1,00,000 @ 2% for 100 days = ₹20/day penalty (Interest ÷ 100 days).');
 
-  // Test 2: Account B: ₹1,00,000 @ 10% -> ₹10,000/day. Overdue 3 days -> ₹30,000 total penalty
+  // Test 2: Account B: ₹1,00,000 @ 10% for 100 days -> Interest = ₹10,000 -> Due per day = ₹10,000 / 100 = ₹100/day
+  // Overdue 3 days -> ₹300 total penalty
   const test2 = calculateDailyPenalty({
     grossPrincipalPaise: toPaise(100000),
     dailyRepaymentAmountPaise: toPaise(1000),
+    totalDurationDays: 100,
     dueDate,
     asOfDate: baseDate.plus({ days: 103 }).toJSDate(),
     penaltyRatePercent: 10.0,
   });
   assert.strictEqual(test2.overdueDays, 3, 'Test 2: Overdue days must be 3 on Day 103');
-  assert.strictEqual(test2.dailyPenaltyPaise, toPaise(10000), 'Test 2: Daily penalty must be ₹10,000 (10% of ₹1,00,000)');
-  assert.strictEqual(test2.cumulativePenaltyPaise, toPaise(30000), 'Test 2: Cumulative penalty for 3 days must be ₹30,000');
-  logPass('Scenario 2: Gross ₹1,00,000 @ 10% = ₹10,000/day; 3 overdue days = ₹30,000 total penalty.');
+  assert.strictEqual(test2.dailyPenaltyPaise, toPaise(100), 'Test 2: Daily penalty must be ₹100 (₹10,000 interest ÷ 100 days)');
+  assert.strictEqual(test2.cumulativePenaltyPaise, toPaise(300), 'Test 2: Cumulative penalty for 3 days must be ₹300');
+  logPass('Scenario 2: Gross ₹1,00,000 @ 10% for 100 days = ₹100/day; 3 overdue days = ₹300 total penalty.');
 
-  // Test 3: Account C: ₹50,000 @ 5% -> ₹2,500/day
+  // Test 3: Account C: ₹50,000 @ 5% for 100 days -> Interest = ₹2,500 -> Due per day = ₹2,500 / 100 = ₹25/day
   const test3 = calculateDailyPenalty({
     grossPrincipalPaise: toPaise(50000),
     dailyRepaymentAmountPaise: toPaise(500),
+    totalDurationDays: 100,
     dueDate,
     asOfDate: baseDate.plus({ days: 101 }).toJSDate(),
     penaltyRatePercent: 5.0,
   });
   assert.strictEqual(test3.overdueDays, 1, 'Test 3: Overdue days must be 1');
-  assert.strictEqual(test3.dailyPenaltyPaise, toPaise(2500), 'Test 3: Daily penalty must be ₹2,500 (5% of ₹50,000)');
-  assert.strictEqual(test3.cumulativePenaltyPaise, toPaise(2500), 'Test 3: Cumulative penalty must be ₹2,500');
-  logPass('Scenario 3: Gross ₹50,000 @ 5% = ₹2,500/day penalty.');
+  assert.strictEqual(test3.dailyPenaltyPaise, toPaise(25), 'Test 3: Daily penalty must be ₹25 (₹2,500 interest ÷ 100 days)');
+  assert.strictEqual(test3.cumulativePenaltyPaise, toPaise(25), 'Test 3: Cumulative penalty must be ₹25');
+  logPass('Scenario 3: Gross ₹50,000 @ 5% for 100 days = ₹25/day penalty.');
 
-  // Test 4: Multiple Overdue Days Calculation (5 days @ 5% on ₹50,000 = ₹12,500)
+  // Test 4: Multiple Overdue Days Calculation (5 days @ 5% on ₹50,000 = 5 × ₹25 = ₹125)
   const test4 = calculateDailyPenalty({
     grossPrincipalPaise: toPaise(50000),
     dailyRepaymentAmountPaise: toPaise(500),
+    totalDurationDays: 100,
     dueDate,
     asOfDate: baseDate.plus({ days: 105 }).toJSDate(),
     penaltyRatePercent: 5.0,
   });
   assert.strictEqual(test4.overdueDays, 5, 'Test 4: Overdue days must be 5');
-  assert.strictEqual(test4.cumulativePenaltyPaise, toPaise(12500), 'Test 4: Cumulative penalty must be 5 × ₹2,500 = ₹12,500');
-  logPass('Scenario 4: Multiple overdue days accumulates correctly (5 days × ₹2,500 = ₹12,500).');
+  assert.strictEqual(test4.cumulativePenaltyPaise, toPaise(125), 'Test 4: Cumulative penalty must be 5 × ₹25 = ₹125');
+  logPass('Scenario 4: Multiple overdue days accumulates correctly (5 days × ₹25 = ₹125).');
 
   // Test 5: Upfront Interest Deduction Does NOT Reduce Penalty Principal
-  // Example: Gross ₹1,00,000, Upfront Interest ₹10,000, Net cash ₹90,000 @ 10%
-  // Penalty must be on ₹1,00,000 (₹10,000/day), NOT on ₹90,000 (which would be ₹9,000/day)
+  // Example: Gross ₹1,00,000, Upfront Interest ₹10,000, Net cash ₹90,000 @ 10% for 100 days
+  // Penalty must be on ₹1,00,000 (₹10,000 ÷ 100 = ₹100/day), NOT on ₹90,000 (which would be ₹90/day)
   const test5 = calculateDailyPenalty({
     grossPrincipalPaise: toPaise(100000), // Original Gross Principal
     dailyRepaymentAmountPaise: toPaise(1000),
+    totalDurationDays: 100,
     dueDate,
     asOfDate: baseDate.plus({ days: 101 }).toJSDate(),
     penaltyRatePercent: 10.0,
   });
-  assert.strictEqual(test5.dailyPenaltyPaise, toPaise(10000), 'Test 5: Penalty must be on Gross ₹1,00,000 (₹10,000), NOT net ₹90,000');
+  assert.strictEqual(test5.dailyPenaltyPaise, toPaise(100), 'Test 5: Penalty must be on Gross ₹1,00,000 (₹100/day), NOT net ₹90,000');
   logPass('Scenario 5: Upfront interest does NOT reduce penalty principal (calculated on gross ₹1,00,000).');
 
   // Test 6: Integer Paise Precision & Odd Paise Handling
-  // Example: Gross ₹75,333.33 @ 3.5%
+  // Example: Gross ₹75,333.33 @ 3.5% for 100 days
   const grossOddPaise = 7533333; // ₹75,333.33
   const test6 = calculateDailyPenalty({
     grossPrincipalPaise: grossOddPaise,
+    totalDurationDays: 100,
     dueDate,
     asOfDate: baseDate.plus({ days: 102 }).toJSDate(),
     penaltyRatePercent: 3.5,
   });
-  const expectedDailyOdd = Math.round((7533333 * 3.5) / 100);
+  const expectedTotalOdd = Math.round((7533333 * 3.5) / 100);
+  const expectedDailyOdd = Math.round(expectedTotalOdd / 100);
   assert.strictEqual(test6.dailyPenaltyPaise, expectedDailyOdd, 'Test 6: Daily penalty paise must be rounded integer');
   assert.strictEqual(test6.cumulativePenaltyPaise, expectedDailyOdd * 2, 'Test 6: 2 overdue days exact integer precision');
   logPass('Scenario 6: Integer precision in paise maintained with zero floating point drift.');
@@ -125,12 +133,13 @@ async function runDailyCollectionPenaltyTests() {
   // Test 7: Backwards Compatibility Fallback (Defaults to 2.0% when omitted)
   const test7 = calculateDailyPenalty({
     grossPrincipalPaise: toPaise(100000),
+    totalDurationDays: 100,
     dueDate,
     asOfDate: baseDate.plus({ days: 101 }).toJSDate(),
     // penaltyRatePercent omitted
   });
   assert.strictEqual(test7.penaltyRatePercent, 2.0, 'Test 7: Defaults safely to 2.0%');
-  assert.strictEqual(test7.dailyPenaltyPaise, toPaise(2000), 'Test 7: Default 2% on ₹1,00,000 = ₹2,000');
+  assert.strictEqual(test7.dailyPenaltyPaise, toPaise(20), 'Test 7: Default 2% on ₹1,00,000 for 100 days = ₹20');
   logPass('Scenario 7: Backwards compatibility safe default of 2.0% when rate is omitted.');
 
   console.log('\n[SECTION 2: Integration & Database Tests]');
@@ -223,14 +232,14 @@ async function runDailyCollectionPenaltyTests() {
   const foundC = accounts.find((a) => a.accountId === accountC.accountId);
 
   assert.strictEqual(foundA.overduePenaltyRate, 2.0, 'Account A in list must have rate 2%');
-  assert.strictEqual(foundA.penaltyBreakdown.dailyPenaltyRupees, 2000, 'Account A daily penalty must be ₹2,000');
+  assert.strictEqual(foundA.penaltyBreakdown.dailyPenaltyRupees, 20, 'Account A daily penalty must be ₹20 (₹2,000 ÷ 100 days)');
 
   assert.strictEqual(foundB.overduePenaltyRate, 10.0, 'Account B in list must have rate 10%');
-  assert.strictEqual(foundB.penaltyBreakdown.dailyPenaltyRupees, 10000, 'Account B daily penalty must be ₹10,000');
+  assert.strictEqual(foundB.penaltyBreakdown.dailyPenaltyRupees, 100, 'Account B daily penalty must be ₹100 (₹10,000 ÷ 100 days)');
 
   assert.strictEqual(foundC.overduePenaltyRate, 5.0, 'Account C in list must have rate 5%');
-  assert.strictEqual(foundC.penaltyBreakdown.dailyPenaltyRupees, 2500, 'Account C daily penalty must be ₹2,500');
-  logPass('Scenario 11: Rate independence verified: Account A has ₹2,000/day, Account B has ₹10,000/day, Account C has ₹2,500/day simultaneously.');
+  assert.strictEqual(foundC.penaltyBreakdown.dailyPenaltyRupees, 25, 'Account C daily penalty must be ₹25 (₹2,500 ÷ 100 days)');
+  logPass('Scenario 11: Rate independence verified: Account A has ₹20/day, Account B has ₹100/day, Account C has ₹25/day simultaneously.');
 
   // Test Preview API with custom penalty rate
   const previewRes = await request(app)
@@ -244,12 +253,12 @@ async function runDailyCollectionPenaltyTests() {
     });
   assert.strictEqual(previewRes.status, 200, 'Preview must succeed');
   assert.strictEqual(previewRes.body.preview.overduePenaltyRate, 10, 'Preview rate must be 10%');
-  assert.strictEqual(previewRes.body.preview.dailyPenaltyRupees, 10000, 'Preview daily penalty must be ₹10,000');
+  assert.strictEqual(previewRes.body.preview.dailyPenaltyRupees, 100, 'Preview daily penalty must be ₹100 (₹10,000 ÷ 100 days)');
   logPass('Scenario 12: Preview API returns accurate daily penalty forecast on gross principal.');
 
   // Scenario 13: Murugan's Exact Case (Screenshot Verification):
-  // Gross ₹1,00,000, Upfront Interest 10% (₹10,000), created without explicit overduePenaltyRate.
-  // Overdue penalty MUST be ₹10,000/day (the interest amount put for entire principal), NOT 2% constant (₹20 or ₹2,000).
+  // Gross ₹1,00,000, Upfront Interest 10% (₹10,000), 100 days, created without explicit overduePenaltyRate.
+  // Overdue penalty MUST be ₹100/day (Interest of total principal ÷ number of days = ₹10,000 ÷ 100 = ₹100/day).
   const muruganRes = await request(app)
     .post('/api/daily-collections')
     .set('Authorization', `Bearer ${token}`)
@@ -271,12 +280,12 @@ async function runDailyCollectionPenaltyTests() {
   const muruganData = muruganFetch.body.account;
   const breakdown = muruganData.penaltyBreakdown;
 
-  assert.strictEqual(breakdown.dailyPenaltyRupees, 10000, 'Daily penalty must be ₹10,000/day (matching the interest amount for entire principal)');
+  assert.strictEqual(breakdown.dailyPenaltyRupees, 100, 'Daily penalty must be ₹100/day (Due per day = Interest ÷ 100 days = ₹10,000 ÷ 100)');
   assert.strictEqual(breakdown.overdueDays, 5, 'Must be exactly 5 days overdue');
-  assert.strictEqual(breakdown.cumulativePenaltyRupees, 50000, 'Cumulative penalty for 5 days must be ₹50,000 (5 × ₹10,000), NOT ₹100');
-  assert.strictEqual(breakdown.penaltyOutstandingRupees, 50000, 'Penalty outstanding must be ₹50,000');
-  assert.strictEqual(breakdown.totalAmountToCloseRupees, 150000, 'Total amount to close must be ₹1,50,000 (₹1,00,000 principal + ₹50,000 penalty)');
-  logPass('Scenario 13: User Screenshot Verified – Murugan account: ₹10,000 interest amount becomes daily penalty; 5 days overdue = ₹50,000 penalty (NOT 2% / ₹20 / ₹100).');
+  assert.strictEqual(breakdown.cumulativePenaltyRupees, 500, 'Cumulative penalty for 5 days must be ₹500 (5 × ₹100)');
+  assert.strictEqual(breakdown.penaltyOutstandingRupees, 500, 'Penalty outstanding must be ₹500');
+  assert.strictEqual(breakdown.totalAmountToCloseRupees, 100500, 'Total amount to close must be ₹1,00,500 (₹1,00,000 principal + ₹500 penalty)');
+  logPass('Scenario 13: User Screenshot Verified – Murugan account: ₹10,000 interest ÷ 100 days = ₹100/day penalty; 5 days overdue = ₹500 penalty (Total ₹1,00,500 to close).');
 
   console.log('\n================================================================');
   console.log('  ALL 13 DAILY COLLECTION PENALTY TESTS PASSED SUCCESSFULLY!   ');

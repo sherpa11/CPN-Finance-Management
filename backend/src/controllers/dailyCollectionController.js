@@ -252,7 +252,10 @@ const previewDailyCollection = async (req, res, next) => {
       : (penaltyRatePercent !== undefined && penaltyRatePercent !== '' && !isNaN(penaltyRatePercent)
         ? Number(penaltyRatePercent)
         : (calculation.upfrontInterestPercent || 10.0));
-    const dailyPenaltyPaise = Math.round((calculation.grossPrincipalPaise * penaltyRate) / 100);
+    const totalInterestPaise = calculation.upfrontInterestPaise > 0
+      ? calculation.upfrontInterestPaise
+      : Math.round((calculation.grossPrincipalPaise * penaltyRate) / 100);
+    const dailyPenaltyPaise = duration > 0 ? Math.round(totalInterestPaise / duration) : Math.round((calculation.grossPrincipalPaise * penaltyRate) / 100);
 
     res.json({
       success: true,
@@ -655,6 +658,8 @@ const getDailyCollectionAccounts = async (req, res, next) => {
       const penaltyCalc = calculateDailyPenalty({
         grossPrincipalPaise: acc.grossPrincipalPaise,
         dailyRepaymentAmountPaise: acc.dailyInstalmentPaise,
+        totalDurationDays: acc.totalDurationDays,
+        upfrontInterestPaise: acc.upfrontInterestPaise,
         dueDate: acc.expectedCompletionDate,
         asOfDate: new Date(),
         isFullyRepaid: acc.status === 'COMPLETED' || acc.totalOutstandingPaise === 0,
@@ -740,6 +745,8 @@ const getDailyCollectionAccountById = async (req, res, next) => {
     const penaltyCalc = calculateDailyPenalty({
       grossPrincipalPaise: account.grossPrincipalPaise,
       dailyRepaymentAmountPaise: account.dailyInstalmentPaise,
+      totalDurationDays: account.totalDurationDays,
+      upfrontInterestPaise: account.upfrontInterestPaise,
       dueDate: account.expectedCompletionDate,
       asOfDate: new Date(),
       isFullyRepaid: account.status === 'COMPLETED' || account.totalOutstandingPaise === 0,
@@ -781,7 +788,7 @@ const getDailyCollectionAccountById = async (req, res, next) => {
           collectedPaise,
           collectedRupees: toRupees(collectedPaise),
           status,
-          remarks: `Overdue Penalty Day ${i} (${penaltyRate}% of gross principal)`,
+          remarks: `Overdue Penalty Day ${i} (Due per day: Interest ÷ ${account.totalDurationDays || 100} days)`,
         });
       }
     }
@@ -905,6 +912,8 @@ const recordDailyCollectionPayment = async (req, res, next) => {
     const penaltyCalc = calculateDailyPenalty({
       grossPrincipalPaise: account.grossPrincipalPaise,
       dailyRepaymentAmountPaise: account.dailyInstalmentPaise,
+      totalDurationDays: account.totalDurationDays,
+      upfrontInterestPaise: account.upfrontInterestPaise,
       dueDate: account.expectedCompletionDate,
       asOfDate: paymentDate ? new Date(paymentDate) : new Date(),
       isFullyRepaid: false,

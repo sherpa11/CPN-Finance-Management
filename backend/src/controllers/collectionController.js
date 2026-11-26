@@ -96,6 +96,8 @@ const previewCollection = async (req, res, next) => {
       penaltyCalc = calculateDailyPenalty({
         grossPrincipalPaise: loan.grossPrincipalPaise || loan.principalPaise,
         dailyRepaymentAmountPaise: dailyInstalmentPaise,
+        totalDurationDays: loan.totalDurationDays,
+        upfrontInterestPaise: loan.upfrontInterestPaise,
         dueDate: loan.dueDate,
         asOfDate: new Date(),
         isFullyRepaid: loan.outstandingPrincipalPaise === 0,
@@ -205,6 +207,8 @@ const recordCollection = async (req, res, next) => {
       penaltyCalc = calculateDailyPenalty({
         grossPrincipalPaise: loan.grossPrincipalPaise || loan.principalPaise,
         dailyRepaymentAmountPaise: dailyInstalmentPaise,
+        totalDurationDays: loan.totalDurationDays,
+        upfrontInterestPaise: loan.upfrontInterestPaise,
         dueDate: loan.dueDate,
         asOfDate: paymentDate ? new Date(paymentDate) : new Date(),
         isFullyRepaid: loan.outstandingPrincipalPaise === 0,

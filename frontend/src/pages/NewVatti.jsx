@@ -591,10 +591,10 @@ export default function NewVatti({ preselectedCustomer, onNavigate }) {
                     Calculated on <span className="font-semibold text-slate-800">Original Gross Principal</span> (₹{formatINR(Number(principalAmount) || 0).replace('₹', '')}). 
                     {principalAmount && (overduePenaltyRate || upfrontInterestPercent) ? (
                       <span className="font-bold text-rose-700 ml-1">
-                        = {formatINR(Math.round(((Number(principalAmount) || 0) * (Number(overduePenaltyRate || upfrontInterestPercent) || 0)) / 100))} per overdue day.
+                        = {formatINR(Math.round((((Number(principalAmount) || 0) * (Number(overduePenaltyRate || upfrontInterestPercent) || 0)) / 100) / (Number(totalDurationDays) || 100)))} per overdue day (Interest ÷ {totalDurationDays || 100} days).
                       </span>
                     ) : (
-                      ' Interest amount put for entire principal is the overdue penalty.'
+                      ' Due per day = Interest of total principal ÷ number of days.'
                     )}
                   </p>
                 </div>
@@ -856,7 +856,7 @@ export default function NewVatti({ preselectedCustomer, onNavigate }) {
                   <div className="flex justify-between font-sans text-amber-800 bg-amber-50 px-2 py-1 rounded border border-amber-200">
                     <span className="font-semibold">Overdue Penalty Rate:</span>
                     <span className="font-bold">
-                      {overduePenaltyRate}% / day ({formatINR(Math.round(((Number(principalAmount) || 0) * (Number(overduePenaltyRate) || 0)) / 100))} / overdue day)
+                      {overduePenaltyRate}% ({formatINR(Math.round((((Number(principalAmount) || 0) * (Number(overduePenaltyRate) || 0)) / 100) / (Number(totalDurationDays) || 100)))} / overdue day)
                     </span>
                   </div>
                 </>

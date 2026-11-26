@@ -101,7 +101,7 @@ const getDuesList = async (req, res, next) => {
 
     const total = await Loan.countDocuments(query);
     const loans = await Loan.find(query)
-      .select('loanId customerId customerCode customerName customerMobile vattiType principalPaise grossPrincipalPaise interestRatePercent accruedInterestPaise outstandingPrincipalPaise outstandingInterestPaise dailyInstalmentPaise totalDurationDays penaltyPaidPaise overduePenaltyRate penaltyRatePercent settledDate startDate dueDate status')
+      .select('loanId customerId customerCode customerName customerMobile vattiType principalPaise grossPrincipalPaise upfrontInterestPaise interestRatePercent accruedInterestPaise outstandingPrincipalPaise outstandingInterestPaise dailyInstalmentPaise totalDurationDays penaltyPaidPaise overduePenaltyRate penaltyRatePercent settledDate startDate dueDate status')
       .sort(sort)
       .skip((page - 1) * limit)
       .limit(Number(limit))
@@ -124,6 +124,8 @@ const getDuesList = async (req, res, next) => {
         penaltyCalc = calculateDailyPenalty({
           grossPrincipalPaise: l.grossPrincipalPaise || l.principalPaise,
           dailyRepaymentAmountPaise: dailyInstalmentPaise,
+          totalDurationDays: l.totalDurationDays,
+          upfrontInterestPaise: l.upfrontInterestPaise,
           dueDate: l.dueDate,
           asOfDate: today.toJSDate(),
           isFullyRepaid: l.outstandingPrincipalPaise === 0,

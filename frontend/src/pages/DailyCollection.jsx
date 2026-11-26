@@ -641,7 +641,7 @@ export default function DailyCollection({ onNavigate }) {
                   <div className="flex items-center justify-between border-b border-rose-200/60 pb-2">
                     <h4 className="font-bold text-rose-900 text-xs flex items-center space-x-1.5">
                       <AlertCircle className="w-4 h-4 text-rose-600" />
-                      <span>Overdue Penalty Breakdown ({selectedAccountData.overduePenaltyRate || selectedAccountData.penaltyBreakdown.penaltyRatePercent || selectedAccountData.upfrontInterestPercent || 10}% per day on Gross Principal)</span>
+                      <span>Overdue Penalty Breakdown ({selectedAccountData.overduePenaltyRate || selectedAccountData.penaltyBreakdown.penaltyRatePercent || selectedAccountData.upfrontInterestPercent || 10}% · Interest ÷ {selectedAccountData.totalDurationDays || 100} Days)</span>
                     </h4>
                     <span className="text-[10px] font-bold text-rose-700 bg-rose-100 px-2.5 py-0.5 rounded-full border border-rose-200">
                       {selectedAccountData.penaltyBreakdown.overdueDays > 0
@@ -671,7 +671,7 @@ export default function DailyCollection({ onNavigate }) {
                         {formatINR(selectedAccountData.penaltyBreakdown.dailyPenaltyRupees)} / day
                       </p>
                       <p className="text-[9px] text-slate-400 font-sans">
-                        Matches loan interest
+                        Interest ÷ {selectedAccountData.totalDurationDays || 100} days
                       </p>
                     </div>
 
