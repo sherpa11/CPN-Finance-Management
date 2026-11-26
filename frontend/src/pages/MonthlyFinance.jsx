@@ -1582,7 +1582,7 @@ export default function MonthlyFinance({ onNavigate, preselectedCustomer }) {
         customers={customers}
         onSuccess={(newLoan) => {
           setFormSuccess(`Existing Monthly Finance loan ${newLoan.loanId} imported successfully!`);
-          fetchLoans();
+          fetchMonthlyLoans();
           setActiveTab('roster');
         }}
       />

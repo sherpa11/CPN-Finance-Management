@@ -1795,7 +1795,7 @@ export default function DailyFinance({ onNavigate, preselectedCustomer }) {
         customers={customers}
         onSuccess={(newLoan) => {
           setFormSuccess(`Existing Daily Finance loan ${newLoan.loanId} imported successfully!`);
-          fetchLoans();
+          fetchDailyLoans();
           setActiveTab('roster');
         }}
       />
