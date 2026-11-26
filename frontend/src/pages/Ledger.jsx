@@ -11,9 +11,11 @@ import {
 } from 'lucide-react';
 import { formatINR, formatDate, formatDateTime } from '../utils/formatters';
 import SearchableCustomerSelect from '../components/SearchableCustomerSelect';
+import { useLanguage } from '../context/LanguageContext';
 import api from '../api';
 
 export default function Ledger() {
+  const { t, isTamil } = useLanguage();
   const [customers, setCustomers] = useState([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState('');
   const [selectedLoanId, setSelectedLoanId] = useState('ALL');
@@ -79,10 +81,10 @@ export default function Ledger() {
         <div>
           <h2 className="text-lg font-bold text-slate-900 flex items-center space-x-2">
             <BookOpen className="w-5 h-5 text-blue-600" />
-            <span>Customer & Loan Financial Ledgers</span>
+            <span>{t('ledgers.title', 'Customer & Loan Financial Ledgers')}</span>
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            Immutable, double-entry financial transaction history with date filters and printable statements
+            {t('ledgers.subtitle', 'Immutable, double-entry financial transaction history with date filters and printable statements')}
           </p>
         </div>
 
@@ -91,7 +93,7 @@ export default function Ledger() {
           className="flex items-center space-x-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-lg shadow-sm transition-all cursor-pointer"
         >
           <Printer className="w-4 h-4" />
-          <span>Print Ledger Statement</span>
+          <span>{t('ledgers.printStatementBtn', 'Print Ledger Statement')}</span>
         </button>
       </div>
 
@@ -99,7 +101,7 @@ export default function Ledger() {
       <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs no-print">
         {/* Customer Select */}
         <div>
-          <label className="block font-semibold text-slate-700 mb-1">Select Customer</label>
+          <label className="block font-semibold text-slate-700 mb-1">{t('ledgers.selectCustomer', 'Select Customer')}</label>
           <SearchableCustomerSelect
             value={selectedCustomerId}
             customers={customers}
@@ -107,19 +109,19 @@ export default function Ledger() {
               setSelectedCustomerId(id);
               setSelectedLoanId('ALL');
             }}
-            placeholder="Search customer by name or mobile..."
+            placeholder={t('ledgers.searchPlaceholder', 'Search customer by name or mobile...')}
           />
         </div>
 
         {/* Loan Select */}
         <div>
-          <label className="block font-semibold text-slate-700 mb-1">Loan Account</label>
+          <label className="block font-semibold text-slate-700 mb-1">{isTamil ? 'கடன் கணக்கு' : 'Loan Account'}</label>
           <select
             value={selectedLoanId}
             onChange={(e) => setSelectedLoanId(e.target.value)}
             className="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-900 bg-white"
           >
-            <option value="ALL">All Loans (Unified Customer Ledger)</option>
+            <option value="ALL">{isTamil ? 'அனைத்து கடன்கள் (ஒருங்கிணைந்த பேரேடு)' : 'All Loans (Unified Customer Ledger)'}</option>
             {customerLoans.map((l) => (
               <option key={l._id} value={l._id}>
                 {l.loanId} ({l.financeType || (l.vattiType ? `${l.vattiType} Finance` : '')} - ₹{l.principalPaise / 100})
@@ -130,7 +132,7 @@ export default function Ledger() {
 
         {/* Date Filters */}
         <div>
-          <label className="block font-semibold text-slate-700 mb-1">From Date</label>
+          <label className="block font-semibold text-slate-700 mb-1">{t('common.from', 'From Date')}</label>
           <input
             type="date"
             value={startDate}
@@ -140,7 +142,7 @@ export default function Ledger() {
         </div>
 
         <div>
-          <label className="block font-semibold text-slate-700 mb-1">To Date</label>
+          <label className="block font-semibold text-slate-700 mb-1">{t('common.to', 'To Date')}</label>
           <div className="flex space-x-2">
             <input
               type="date"
@@ -150,9 +152,9 @@ export default function Ledger() {
             />
             <button
               onClick={fetchLedger}
-              className="px-3 py-1.5 bg-slate-800 text-white rounded-lg font-bold hover:bg-slate-700"
+              className="px-3 py-1.5 bg-slate-800 text-white rounded-lg font-bold hover:bg-slate-700 cursor-pointer"
             >
-              Filter
+              {t('common.filter', 'Filter')}
             </button>
           </div>
         </div>
@@ -161,11 +163,11 @@ export default function Ledger() {
       {/* Ledger Document (Printable) */}
       {loading ? (
         <div className="bg-white p-8 rounded-xl border border-slate-200 text-center text-xs text-slate-500">
-          Loading ledger entries...
+          {t('common.loading', 'Loading ledger entries...')}
         </div>
       ) : !ledgerData ? (
         <div className="bg-white p-8 rounded-xl border border-slate-200 text-center text-xs text-slate-500">
-          Please select a customer to view ledger.
+          {t('ledgers.selectCustomer', 'Please select a customer to view ledger.')}
         </div>
       ) : (
         <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-6">
@@ -175,47 +177,47 @@ export default function Ledger() {
             <p className="text-xs font-bold text-slate-600 uppercase tracking-widest">
               FINANCE MANAGEMENT SYSTEM
             </p>
-            <p className="text-xs text-slate-500 mt-1">Official Account Ledger & Double-Entry Statement</p>
+            <p className="text-xs text-slate-500 mt-1">{isTamil ? 'அதிகாரப்பூர்வ வாடிக்கையாளர் பேரேடு' : 'Official Account Ledger & Double-Entry Statement'}</p>
           </div>
 
           {/* Customer & Summary Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
             <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 space-y-1">
-              <span className="text-[10px] text-slate-400 font-semibold uppercase">Account Holder:</span>
+              <span className="text-[10px] text-slate-400 font-semibold uppercase">{isTamil ? 'வாடிக்கையாளர் விவரங்கள்:' : 'Account Holder:'}</span>
               <p className="text-base font-bold text-slate-900">{ledgerData.customer?.name}</p>
-              <p className="font-mono text-slate-600">Customer ID: {ledgerData.customer?.customerId}</p>
-              <p className="text-slate-700">Mobile: {ledgerData.customer?.mobileNumber}</p>
-              <p className="text-slate-500">Address: {ledgerData.customer?.address || '—'}</p>
+              <p className="font-mono text-slate-600">{t('customers.customerId', 'Customer ID')}: {ledgerData.customer?.customerId}</p>
+              <p className="text-slate-700">{t('common.mobile', 'Mobile')}: {ledgerData.customer?.mobileNumber}</p>
+              <p className="text-slate-500">{t('common.address', 'Address')}: {ledgerData.customer?.address || '—'}</p>
             </div>
 
             <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 font-mono space-y-1">
-              <span className="text-[10px] text-slate-400 font-sans font-semibold uppercase">Financial Summary:</span>
+              <span className="text-[10px] text-slate-400 font-sans font-semibold uppercase">{t('ledgers.customerSummary', 'Financial Summary:')}</span>
               <div className="flex justify-between font-sans">
-                <span>Total Principal Borrowed:</span>
+                <span>{t('ledgers.totalBorrowed', 'Total Principal Borrowed')}:</span>
                 <span className="font-bold text-slate-900">{formatINR(ledgerData.summary.totalLentRupees)}</span>
               </div>
               <div className="flex justify-between font-sans text-emerald-700">
-                <span>Total Principal Repaid:</span>
+                <span>{t('ledgers.totalRepaid', 'Total Principal Repaid')}:</span>
                 <span className="font-bold">{formatINR(ledgerData.summary.totalPrincipalPaidRupees)}</span>
               </div>
               <div className="flex justify-between font-sans text-emerald-700">
-                <span>Total Interest Repaid:</span>
+                <span>{t('ledgers.totalInterestPaid', 'Total Interest Repaid')}:</span>
                 <span className="font-bold">{formatINR(ledgerData.summary.totalInterestPaidRupees)}</span>
               </div>
               {ledgerData.summary.totalPenaltyPaidRupees > 0 && (
                 <div className="flex justify-between font-sans text-rose-700">
-                  <span>Total Penalty Paid:</span>
+                  <span>{isTamil ? 'செலுத்திய அபராதம்:' : 'Total Penalty Paid:'}</span>
                   <span className="font-bold">{formatINR(ledgerData.summary.totalPenaltyPaidRupees)}</span>
                 </div>
               )}
               {ledgerData.summary.totalPenaltyOutstandingRupees > 0 && (
                 <div className="flex justify-between font-sans text-rose-700">
-                  <span>Total Penalty Outstanding:</span>
+                  <span>{isTamil ? 'நிலுவை அபராதம்:' : 'Total Penalty Outstanding:'}</span>
                   <span className="font-bold">{formatINR(ledgerData.summary.totalPenaltyOutstandingRupees)}</span>
                 </div>
               )}
               <div className="flex justify-between font-sans text-rose-700 border-t border-slate-200 pt-1 font-bold">
-                <span>Total Outstanding Balance:</span>
+                <span>{t('ledgers.currentOutstanding', 'Total Outstanding Balance')}:</span>
                 <span>{formatINR(ledgerData.summary.totalOutstandingRupees)}</span>
               </div>
             </div>
@@ -226,16 +228,16 @@ export default function Ledger() {
             <table className="w-full text-xs text-left border border-slate-200 rounded-lg overflow-hidden min-w-[760px]">
               <thead className="bg-slate-100 text-slate-700 border-b border-slate-200">
                 <tr>
-                  <th className="py-2.5 px-3 font-semibold">Date</th>
-                  <th className="py-2.5 px-3 font-semibold">Txn ID</th>
-                  <th className="py-2.5 px-2.5 font-semibold">Loan</th>
-                  <th className="py-2.5 px-3 font-semibold">Category</th>
-                  <th className="py-2.5 px-3 font-semibold text-right">Principal Debit</th>
-                  <th className="py-2.5 px-3 font-semibold text-right">Principal Credit</th>
-                  <th className="py-2.5 px-3 font-semibold text-right">Interest Credit</th>
-                  <th className="py-2.5 px-3 font-semibold text-right">Penalty Credit</th>
-                  <th className="py-2.5 px-3 font-semibold text-right">Bal Principal</th>
-                  <th className="py-2.5 px-3 font-semibold text-right">Bal Total</th>
+                  <th className="py-2.5 px-3 font-semibold">{t('ledgers.txnDate', 'Date')}</th>
+                  <th className="py-2.5 px-3 font-semibold">{t('ledgers.txnId', 'Txn ID')}</th>
+                  <th className="py-2.5 px-2.5 font-semibold">{isTamil ? 'கடன்' : 'Loan'}</th>
+                  <th className="py-2.5 px-3 font-semibold">{isTamil ? 'பிரிவு' : 'Category'}</th>
+                  <th className="py-2.5 px-3 font-semibold text-right">{t('ledgers.debit', 'Principal Debit')}</th>
+                  <th className="py-2.5 px-3 font-semibold text-right">{t('ledgers.credit', 'Principal Credit')}</th>
+                  <th className="py-2.5 px-3 font-semibold text-right">{isTamil ? 'வட்டி வரவு' : 'Interest Credit'}</th>
+                  <th className="py-2.5 px-3 font-semibold text-right">{isTamil ? 'அபராத வரவு' : 'Penalty Credit'}</th>
+                  <th className="py-2.5 px-3 font-semibold text-right">{t('ledgers.runningBalance', 'Bal Principal')}</th>
+                  <th className="py-2.5 px-3 font-semibold text-right">{isTamil ? 'மொத்த நிலுவை' : 'Bal Total'}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-mono">

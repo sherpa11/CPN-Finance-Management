@@ -16,9 +16,11 @@ import {
 import { formatINR, formatDate, formatDateTime, getStatusBadge } from '../utils/formatters';
 import ReceiptModal from '../components/ReceiptModal';
 import SearchableLoanSelect from '../components/SearchableLoanSelect';
+import { useLanguage } from '../context/LanguageContext';
 import api from '../api';
 
 export default function Collections({ initialLoan }) {
+  const { t, isTamil } = useLanguage();
   const [collections, setCollections] = useState([]);
   const [total, setTotal] = useState(0);
   const [search, setSearch] = useState('');
@@ -291,10 +293,10 @@ export default function Collections({ initialLoan }) {
         <div>
           <h2 className="text-lg font-bold text-slate-900 flex items-center space-x-2">
             <Banknote className="w-5 h-5 text-emerald-600" />
-            <span>Collection Management & Receipts</span>
+            <span>{t('collections.title', 'Collection Management & Receipts')}</span>
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            Explicit allocation of principal and interest payments with receipt generation and reversal audit trails
+            {t('collections.subtitle', 'Explicit allocation of principal and interest payments with receipt generation and reversal audit trails')}
           </p>
         </div>
 
@@ -315,7 +317,7 @@ export default function Collections({ initialLoan }) {
           className="flex items-center justify-center space-x-1.5 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg shadow-sm transition-all cursor-pointer min-h-[40px] w-full sm:w-auto"
         >
           <Plus className="w-4 h-4" />
-          <span>Record New Collection</span>
+          <span>{t('collections.recordCollectionBtn', '+ Record Collection')}</span>
         </button>
       </div>
 
@@ -323,14 +325,14 @@ export default function Collections({ initialLoan }) {
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="p-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-            Collections History ({collections.filter((col) => {
+            {isTamil ? 'வசூல் வரலாறு' : 'Collections History'} ({collections.filter((col) => {
               if (filterType === 'UPFRONT') return col.isUpfrontInterest || col.collectionType === 'UPFRONT_INTEREST';
               if (filterType === 'RENEWAL') return col.isRenewalInterest || col.collectionType === 'RENEWAL_INTEREST';
               if (filterType === 'MONTHLY') return col.vattiType === 'MONTHLY';
               if (filterType === 'DAILY') return col.vattiType === 'DAILY';
               if (filterType === 'DAILY_COLLECTION') return col.vattiType === 'DAILY_COLLECTION';
               return true;
-            }).length} Records)
+            }).length} {t('common.details', 'Records')})
           </h3>
           <div className="flex items-center gap-1.5 flex-wrap">
             <button
@@ -338,72 +340,69 @@ export default function Collections({ initialLoan }) {
               onClick={() => setFilterType('ALL')}
               className={`px-2.5 py-1 rounded text-xs font-semibold transition-colors cursor-pointer ${filterType === 'ALL' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
             >
-              All
+              {t('common.all', 'All')}
             </button>
             <button
               type="button"
               onClick={() => setFilterType('UPFRONT')}
               className={`px-2.5 py-1 rounded text-xs font-semibold transition-colors cursor-pointer ${filterType === 'UPFRONT' ? 'bg-purple-600 text-white shadow-sm' : 'bg-purple-50 text-purple-700 hover:bg-purple-100'}`}
             >
-              Upfront Interest
+              {isTamil ? 'முன் வட்டி' : 'Upfront Interest'}
             </button>
             <button
               type="button"
               onClick={() => setFilterType('RENEWAL')}
               className={`px-2.5 py-1 rounded text-xs font-semibold transition-colors cursor-pointer ${filterType === 'RENEWAL' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100'}`}
             >
-              Renewal Interest
+              {isTamil ? 'புதுப்பித்தல் வட்டி' : 'Renewal Interest'}
             </button>
             <button
               type="button"
               onClick={() => setFilterType('MONTHLY')}
               className={`px-2.5 py-1 rounded text-xs font-semibold transition-colors cursor-pointer ${filterType === 'MONTHLY' ? 'bg-blue-600 text-white shadow-sm' : 'bg-blue-50 text-blue-700 hover:bg-blue-100'}`}
             >
-              Monthly
+              {isTamil ? 'மாத வட்டி' : 'Monthly'}
             </button>
             <button
               type="button"
               onClick={() => setFilterType('DAILY')}
               className={`px-2.5 py-1 rounded text-xs font-semibold transition-colors cursor-pointer ${filterType === 'DAILY' ? 'bg-amber-600 text-white shadow-sm' : 'bg-amber-50 text-amber-700 hover:bg-amber-100'}`}
             >
-              Daily Finance
+              {isTamil ? 'தினசரி வட்டி' : 'Daily Finance'}
             </button>
             <button
               type="button"
               onClick={() => setFilterType('DAILY_COLLECTION')}
               className={`px-2.5 py-1 rounded text-xs font-semibold transition-colors cursor-pointer ${filterType === 'DAILY_COLLECTION' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'}`}
             >
-              Daily Collection
+              {isTamil ? 'தினசரி வசூல்' : 'Daily Collection'}
             </button>
           </div>
         </div>
 
         {loading ? (
-          <div className="p-8 text-center text-xs text-slate-500">Loading payment collections...</div>
+          <div className="p-8 text-center text-xs text-slate-500">{t('common.loading', 'Loading...')}</div>
         ) : collections.length === 0 ? (
           <div className="p-12 text-center text-xs text-slate-500">
             <Receipt className="w-10 h-10 mx-auto mb-3 text-slate-300" />
-            <p className="text-sm font-bold text-slate-700">No collections recorded yet</p>
-            <p className="text-slate-400 mt-1 max-w-sm mx-auto">
-              Payments collected against active Monthly Finance and Daily Finance loans will appear here with instant printable receipts.
-            </p>
+            <p className="text-sm font-bold text-slate-700">{isTamil ? 'வசூல் பதிவுகள் எதுவும் இல்லை' : 'No collections recorded yet'}</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-xs text-left min-w-[760px]">
               <thead className="bg-slate-100 text-slate-700 border-b border-slate-200">
                 <tr>
-                  <th className="py-3 px-4 font-semibold">Receipt #</th>
-                  <th className="py-3 px-3 font-semibold">Date</th>
-                  <th className="py-3 px-4 font-semibold">Customer</th>
-                  <th className="py-3 px-3 font-semibold">Loan Code</th>
-                  <th className="py-3 px-3 font-semibold">Method</th>
-                  <th className="py-3 px-3 font-semibold text-right">Principal Repaid</th>
-                  <th className="py-3 px-3 font-semibold text-right">Interest Repaid</th>
-                  <th className="py-3 px-3 font-semibold text-right">Penalty Repaid</th>
-                  <th className="py-3 px-3 font-semibold text-right">Total Received</th>
-                  <th className="py-3 px-3 font-semibold">Status</th>
-                  <th className="py-3 px-4 font-semibold text-right">Actions</th>
+                  <th className="py-3 px-4 font-semibold">{t('collections.receiptNo', 'Receipt #')}</th>
+                  <th className="py-3 px-3 font-semibold">{t('collections.date', 'Date')}</th>
+                  <th className="py-3 px-4 font-semibold">{t('collections.customer', 'Customer')}</th>
+                  <th className="py-3 px-3 font-semibold">{t('collections.loanAccount', 'Loan Code')}</th>
+                  <th className="py-3 px-3 font-semibold">{t('collections.method', 'Method')}</th>
+                  <th className="py-3 px-3 font-semibold text-right">{t('collections.principalAlloc', 'Principal Repaid')}</th>
+                  <th className="py-3 px-3 font-semibold text-right">{t('collections.interestAlloc', 'Interest Repaid')}</th>
+                  <th className="py-3 px-3 font-semibold text-right">{t('collections.penaltyAlloc', 'Penalty Repaid')}</th>
+                  <th className="py-3 px-3 font-semibold text-right">{t('collections.amountReceived', 'Total Received')}</th>
+                  <th className="py-3 px-3 font-semibold">{t('common.status', 'Status')}</th>
+                  <th className="py-3 px-4 font-semibold text-right">{t('common.actions', 'Actions')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -417,8 +416,8 @@ export default function Collections({ initialLoan }) {
                     return true;
                   })
                   .map((col) => {
-                  const statusBadge = getStatusBadge(col.status);
-                  return (
+                    const statusBadge = getStatusBadge(col.status, t);
+                    return (
                     <tr key={col._id} className="hover:bg-slate-50 transition-colors">
                       <td className="py-3 px-4 font-mono font-bold text-slate-900">
                         <div className="flex flex-col gap-0.5">

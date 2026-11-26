@@ -11,6 +11,7 @@ import {
   ArrowDownLeft,
 } from 'lucide-react';
 import { formatINR, formatDate } from '../utils/formatters';
+import { useLanguage } from '../context/LanguageContext';
 import api from '../api';
 
 function formatCategoryName(name) {
@@ -22,6 +23,7 @@ function formatCategoryName(name) {
 }
 
 export default function Reports() {
+  const { t, isTamil } = useLanguage();
   const [activeReportTab, setActiveReportTab] = useState('daily');
   const [dailyDate, setDailyDate] = useState(new Date().toISOString().split('T')[0]);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
@@ -119,10 +121,10 @@ export default function Reports() {
         <div>
           <h2 className="text-base sm:text-lg font-bold text-slate-900 flex items-center space-x-2">
             <BarChart3 className="w-5 h-5 text-indigo-600 shrink-0" />
-            <span>Comprehensive Financial Reporting</span>
+            <span>{t('reports.title', 'Financial Reports & Business Analytics')}</span>
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            Segregated accounting of principal lending, collections, and accrued vs collected interest
+            {t('reports.subtitle', 'Comprehensive ledger balance reports, collection audits, and P&L summaries')}
           </p>
         </div>
 
@@ -132,14 +134,14 @@ export default function Reports() {
             className="w-full sm:w-auto flex items-center justify-center space-x-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg transition-colors border border-slate-300 min-h-[38px] cursor-pointer"
           >
             <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-            <span>Export Excel / CSV</span>
+            <span>{t('reports.exportExcelBtn', 'Export Excel / CSV')}</span>
           </button>
           <button
             onClick={() => window.print()}
             className="w-full sm:w-auto flex items-center justify-center space-x-1.5 px-3 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-lg shadow-sm transition-colors min-h-[38px] cursor-pointer"
           >
             <Printer className="w-4 h-4" />
-            <span>Print Report</span>
+            <span>{t('reports.printReportBtn', 'Print Report')}</span>
           </button>
         </div>
       </div>
@@ -147,12 +149,12 @@ export default function Reports() {
       {/* Report Selection Tabs */}
       <div className="flex flex-wrap gap-1.5 sm:gap-2 text-xs font-semibold no-print">
         {[
-          { id: 'daily', label: '1. Daily Report' },
-          { id: 'monthly', label: '2. Monthly Report' },
-          { id: 'yearly', label: '3. Yearly Report' },
-          { id: 'customer', label: '4. Customer Report' },
-          { id: 'category', label: '5. Finance Category Report' },
-          { id: 'daily-collection-reports', label: '6. Daily Collection Reports (10 Reports)' },
+          { id: 'daily', label: isTamil ? '1. தினசரி அறிக்கை' : '1. Daily Report' },
+          { id: 'monthly', label: isTamil ? '2. மாத அறிக்கை' : '2. Monthly Report' },
+          { id: 'yearly', label: isTamil ? '3. ஆண்டு அறிக்கை' : '3. Yearly Report' },
+          { id: 'customer', label: isTamil ? '4. வாடிக்கையாளர் அறிக்கை' : '4. Customer Report' },
+          { id: 'category', label: isTamil ? '5. கடன் வகை அறிக்கை' : '5. Finance Category Report' },
+          { id: 'daily-collection-reports', label: isTamil ? '6. தினசரி வசூல் அறிக்கைகள் (10 அறிக்கைகள்)' : '6. Daily Collection Reports (10 Reports)' },
         ].map((tab) => (
           <button
             key={tab.id}
@@ -172,7 +174,7 @@ export default function Reports() {
       <div className="bg-white p-3 sm:p-4 rounded-xl border border-slate-200 shadow-sm flex flex-wrap items-center gap-2.5 sm:gap-4 text-xs no-print">
         {activeReportTab === 'daily' && (
           <div className="flex items-center space-x-2">
-            <span className="font-semibold text-slate-700">Select Date:</span>
+            <span className="font-semibold text-slate-700">{isTamil ? 'தேதியைத் தேர்ந்தெடுக்கவும்:' : 'Select Date:'}</span>
             <input
               type="date"
               value={dailyDate}
@@ -184,7 +186,7 @@ export default function Reports() {
 
         {activeReportTab === 'monthly' && (
           <div className="flex items-center space-x-3">
-            <span className="font-semibold text-slate-700">Month:</span>
+            <span className="font-semibold text-slate-700">{isTamil ? 'மாதம்:' : 'Month:'}</span>
             <select
               value={selectedMonth}
               onChange={(e) => setSelectedMonth(Number(e.target.value))}
@@ -192,11 +194,11 @@ export default function Reports() {
             >
               {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((m) => (
                 <option key={m} value={m}>
-                  {new Date(2026, m - 1).toLocaleString('en', { month: 'long' })}
+                  {new Date(2026, m - 1).toLocaleString(isTamil ? 'ta-IN' : 'en-US', { month: 'long' })}
                 </option>
               ))}
             </select>
-            <span className="font-semibold text-slate-700">Year:</span>
+            <span className="font-semibold text-slate-700">{isTamil ? 'ஆண்டு:' : 'Year:'}</span>
             <select
               value={selectedYear}
               onChange={(e) => setSelectedYear(Number(e.target.value))}

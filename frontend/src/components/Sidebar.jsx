@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useLanguage } from '../context/LanguageContext';
 import {
   LayoutDashboard,
   Users,
@@ -19,6 +20,7 @@ import {
 import api from '../api';
 
 export default function Sidebar({ currentTab, onNavigate, onClose }) {
+  const { t } = useLanguage();
   const [counts, setCounts] = useState({ upcoming: 0, dueToday: 0, overdue: 0, totalActive: 0 });
 
   useEffect(() => {
@@ -38,20 +40,20 @@ export default function Sidebar({ currentTab, onNavigate, onClose }) {
   }, []);
 
   const navItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'customers', label: 'Customers', icon: Users },
-    { id: 'monthly-finance', label: 'Monthly Finance', icon: CalendarRange },
-    { id: 'daily-finance', label: 'Daily Finance', icon: CalendarDays },
-    { id: 'daily-collection', label: 'Daily Collection', icon: Layers },
-    { id: 'collections', label: 'Collections', icon: Banknote },
-    { id: 'irupu', label: 'இருப்பு (Cash in Hand)', icon: Wallet },
-    { id: 'dues', label: 'Due Management', icon: CalendarCheck, badge: counts.dueToday > 0 ? `${counts.dueToday} Today` : null, badgeColor: 'bg-amber-500' },
-    { id: 'notifications', label: 'Notifications', icon: Bell, badge: counts.totalActive > 0 ? counts.totalActive : null, badgeColor: 'bg-rose-500' },
-    { id: 'ledgers', label: 'Customer Ledgers', icon: BookOpen },
-    { id: 'moi-seer', label: 'மொய் / சீர்', icon: Gift },
-    { id: 'chit-fund', label: 'சீட்டு / Chit Fund', icon: Landmark },
-    { id: 'reports', label: 'Financial Reports', icon: BarChart3 },
-    { id: 'settings', label: 'Settings & Audit', icon: Settings },
+    { id: 'dashboard', label: t('nav.dashboard', 'Dashboard'), icon: LayoutDashboard },
+    { id: 'customers', label: t('nav.customers', 'Customers'), icon: Users },
+    { id: 'monthly-finance', label: t('nav.monthlyFinance', 'Monthly Finance'), icon: CalendarRange },
+    { id: 'daily-finance', label: t('nav.dailyFinance', 'Daily Finance'), icon: CalendarDays },
+    { id: 'daily-collection', label: t('nav.dailyCollection', 'Daily Collection'), icon: Layers },
+    { id: 'collections', label: t('nav.collections', 'Collections'), icon: Banknote },
+    { id: 'irupu', label: t('nav.cashInHand', 'இருப்பு (Cash in Hand)'), icon: Wallet },
+    { id: 'dues', label: t('nav.dueManagement', 'Due Management'), icon: CalendarCheck, badge: counts.dueToday > 0 ? t('nav.dueToday', { count: counts.dueToday }, `${counts.dueToday} Today`) : null, badgeColor: 'bg-amber-500' },
+    { id: 'notifications', label: t('nav.notifications', 'Notifications'), icon: Bell, badge: counts.totalActive > 0 ? counts.totalActive : null, badgeColor: 'bg-rose-500' },
+    { id: 'ledgers', label: t('nav.customerLedgers', 'Customer Ledgers'), icon: BookOpen },
+    { id: 'moi-seer', label: t('nav.moiSeer', 'மொய் / சீர்'), icon: Gift },
+    { id: 'chit-fund', label: t('nav.chitFund', 'சீட்டு / Chit Fund'), icon: Landmark },
+    { id: 'reports', label: t('nav.financialReports', 'Financial Reports'), icon: BarChart3 },
+    { id: 'settings', label: t('nav.settingsAudit', 'Settings & Audit'), icon: Settings },
   ];
 
   return (
@@ -63,7 +65,7 @@ export default function Sidebar({ currentTab, onNavigate, onClose }) {
             <div className="w-7 h-7 rounded bg-amber-500 text-slate-950 font-black flex items-center justify-center text-xs">
               CR
             </div>
-            <span className="font-bold text-xs text-amber-400 tracking-wider">NAVIGATION</span>
+            <span className="font-bold text-xs text-amber-400 tracking-wider">{t('nav.navigation', 'NAVIGATION')}</span>
           </div>
           <button
             onClick={onClose}

@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useLanguage } from '../context/LanguageContext';
 import { Lock, User, AlertCircle, ShieldCheck } from 'lucide-react';
 
 export default function Login() {
   const { login } = useAuth();
+  const { t, isTamil } = useLanguage();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -33,10 +35,10 @@ export default function Login() {
           CPN RAJA
         </h2>
         <p className="text-[11px] sm:text-xs font-semibold tracking-widest text-amber-400 uppercase mt-0.5">
-          FINANCE MANAGEMENT SYSTEM
+          {t('login.subtitle', 'FINANCE MANAGEMENT SYSTEM')}
         </p>
         <p className="text-xs text-slate-400 mt-2 px-2">
-          Secure Financial Management Portal • Production Environment
+          {isTamil ? 'பாதுகாப்பான நிதி மேலாண்மை போர்ட்டல் • நேரடி சூழல்' : 'Secure Financial Management Portal • Production Environment'}
         </p>
       </div>
 
@@ -52,7 +54,7 @@ export default function Login() {
           <form className="space-y-5" onSubmit={handleSubmit}>
             <div>
               <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
-                Username / Email
+                {t('login.usernameLabel', 'Username / Email')}
               </label>
               <div className="relative rounded-lg shadow-sm">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -64,7 +66,7 @@ export default function Login() {
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   className="block w-full pl-9 pr-3 py-2.5 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 text-sm"
-                  placeholder="Enter username or email"
+                  placeholder={t('login.usernamePlaceholder', 'Enter username or email')}
                   autoComplete="username"
                 />
               </div>
@@ -72,7 +74,7 @@ export default function Login() {
 
             <div>
               <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
-                Password
+                {t('login.passwordLabel', 'Password')}
               </label>
               <div className="relative rounded-lg shadow-sm">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -96,11 +98,11 @@ export default function Login() {
               className="w-full flex justify-center items-center py-2.5 px-4 border border-transparent rounded-lg shadow-md text-sm font-bold text-slate-950 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500 transition-all cursor-pointer disabled:opacity-50"
             >
               {loading ? (
-                <span>Authenticating...</span>
+                <span>{t('login.signingIn', 'Authenticating...')}</span>
               ) : (
                 <div className="flex items-center space-x-2">
                   <ShieldCheck className="w-4 h-4" />
-                  <span>Sign In Securely</span>
+                  <span>{t('login.signInBtn', 'Sign In Securely')}</span>
                 </div>
               )}
             </button>
@@ -110,7 +112,7 @@ export default function Login() {
           <div className="mt-6 pt-5 border-t border-slate-800 text-center">
             <p className="text-[11px] text-slate-500 flex items-center justify-center gap-1.5">
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
-              <span>Protected by 256-bit encryption • Authorized Personnel Only</span>
+              <span>{t('login.securePortal', 'Protected by 256-bit encryption • Authorized Personnel Only')}</span>
             </p>
           </div>
         </div>

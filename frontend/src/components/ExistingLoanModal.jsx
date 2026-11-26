@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { formatINR, formatDate } from '../utils/formatters';
 import SearchableCustomerSelect from './SearchableCustomerSelect';
+import { useLanguage } from '../context/LanguageContext';
 import api from '../api';
 
 export default function ExistingLoanModal({
@@ -24,6 +25,7 @@ export default function ExistingLoanModal({
   onSuccess,
 }) {
   if (!isOpen) return null;
+  const { t, isTamil } = useLanguage();
 
   const isDaily = vattiType === 'DAILY';
   const periodLabel = isDaily ? '10 Days' : '1 Month';
@@ -261,13 +263,13 @@ export default function ExistingLoanModal({
             </div>
             <div>
               <h2 className="text-base font-bold flex items-center space-x-2">
-                <span>+ Add Existing {titleLabel} Loan</span>
+                <span>{isDaily ? t('existingLoan.dailyModalTitle', '+ Add Existing Daily Finance Loan') : t('existingLoan.modalTitle', '+ Add Existing Monthly Finance Loan')}</span>
                 <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-400/30">
-                  Legacy Entry
+                  {t('existingLoan.badge', 'LEGACY ENTRY')}
                 </span>
               </h2>
               <p className="text-xs text-slate-400 mt-0.5">
-                Import an existing historical loan with completed past renewals without affecting today's Cash in Hand.
+                {isTamil ? 'கடந்த கால வட்டி மற்றும் புதுப்பிப்புகளைப் பதிவு செய்து புதிய அமைப்பிற்கு மாற்றுதல்.' : "Import an existing historical loan with completed past renewals without affecting today's Cash in Hand."}
               </p>
             </div>
           </div>
@@ -283,7 +285,7 @@ export default function ExistingLoanModal({
         <div className="bg-amber-50 border-b border-amber-200/80 px-5 py-3 flex items-start space-x-3 text-amber-900">
           <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
           <div className="text-xs">
-            <span className="font-bold">Opening Balance Migration:</span> Historical interest and disbursement records are informational. They will <span className="underline font-bold">never</span> be deducted from or added to today's physical Cash in Hand. Future renewals and collections will be tracked normally.
+            <span className="font-bold">{isTamil ? 'ஆரம்ப இருப்பு மாற்றம்:' : 'Opening Balance Migration:'}</span> {t('existingLoan.openingBalanceNote', "Historical interest and disbursement records are informational. They will never be deducted from or added to today's physical Cash in Hand. Future renewals and collections will be tracked normally.")}
           </div>
         </div>
 

@@ -28,9 +28,11 @@ import {
 import { formatINR, formatDate, formatDateTime, getStatusBadge } from '../utils/formatters';
 import SearchableCustomerSelect from '../components/SearchableCustomerSelect';
 import ExistingLoanModal from '../components/ExistingLoanModal';
+import { useLanguage } from '../context/LanguageContext';
 import api from '../api';
 
 export default function MonthlyFinance({ onNavigate, preselectedCustomer }) {
+  const { t, isTamil } = useLanguage();
   // Navigation tabs: 'roster' (default) or 'disburse'
   const [activeTab, setActiveTab] = useState(preselectedCustomer ? 'disburse' : 'roster');
 
@@ -411,13 +413,13 @@ export default function MonthlyFinance({ onNavigate, preselectedCustomer }) {
             <div className="p-2 bg-blue-50 text-blue-700 rounded-lg">
               <CalendarRange className="w-5 h-5" />
             </div>
-            <h1 className="text-xl font-bold text-slate-900">Monthly Finance</h1>
+            <h1 className="text-xl font-bold text-slate-900">{t('monthlyFinance.title', 'Monthly Finance')}</h1>
             <span className="text-xs px-2.5 py-0.5 rounded-full font-bold bg-blue-100 text-blue-800">
-              மாத வட்டி
+              {isTamil ? 'மாத வட்டி' : 'Monthly Finance'}
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-1">
-            Simple interest monthly finance with upfront interest deduction. Customer repays net principal.
+            {t('monthlyFinance.subtitle', 'Simple interest monthly finance with upfront interest deduction. Customer repays net principal.')}
           </p>
         </div>
 
@@ -432,7 +434,7 @@ export default function MonthlyFinance({ onNavigate, preselectedCustomer }) {
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              📋 Monthly Loans Roster
+              📋 {t('monthlyFinance.roster', 'Monthly Loans Roster')}
             </button>
             <button
               onClick={() => setActiveTab('disburse')}
@@ -443,7 +445,7 @@ export default function MonthlyFinance({ onNavigate, preselectedCustomer }) {
               }`}
             >
               <Plus className="w-4 h-4" />
-              <span>+ Disburse Monthly Finance</span>
+              <span>{t('monthlyFinance.disburseBtn', '+ Disburse Monthly Finance')}</span>
             </button>
           </div>
           <button
@@ -451,7 +453,7 @@ export default function MonthlyFinance({ onNavigate, preselectedCustomer }) {
             className="px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center space-x-1.5 bg-amber-500 hover:bg-amber-600 text-white shadow-xs"
           >
             <Layers className="w-4 h-4" />
-            <span>+ Add Existing Loan</span>
+            <span>{t('monthlyFinance.addExistingBtn', '+ Add Existing Loan')}</span>
           </button>
         </div>
       </div>
@@ -460,47 +462,47 @@ export default function MonthlyFinance({ onNavigate, preselectedCustomer }) {
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
           <div className="flex items-center justify-between text-slate-500 mb-1">
-            <span className="text-xs font-medium">Active Loans</span>
+            <span className="text-xs font-medium">{t('monthlyFinance.activeLoans', 'Active Loans')}</span>
             <Clock className="w-4 h-4 text-blue-500" />
           </div>
           <p className="text-xl sm:text-2xl font-black text-slate-900">{metrics.activeCount}</p>
-          <p className="text-[11px] text-slate-400 mt-0.5">Total: {totalLoans} records</p>
+          <p className="text-[11px] text-slate-400 mt-0.5">{t('common.total', 'Total')}: {totalLoans}</p>
         </div>
 
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
           <div className="flex items-center justify-between text-slate-500 mb-1">
-            <span className="text-xs font-medium">Gross Capital Lent</span>
+            <span className="text-xs font-medium">{t('monthlyFinance.grossCapitalLent', 'Gross Capital Lent')}</span>
             <Wallet className="w-4 h-4 text-indigo-500" />
           </div>
           <p className="text-lg sm:text-xl font-black text-slate-900">{formatINR(metrics.grossPrincipal)}</p>
-          <p className="text-[11px] text-slate-400 mt-0.5">Original gross principal</p>
+          <p className="text-[11px] text-slate-400 mt-0.5">{t('monthlyFinance.originalGrossPrincipal', 'Original gross principal')}</p>
         </div>
 
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
           <div className="flex items-center justify-between text-slate-500 mb-1">
-            <span className="text-xs font-medium">Upfront Interest</span>
+            <span className="text-xs font-medium">{t('monthlyFinance.upfrontInterest', 'Upfront Interest')}</span>
             <Percent className="w-4 h-4 text-emerald-500" />
           </div>
           <p className="text-lg sm:text-xl font-black text-emerald-600">{formatINR(metrics.upfrontInterestTotal)}</p>
-          <p className="text-[11px] text-slate-400 mt-0.5">Deducted at disbursement</p>
+          <p className="text-[11px] text-slate-400 mt-0.5">{t('monthlyFinance.deductedAtDisbursement', 'Deducted at disbursement')}</p>
         </div>
 
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
           <div className="flex items-center justify-between text-slate-500 mb-1">
-            <span className="text-xs font-medium">Principal Returned</span>
+            <span className="text-xs font-medium">{t('monthlyFinance.principalReturned', 'Principal Returned')}</span>
             <CheckCircle className="w-4 h-4 text-emerald-600" />
           </div>
           <p className="text-lg sm:text-xl font-black text-emerald-700">{formatINR(metrics.principalReturned)}</p>
-          <p className="text-[11px] text-slate-400 mt-0.5">Repaid by borrowers</p>
+          <p className="text-[11px] text-slate-400 mt-0.5">{t('monthlyFinance.repaidByBorrowers', 'Repaid by borrowers')}</p>
         </div>
 
         <div className="bg-white p-4 rounded-xl border border-amber-200 bg-amber-50/20 shadow-xs col-span-2 lg:col-span-1">
           <div className="flex items-center justify-between text-amber-700 mb-1">
-            <span className="text-xs font-bold">Outstanding Balance</span>
+            <span className="text-xs font-bold">{t('monthlyFinance.outstandingBalance', 'Outstanding Balance')}</span>
             <Coins className="w-4 h-4 text-amber-600" />
           </div>
           <p className="text-lg sm:text-xl font-black text-amber-900">{formatINR(metrics.outstandingBalance)}</p>
-          <p className="text-[11px] text-amber-700 mt-0.5">Net balance to collect</p>
+          <p className="text-[11px] text-amber-700 mt-0.5">{t('monthlyFinance.netBalanceToCollect', 'Net balance to collect')}</p>
         </div>
       </div>
 
@@ -513,7 +515,7 @@ export default function MonthlyFinance({ onNavigate, preselectedCustomer }) {
               <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
-                placeholder="Search by customer name, mobile, or loan ID..."
+                placeholder={t('monthlyFinance.searchPlaceholder', 'Search by customer name, mobile, or loan ID...')}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
@@ -532,7 +534,7 @@ export default function MonthlyFinance({ onNavigate, preselectedCustomer }) {
                         : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
-                    {st === 'ALL' ? 'All' : st === 'ACTIVE' ? 'Active' : 'Closed'}
+                    {st === 'ALL' ? t('common.all', 'All') : st === 'ACTIVE' ? t('common.active', 'Active') : t('common.closed', 'Closed')}
                   </button>
                 ))}
               </div>
@@ -542,21 +544,18 @@ export default function MonthlyFinance({ onNavigate, preselectedCustomer }) {
           {/* Table */}
           {loading ? (
             <div className="p-12 text-center text-slate-500 text-xs">
-              Loading Monthly Finance records...
+              {t('common.loading', 'Loading...')}
             </div>
           ) : loans.length === 0 ? (
             <div className="p-12 text-center text-slate-500 text-xs space-y-3">
               <CalendarRange className="w-10 h-10 text-slate-300 mx-auto" />
-              <p className="font-semibold text-slate-700">No Monthly Finance loans found</p>
-              <p className="text-slate-400 max-w-sm mx-auto">
-                No monthly finance loans match your current filter or search criteria.
-              </p>
+              <p className="font-semibold text-slate-700">{t('monthlyFinance.noLoansFound', 'No Monthly Finance loans found')}</p>
               <button
                 onClick={() => setActiveTab('disburse')}
                 className="mt-2 inline-flex items-center space-x-1.5 px-4 py-2 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-500 cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
-                <span>+ Disburse First Monthly Loan</span>
+                <span>{t('monthlyFinance.disburseBtn', '+ Disburse Monthly Finance')}</span>
               </button>
             </div>
           ) : (
@@ -564,19 +563,19 @@ export default function MonthlyFinance({ onNavigate, preselectedCustomer }) {
               <table className="w-full text-left text-xs text-slate-600">
                 <thead className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200 uppercase tracking-wider text-[10px]">
                   <tr>
-                    <th className="px-3 py-3">Loan ID</th>
-                    <th className="px-3 py-3">Disbursed Date</th>
-                    <th className="px-3 py-3">Customer</th>
-                    <th className="px-3 py-3 text-right">Gross Principal</th>
-                    <th className="px-3 py-3 text-right">Upfront Interest</th>
-                    <th className="px-3 py-3 text-right">Net Given</th>
-                    <th className="px-3 py-3 text-right">Principal Repaid</th>
-                    <th className="px-3 py-3 text-right">Outstanding</th>
-                    <th className="px-3 py-3 text-right">Monthly Interest</th>
-                    <th className="px-3 py-3">Current Period Due</th>
-                    <th className="px-3 py-3 text-center">Renewals</th>
-                    <th className="px-3 py-3 text-center">Status</th>
-                    <th className="px-3 py-3 text-center">Actions</th>
+                    <th className="px-3 py-3">{t('monthlyFinance.loanId', 'Loan ID')}</th>
+                    <th className="px-3 py-3">{t('monthlyFinance.disbursedDate', 'Disbursed Date')}</th>
+                    <th className="px-3 py-3">{t('monthlyFinance.customer', 'Customer')}</th>
+                    <th className="px-3 py-3 text-right">{t('monthlyFinance.grossPrincipal', 'Gross Principal')}</th>
+                    <th className="px-3 py-3 text-right">{t('monthlyFinance.upfrontInterest', 'Upfront Interest')}</th>
+                    <th className="px-3 py-3 text-right">{t('monthlyFinance.netGiven', 'Net Given')}</th>
+                    <th className="px-3 py-3 text-right">{t('monthlyFinance.principalRepaid', 'Principal Repaid')}</th>
+                    <th className="px-3 py-3 text-right">{t('monthlyFinance.outstanding', 'Outstanding')}</th>
+                    <th className="px-3 py-3 text-right">{t('monthlyFinance.monthlyInterest', 'Monthly Interest')}</th>
+                    <th className="px-3 py-3">{t('monthlyFinance.currentPeriodDue', 'Current Period Due')}</th>
+                    <th className="px-3 py-3 text-center">{t('monthlyFinance.renewals', 'Renewals')}</th>
+                    <th className="px-3 py-3 text-center">{t('monthlyFinance.status', 'Status')}</th>
+                    <th className="px-3 py-3 text-center">{t('monthlyFinance.actions', 'Actions')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -593,7 +592,7 @@ export default function MonthlyFinance({ onNavigate, preselectedCustomer }) {
                       loan.status === 'OVERDUE' ||
                       (currentDueDate && new Date(currentDueDate) <= new Date())
                     );
-                    const statusBadge = getStatusBadge(loan.status);
+                    const statusBadge = getStatusBadge(loan.status, t);
 
                     return (
                       <tr key={loan._id} className="hover:bg-slate-50/80 transition-colors">
@@ -602,7 +601,7 @@ export default function MonthlyFinance({ onNavigate, preselectedCustomer }) {
                             <span>{loan.loanId}</span>
                             {loan.isLegacyLoan && (
                               <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-300">
-                                Existing
+                                {t('existingLoan.badge', 'Existing')}
                               </span>
                             )}
                           </div>
@@ -638,7 +637,7 @@ export default function MonthlyFinance({ onNavigate, preselectedCustomer }) {
                         <td className="px-3 py-3 text-slate-600 whitespace-nowrap">
                           <div className="font-semibold text-slate-800">{formatDate(currentDueDate)}</div>
                           <div className="text-[10px] text-slate-400">
-                            {(loan.renewalCount || 0) > 0 ? `Period #${(loan.renewalCount || 0) + 1}` : 'Initial Month'}
+                            {(loan.renewalCount || 0) > 0 ? t('monthlyFinance.periodCount', { count: (loan.renewalCount || 0) + 1 }) : t('monthlyFinance.initialMonth', 'Initial Month')}
                           </div>
                         </td>
                         <td className="px-3 py-3 text-center font-mono">
@@ -649,7 +648,7 @@ export default function MonthlyFinance({ onNavigate, preselectedCustomer }) {
                         <td className="px-3 py-3 text-center">
                           {isDueForRenewal ? (
                             <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold border bg-amber-50 text-amber-800 border-amber-300">
-                              Due for Renewal
+                              {t('monthlyFinance.dueForRenewal', 'Due for Renewal')}
                             </span>
                           ) : (
                             <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold border ${statusBadge.bg}`}>
@@ -675,7 +674,7 @@ export default function MonthlyFinance({ onNavigate, preselectedCustomer }) {
                                   title="Renew Loan for 1 Month"
                                 >
                                   <RefreshCw className="w-3 h-3" />
-                                  <span>Renew</span>
+                                  <span>{t('monthlyFinance.renewBtn', 'Renew')}</span>
                                 </button>
                                 <button
                                   onClick={() => handleOpenCollectionModal(loan)}
@@ -683,7 +682,7 @@ export default function MonthlyFinance({ onNavigate, preselectedCustomer }) {
                                   title="Record Principal Repayment"
                                 >
                                   <Coins className="w-3 h-3" />
-                                  <span>Collect</span>
+                                  <span>{t('common.recordPayment', 'Collect')}</span>
                                 </button>
                               </>
                             )}

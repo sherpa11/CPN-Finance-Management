@@ -21,9 +21,11 @@ import {
 } from 'lucide-react';
 import { formatINR, formatDate, getFinanceBadge } from '../utils/formatters';
 import CustomerStatementModal from '../components/CustomerStatementModal';
+import { useLanguage } from '../context/LanguageContext';
 import api from '../api';
 
 export default function Customers({ onNavigate, onSelectCustomerForLoan }) {
+  const { t, isTamil } = useLanguage();
   const [customers, setCustomers] = useState([]);
   const [total, setTotal] = useState(0);
   const [search, setSearch] = useState('');
@@ -290,10 +292,10 @@ export default function Customers({ onNavigate, onSelectCustomerForLoan }) {
         <div>
           <h2 className="text-lg font-bold text-slate-900 flex items-center space-x-2">
             <Users className="w-5 h-5 text-blue-600" />
-            <span>Customer Management</span>
+            <span>{t('customers.title', 'Customer Management')}</span>
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            Manage borrower profiles, verify individual accounts and print statements
+            {t('customers.subtitle', 'Manage borrower profiles, verify individual accounts and print statements')}
           </p>
         </div>
 
@@ -302,7 +304,7 @@ export default function Customers({ onNavigate, onSelectCustomerForLoan }) {
           className="flex items-center justify-center space-x-1.5 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-lg shadow-sm transition-all cursor-pointer min-h-[40px] w-full sm:w-auto"
         >
           <Plus className="w-4 h-4" />
-          <span>Register New Customer</span>
+          <span>{t('customers.registerNew', 'Register New Customer')}</span>
         </button>
       </div>
 
@@ -312,7 +314,7 @@ export default function Customers({ onNavigate, onSelectCustomerForLoan }) {
           <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
           <input
             type="text"
-            placeholder="Search by Customer Name or Mobile Number..."
+            placeholder={t('customers.searchPlaceholder', 'Search by Customer Name or Mobile Number...')}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full pl-9 pr-4 py-2.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-xs"
@@ -324,29 +326,29 @@ export default function Customers({ onNavigate, onSelectCustomerForLoan }) {
           onChange={(e) => setStatusFilter(e.target.value)}
           className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-xs"
         >
-          <option value="ALL">All Statuses</option>
-          <option value="ACTIVE">Active Only</option>
-          <option value="INACTIVE">Inactive Only</option>
+          <option value="ALL">{t('common.allStatuses', 'All Statuses')}</option>
+          <option value="ACTIVE">{t('common.activeOnly', 'Active Only')}</option>
+          <option value="INACTIVE">{t('common.inactiveOnly', 'Inactive Only')}</option>
         </select>
       </div>
 
       {/* Customers Table */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         {loading ? (
-          <div className="p-8 text-center text-xs text-slate-500">Loading customers...</div>
+          <div className="p-8 text-center text-xs text-slate-500">{t('common.loading', 'Loading customers...')}</div>
         ) : !customers || customers.length === 0 ? (
           <div className="p-12 text-center text-xs text-slate-500">
             <Users className="w-10 h-10 mx-auto mb-3 text-slate-300" />
-            <p className="text-sm font-bold text-slate-700">No customers registered yet</p>
+            <p className="text-sm font-bold text-slate-700">{t('customers.noCustomersTitle', 'No customers registered yet')}</p>
             <p className="text-slate-400 mt-1 max-w-sm mx-auto">
-              Register your first customer to begin managing Monthly Finance, Daily Finance, or Daily Collection accounts.
+              {t('customers.noCustomersDesc', 'Register your first customer to begin managing Monthly Finance, Daily Finance, or Daily Collection accounts.')}
             </p>
             <button
               onClick={openAddModal}
               className="mt-4 inline-flex items-center space-x-1.5 px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg shadow-sm cursor-pointer transition-all"
             >
               <UserPlus className="w-4 h-4" />
-              <span>Register First Customer</span>
+              <span>{t('customers.registerFirst', 'Register First Customer')}</span>
             </button>
           </div>
         ) : (
@@ -354,14 +356,15 @@ export default function Customers({ onNavigate, onSelectCustomerForLoan }) {
             <table className="w-full text-xs text-left min-w-[720px]">
               <thead className="bg-slate-100 text-slate-700 border-b border-slate-200">
                 <tr>
-                  <th className="py-3 px-4 font-semibold">Customer ID</th>
-                  <th className="py-3 px-4 font-semibold">Customer Name</th>
-                  <th className="py-3 px-3 font-semibold">Mobile Number</th>
-                  <th className="py-3 px-4 font-semibold">Address</th>
-                  <th className="py-3 px-3 font-semibold text-center">Active Loans</th>
-                  <th className="py-3 px-3 font-semibold text-right">Principal Lent</th>
-                  <th className="py-3 px-3 font-semibold text-right">Outstanding</th>
-                  <th className="py-3 px-4 font-semibold text-right">Actions</th>
+                  <th className="py-3 px-4 font-semibold">{t('customers.customerId', 'Customer ID')}</th>
+                  <th className="py-3 px-4 font-semibold">{t('customers.customerName', 'Customer Name')}</th>
+                  <th className="py-3 px-3 font-semibold">{t('customers.mobileNumber', 'Mobile Number')}</th>
+                  <th className="py-3 px-4 font-semibold">{t('customers.address', 'Address')}</th>
+                  <th className="py-3 px-3 font-semibold text-center">{t('customers.activeLoans', 'Active Loans')}</th>
+                  <th className="py-3 px-4 font-semibold text-right">{t('customers.principalLent', 'Principal Lent')}</th>
+                  <th className="py-3 px-4 font-semibold text-right">{t('customers.outstanding', 'Outstanding')}</th>
+                  <th className="py-3 px-3 font-semibold text-center">{t('common.status', 'Status')}</th>
+                  <th className="py-3 px-4 font-semibold text-right">{t('common.actions', 'Actions')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">

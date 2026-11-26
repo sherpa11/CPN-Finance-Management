@@ -36,22 +36,23 @@ export function formatDateTime(dateInput) {
   });
 }
 
-export function getFinanceBadge(type) {
+export function getFinanceBadge(type, t) {
+  const isFunc = typeof t === 'function';
   switch (type) {
     case 'MONTHLY':
       return {
-        label: 'Monthly Finance',
+        label: isFunc ? t('nav.monthlyFinance', 'Monthly Finance') : 'Monthly Finance',
         bg: 'bg-blue-50 text-blue-700 border-blue-200',
       };
     case 'DAILY':
       return {
-        label: 'Daily Finance',
+        label: isFunc ? t('nav.dailyFinance', 'Daily Finance') : 'Daily Finance',
         bg: 'bg-amber-50 text-amber-700 border-amber-200',
       };
     case 'DAILY_COLLECTION':
     case 'MEATER':
       return {
-        label: 'Daily Collection',
+        label: isFunc ? t('nav.dailyCollection', 'Daily Collection') : 'Daily Collection',
         bg: 'bg-emerald-50 text-emerald-700 border-emerald-200',
       };
     default:
@@ -62,30 +63,38 @@ export function getFinanceBadge(type) {
   }
 }
 
-export function formatFinanceType(type) {
+export function formatFinanceType(type, t) {
   if (!type) return '';
-  if (type === 'MEATER' || type === 'DAILY_COLLECTION') return 'DAILY COLLECTION';
-  if (type === 'MONTHLY') return 'MONTHLY';
-  if (type === 'DAILY') return 'DAILY';
+  const isFunc = typeof t === 'function';
+  if (type === 'MEATER' || type === 'DAILY_COLLECTION') return isFunc ? t('nav.dailyCollection', 'DAILY COLLECTION') : 'DAILY COLLECTION';
+  if (type === 'MONTHLY') return isFunc ? t('nav.monthlyFinance', 'MONTHLY') : 'MONTHLY';
+  if (type === 'DAILY') return isFunc ? t('nav.dailyFinance', 'DAILY') : 'DAILY';
   return type;
 }
 
 export const getVattiBadge = getFinanceBadge;
 
-export function getStatusBadge(status) {
+export function getStatusBadge(status, t) {
+  const isFunc = typeof t === 'function';
   switch (status) {
     case 'ACTIVE':
-      return { label: 'Active', bg: 'bg-emerald-50 text-emerald-700 border-emerald-200' };
+      return { label: isFunc ? t('common.active', 'Active') : 'Active', bg: 'bg-emerald-50 text-emerald-700 border-emerald-200' };
     case 'SETTLED':
-      return { label: 'Settled', bg: 'bg-blue-50 text-blue-700 border-blue-200' };
+      return { label: isFunc ? t('common.settled', 'Settled') : 'Settled', bg: 'bg-blue-50 text-blue-700 border-blue-200' };
     case 'OVERDUE':
-      return { label: 'Overdue', bg: 'bg-rose-50 text-rose-700 border-rose-200' };
+      return { label: isFunc ? t('common.overdue', 'Overdue') : 'Overdue', bg: 'bg-rose-50 text-rose-700 border-rose-200' };
     case 'CLOSED':
-      return { label: 'Closed', bg: 'bg-slate-100 text-slate-700 border-slate-200' };
+      return { label: isFunc ? t('common.closed', 'Closed') : 'Closed', bg: 'bg-slate-100 text-slate-700 border-slate-200' };
     case 'CONFIRMED':
-      return { label: 'Confirmed', bg: 'bg-emerald-50 text-emerald-700 border-emerald-200' };
+      return { label: isFunc ? t('common.confirmed', 'Confirmed') : 'Confirmed', bg: 'bg-emerald-50 text-emerald-700 border-emerald-200' };
     case 'REVERSED':
-      return { label: 'Reversed', bg: 'bg-rose-50 text-rose-700 border-rose-200' };
+      return { label: isFunc ? t('common.reversed', 'Reversed') : 'Reversed', bg: 'bg-rose-50 text-rose-700 border-rose-200' };
+    case 'PAID':
+      return { label: isFunc ? t('common.paid', 'Paid') : 'Paid', bg: 'bg-emerald-50 text-emerald-700 border-emerald-200' };
+    case 'PARTIAL':
+      return { label: isFunc ? t('common.partial', 'Partial') : 'Partial', bg: 'bg-amber-50 text-amber-700 border-amber-200' };
+    case 'MISSED':
+      return { label: isFunc ? t('common.missed', 'Missed') : 'Missed', bg: 'bg-rose-50 text-rose-700 border-rose-200' };
     default:
       return { label: status, bg: 'bg-slate-50 text-slate-700 border-slate-200' };
   }

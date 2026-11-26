@@ -24,9 +24,11 @@ import {
   Coins,
 } from 'lucide-react';
 import { formatINR, formatDate, formatDateTime, getStatusBadge } from '../utils/formatters';
+import { useLanguage } from '../context/LanguageContext';
 import api from '../api';
 
 export default function DailyCollection({ onNavigate }) {
+  const { t, isTamil } = useLanguage();
   const [activeView, setActiveView] = useState('accounts'); // 'accounts', 'tracker', 'today-sheet'
   const [summary, setSummary] = useState(null);
   const [loadingSummary, setLoadingSummary] = useState(false);
@@ -239,10 +241,10 @@ export default function DailyCollection({ onNavigate }) {
         <div>
           <h2 className="text-xl font-bold text-slate-900 flex items-center space-x-2.5">
             <Layers className="w-6 h-6 text-emerald-600" />
-            <span>Daily Collection Management (தினசரி வசூல்)</span>
+            <span>{t('dailyCollection.title', 'Daily Collection Management (தினசரி வசூல்)')}</span>
           </h2>
           <p className="text-xs text-slate-500 mt-1">
-            Upfront Interest Deduction (முன் வட்டி முறை) • 70 / 100 Equal Daily Instalments
+            {t('dailyCollection.subtitle', 'Upfront Interest Deduction (முன் வட்டி முறை) • 70 / 100 Equal Daily Instalments')}
           </p>
         </div>
 
@@ -251,7 +253,7 @@ export default function DailyCollection({ onNavigate }) {
             onClick={() => onNavigate('new-finance')}
             className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition-all shadow-sm flex items-center space-x-1.5 cursor-pointer"
           >
-            <span>+ New Daily Collection</span>
+            <span>{t('dailyCollection.newCollectionBtn', '+ New Daily Collection')}</span>
           </button>
           <button
             onClick={() => {
@@ -260,7 +262,7 @@ export default function DailyCollection({ onNavigate }) {
               if (selectedAccountId) loadAccountTracker(selectedAccountId);
             }}
             className="p-2 border border-slate-200 text-slate-600 hover:bg-slate-50 rounded-lg text-xs font-medium cursor-pointer"
-            title="Refresh"
+            title={t('common.refresh', 'Refresh')}
           >
             <RefreshCw className="w-4 h-4" />
           </button>
@@ -271,72 +273,72 @@ export default function DailyCollection({ onNavigate }) {
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         {/* Card 1 */}
         <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total Active</p>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{t('dailyCollection.totalActive', 'Total Active')}</p>
           <p className="text-lg font-black text-slate-900 mt-0.5">{summary?.totalActiveAccounts ?? 0}</p>
-          <p className="text-[10px] text-slate-500">Active Accounts</p>
+          <p className="text-[10px] text-slate-500">{isTamil ? 'செயலில் உள்ள கணக்குகள்' : 'Active Accounts'}</p>
         </div>
 
         {/* Card 2 */}
         <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Gross Principal</p>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{t('dailyCollection.grossPrincipal', 'Gross Principal')}</p>
           <p className="text-lg font-black text-slate-900 mt-0.5">{formatINR(summary?.grossPrincipalDisbursedRupees ?? 0)}</p>
-          <p className="text-[10px] text-slate-500">Disbursed Capital</p>
+          <p className="text-[10px] text-slate-500">{isTamil ? 'வழங்கப்பட்ட அசல்' : 'Disbursed Capital'}</p>
         </div>
 
         {/* Card 3 */}
         <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-600">Net Disbursed</p>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-600">{t('dailyCollection.netDisbursed', 'Net Disbursed')}</p>
           <p className="text-lg font-black text-emerald-700 mt-0.5">{formatINR(summary?.netDisbursedRupees ?? 0)}</p>
-          <p className="text-[10px] text-emerald-600">Cash Given to Borrowers</p>
+          <p className="text-[10px] text-emerald-600">{isTamil ? 'வாடிக்கையாளருக்கு கொடுத்த பணம்' : 'Cash Given to Borrowers'}</p>
         </div>
 
         {/* Card 4 */}
         <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-purple-600">Upfront Interest</p>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-purple-600">{t('dailyCollection.upfrontInterest', 'Upfront Interest')}</p>
           <p className="text-lg font-black text-purple-700 mt-0.5">{formatINR(summary?.upfrontInterestDeductedRupees ?? 0)}</p>
-          <p className="text-[10px] text-purple-500">Deducted at Inception</p>
+          <p className="text-[10px] text-purple-500">{isTamil ? 'பிடித்தம் செய்த வட்டி' : 'Deducted at Inception'}</p>
         </div>
 
         {/* Card 5 */}
         <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-blue-600">Total Collected</p>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-blue-600">{t('dailyCollection.totalCollected', 'Total Collected')}</p>
           <p className="text-lg font-black text-blue-700 mt-0.5">{formatINR(summary?.totalCollectionsReceivedRupees ?? 0)}</p>
-          <p className="text-[10px] text-blue-500">Gross Recovered</p>
+          <p className="text-[10px] text-blue-500">{isTamil ? 'மொத்த வசூல்' : 'Gross Recovered'}</p>
         </div>
 
         {/* Card 6 */}
         <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-rose-600">Outstanding</p>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-rose-600">{t('dailyCollection.outstanding', 'Outstanding')}</p>
           <p className="text-lg font-black text-rose-700 mt-0.5">{formatINR(summary?.totalOutstandingBalanceRupees ?? 0)}</p>
-          <p className="text-[10px] text-rose-500">Remaining Balance</p>
+          <p className="text-[10px] text-rose-500">{isTamil ? 'நிலுவைத் தொகை' : 'Remaining Balance'}</p>
         </div>
 
         {/* Card 7 */}
         <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Today Expected</p>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{t('dailyCollection.todayExpected', 'Today Expected')}</p>
           <p className="text-lg font-black text-slate-900 mt-0.5">{formatINR(summary?.todayExpectedRupees ?? 0)}</p>
-          <p className="text-[10px] text-slate-400">Scheduled for Today</p>
+          <p className="text-[10px] text-slate-400">{isTamil ? 'இன்றைய திட்டமிட்ட வசூல்' : 'Scheduled for Today'}</p>
         </div>
 
         {/* Card 8 */}
         <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-600">Today Collected</p>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-600">{t('dailyCollection.todayCollected', 'Today Collected')}</p>
           <p className="text-lg font-black text-emerald-700 mt-0.5">{formatINR(summary?.todayActualRupees ?? 0)}</p>
-          <p className="text-[10px] text-emerald-500">Received Today</p>
+          <p className="text-[10px] text-emerald-500">{isTamil ? 'இன்று வசூலானது' : 'Received Today'}</p>
         </div>
 
         {/* Card 9 */}
         <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-rose-500">Missed Collections</p>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-rose-500">{t('dailyCollection.missedCollections', 'Missed Collections')}</p>
           <p className="text-lg font-black text-rose-700 mt-0.5">{summary?.missedCollectionsCount ?? 0}</p>
-          <p className="text-[10px] text-rose-500">Unpaid Scheduled Days</p>
+          <p className="text-[10px] text-rose-500">{isTamil ? 'தவறிய தவணைகள்' : 'Unpaid Scheduled Days'}</p>
         </div>
 
         {/* Card 10 */}
         <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-600">Completed</p>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-600">{t('dailyCollection.completed', 'Completed')}</p>
           <p className="text-lg font-black text-emerald-800 mt-0.5">{summary?.completedAccountsCount ?? 0}</p>
-          <p className="text-[10px] text-emerald-600">Fully Settled Accounts</p>
+          <p className="text-[10px] text-emerald-600">{isTamil ? 'முடிந்த கணக்குகள்' : 'Fully Settled Accounts'}</p>
         </div>
       </div>
 
@@ -371,7 +373,7 @@ export default function DailyCollection({ onNavigate }) {
           }`}
         >
           <Layers className="w-4 h-4" />
-          <span>Accounts List ({accounts.length})</span>
+          <span>{t('dailyCollection.accountsListTab', 'Accounts List')} ({accounts.length})</span>
         </button>
 
         <button
@@ -383,7 +385,7 @@ export default function DailyCollection({ onNavigate }) {
           }`}
         >
           <Calendar className="w-4 h-4" />
-          <span>Visual Collection Tracker ({selectedAccountData?.totalDurationDays || '70/100'} Days)</span>
+          <span>{t('dailyCollection.visualTrackerTab', 'Visual Collection Tracker')} ({selectedAccountData?.totalDurationDays || '70/100'} {t('common.days', 'Days')})</span>
         </button>
 
         <button
@@ -395,7 +397,7 @@ export default function DailyCollection({ onNavigate }) {
           }`}
         >
           <Printer className="w-4 h-4" />
-          <span>Daily Collection Sheet & Field Due</span>
+          <span>{t('dailyCollection.fieldDueTab', 'Daily Collection Sheet & Field Due')}</span>
         </button>
       </div>
 
@@ -408,7 +410,7 @@ export default function DailyCollection({ onNavigate }) {
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
               <input
                 type="text"
-                placeholder="Search Account ID, Borrower Name, Mobile..."
+                placeholder={t('dailyCollection.searchPlaceholder', 'Search Account ID, Borrower Name, Mobile...')}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-xs focus:ring-2 focus:ring-emerald-500 text-slate-800"
@@ -420,10 +422,10 @@ export default function DailyCollection({ onNavigate }) {
               onChange={(e) => setStatusFilter(e.target.value)}
               className="px-3 py-2 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 bg-white"
             >
-              <option value="">All Statuses (Active, Overdue, Completed)</option>
-              <option value="ACTIVE">ACTIVE</option>
-              <option value="OVERDUE">OVERDUE</option>
-              <option value="COMPLETED">COMPLETED</option>
+              <option value="">{t('common.allStatuses', 'All Statuses (Active, Overdue, Completed)')}</option>
+              <option value="ACTIVE">{t('common.active', 'ACTIVE')}</option>
+              <option value="OVERDUE">{t('common.overdue', 'OVERDUE')}</option>
+              <option value="COMPLETED">{t('common.completed', 'COMPLETED')}</option>
             </select>
           </div>
 
@@ -432,17 +434,17 @@ export default function DailyCollection({ onNavigate }) {
             <table className="w-full text-left text-xs text-slate-600 min-w-[720px]">
               <thead className="bg-slate-50 text-[11px] font-bold text-slate-500 uppercase border-y border-slate-200">
                 <tr>
-                  <th className="py-3 px-3">Account ID</th>
-                  <th className="py-3 px-3">Borrower Customer</th>
-                  <th className="py-3 px-3 text-right">Gross Principal</th>
-                  <th className="py-3 px-3 text-right">Net Cash Given</th>
-                  <th className="py-3 px-3 text-right">Daily Instalment</th>
-                  <th className="py-3 px-3 text-center">Progress</th>
-                  <th className="py-3 px-3 text-right">Collected</th>
-                  <th className="py-3 px-3 text-right">Outstanding</th>
-                  <th className="py-3 px-3 text-right">Overdue Penalty</th>
-                  <th className="py-3 px-3 text-center">Status</th>
-                  <th className="py-3 px-3 text-center">Actions</th>
+                  <th className="py-3 px-3">{t('dailyCollection.accountId', 'Account ID')}</th>
+                  <th className="py-3 px-3">{t('dailyCollection.borrowerCustomer', 'Borrower Customer')}</th>
+                  <th className="py-3 px-3 text-right">{t('dailyCollection.grossPrincipal', 'Gross Principal')}</th>
+                  <th className="py-3 px-3 text-right">{t('dailyCollection.netCashGiven', 'Net Cash Given')}</th>
+                  <th className="py-3 px-3 text-right">{t('dailyCollection.dailyInstalment', 'Daily Instalment')}</th>
+                  <th className="py-3 px-3 text-center">{t('dailyCollection.progress', 'Progress')}</th>
+                  <th className="py-3 px-3 text-right">{t('dailyCollection.collected', 'Collected')}</th>
+                  <th className="py-3 px-3 text-right">{t('dailyCollection.outstanding', 'Outstanding')}</th>
+                  <th className="py-3 px-3 text-right">{t('dailyCollection.overduePenalty', 'Overdue Penalty')}</th>
+                  <th className="py-3 px-3 text-center">{t('common.status', 'Status')}</th>
+                  <th className="py-3 px-3 text-center">{t('common.actions', 'Actions')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -464,7 +466,7 @@ export default function DailyCollection({ onNavigate }) {
                   </tr>
                 ) : (
                   (accounts || []).map((acc) => {
-                    const statusBadge = getStatusBadge(acc.status);
+                    const statusBadge = getStatusBadge(acc.status, t);
                     return (
                       <tr key={acc._id} className="hover:bg-slate-50/80 transition-all font-mono">
                         <td className="py-3 px-3">
@@ -489,7 +491,7 @@ export default function DailyCollection({ onNavigate }) {
                         <td className="py-3 px-3 text-center font-sans">
                           <div className="w-24 mx-auto space-y-1">
                             <div className="flex justify-between text-[10px] text-slate-500 font-mono">
-                              <span>Day {acc.daysCompleted}</span>
+                              <span>{isTamil ? 'நாள்' : 'Day'} {acc.daysCompleted}</span>
                               <span>/{acc.totalDurationDays || 100}</span>
                             </div>
                             <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
@@ -513,14 +515,14 @@ export default function DailyCollection({ onNavigate }) {
                                 {formatINR(acc.penaltyBreakdown.penaltyOutstandingRupees)}
                               </span>
                               <div className="text-[10px] text-rose-500 font-mono">
-                                {acc.penaltyBreakdown.overdueDays}d overdue ({formatINR(acc.penaltyBreakdown.dailyPenaltyRupees)}/d @ {acc.overduePenaltyRate || acc.penaltyRatePercent || 2}%)
+                                {acc.penaltyBreakdown.overdueDays}{isTamil ? ' நாள் தாமதம்' : 'd overdue'} ({formatINR(acc.penaltyBreakdown.dailyPenaltyRupees)}/{isTamil ? 'நாள்' : 'd'} @ {acc.overduePenaltyRate || acc.penaltyRatePercent || 2}%)
                               </div>
                             </div>
                           ) : (
                             <div>
                               <span className="text-slate-400 font-mono text-[11px]">₹0.00</span>
                               <div className="text-[9px] text-slate-400 font-sans">
-                                ({acc.overduePenaltyRate || acc.penaltyRatePercent || 2}%/day)
+                                ({acc.overduePenaltyRate || acc.penaltyRatePercent || 2}%/{isTamil ? 'நாள்' : 'day'})
                               </div>
                             </div>
                           )}
@@ -538,7 +540,7 @@ export default function DailyCollection({ onNavigate }) {
                             }}
                             className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-[11px] font-bold flex items-center space-x-1 mx-auto cursor-pointer"
                           >
-                            <span>Open Tracker</span>
+                            <span>{t('dailyCollection.openTracker', 'Open Tracker')}</span>
                             <ArrowRight className="w-3 h-3" />
                           </button>
                         </td>

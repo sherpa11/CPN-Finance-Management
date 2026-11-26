@@ -1,9 +1,11 @@
 import React from 'react';
 import { X, Printer, CheckCircle, ArrowDownCircle } from 'lucide-react';
 import { formatINR, formatDate, formatDateTime } from '../utils/formatters';
+import { useLanguage } from '../context/LanguageContext';
 
 export default function ReceiptModal({ receipt, onClose }) {
   if (!receipt) return null;
+  const { t, isTamil } = useLanguage();
 
   const handlePrint = () => {
     window.print();
@@ -16,7 +18,7 @@ export default function ReceiptModal({ receipt, onClose }) {
         <div className="bg-slate-900 text-white px-4 py-3 sm:px-6 sm:py-4 flex items-center justify-between gap-2 no-print shrink-0">
           <div className="flex items-center space-x-2 min-w-0">
             <CheckCircle className="w-5 h-5 text-emerald-400 shrink-0" />
-            <h2 className="font-bold text-sm sm:text-base truncate">Payment Receipt</h2>
+            <h2 className="font-bold text-sm sm:text-base truncate">{t('receipt.title', 'Payment Receipt')}</h2>
           </div>
           <div className="flex items-center space-x-2 shrink-0">
             <button
@@ -24,7 +26,7 @@ export default function ReceiptModal({ receipt, onClose }) {
               className="flex items-center space-x-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors shadow-sm cursor-pointer min-h-[36px]"
             >
               <Printer className="w-4 h-4" />
-              <span className="hidden xs:inline">Print Receipt</span>
+              <span className="hidden xs:inline">{t('receipt.printReceiptBtn', 'Print Receipt')}</span>
             </button>
             <button
               onClick={onClose}

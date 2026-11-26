@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { X, Printer, FileText } from 'lucide-react';
 import { formatINR, formatDate, formatDateTime } from '../utils/formatters';
+import { useLanguage } from '../context/LanguageContext';
 import api from '../api';
 
 export default function CustomerStatementModal({ customerId, onClose }) {
+  const { t, isTamil } = useLanguage();
   const [statement, setStatement] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -36,7 +38,7 @@ export default function CustomerStatementModal({ customerId, onClose }) {
         <div className="bg-slate-900 text-white px-4 py-3 sm:px-6 sm:py-4 flex items-center justify-between gap-2 no-print shrink-0">
           <div className="flex items-center space-x-2 min-w-0">
             <FileText className="w-5 h-5 text-amber-400 shrink-0" />
-            <h2 className="font-bold text-sm sm:text-base truncate">Customer Account Statement</h2>
+            <h2 className="font-bold text-sm sm:text-base truncate">{t('statement.title', 'Customer Account Statement')}</h2>
           </div>
           <div className="flex items-center space-x-2 shrink-0">
             <button
@@ -44,7 +46,7 @@ export default function CustomerStatementModal({ customerId, onClose }) {
               className="flex items-center space-x-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors shadow-sm cursor-pointer min-h-[36px]"
             >
               <Printer className="w-4 h-4" />
-              <span className="hidden xs:inline">Print Statement</span>
+              <span className="hidden xs:inline">{t('statement.printStatementBtn', 'Print Statement')}</span>
             </button>
             <button
               onClick={onClose}
