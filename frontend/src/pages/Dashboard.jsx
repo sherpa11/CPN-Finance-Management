@@ -25,7 +25,7 @@ import {
   Pie,
   Cell,
 } from 'recharts';
-import { formatINR, formatDate, getFinanceBadge } from '../utils/formatters';
+import { formatINR, formatDate, getFinanceBadge, formatFinanceType } from '../utils/formatters';
 import api from '../api';
 
 const CATEGORY_COLORS = ['#3b82f6', '#f59e0b', '#8b5cf6'];
