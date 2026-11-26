@@ -66,9 +66,10 @@ export function getFinanceBadge(type, t) {
 export function formatFinanceType(type, t) {
   if (!type) return '';
   const isFunc = typeof t === 'function';
-  if (type === 'MEATER' || type === 'DAILY_COLLECTION') return isFunc ? t('nav.dailyCollection', 'DAILY COLLECTION') : 'DAILY COLLECTION';
-  if (type === 'MONTHLY') return isFunc ? t('nav.monthlyFinance', 'MONTHLY') : 'MONTHLY';
-  if (type === 'DAILY') return isFunc ? t('nav.dailyFinance', 'DAILY') : 'DAILY';
+  const normalized = String(type).toUpperCase().replace(/_/g, ' ').trim();
+  if (normalized === 'MEATER' || normalized === 'DAILY COLLECTION') return isFunc ? t('nav.dailyCollection', 'DAILY COLLECTION') : 'DAILY COLLECTION';
+  if (normalized === 'MONTHLY' || normalized === 'MONTHLY FINANCE') return isFunc ? t('nav.monthlyFinance', 'MONTHLY') : 'MONTHLY';
+  if (normalized === 'DAILY' || normalized === 'DAILY FINANCE') return isFunc ? t('nav.dailyFinance', 'DAILY') : 'DAILY';
   return type;
 }
 

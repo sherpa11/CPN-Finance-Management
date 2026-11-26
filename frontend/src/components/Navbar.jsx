@@ -84,7 +84,7 @@ export default function Navbar({ onNavigate, currentTab, onToggleMobileMenu, isM
               <h1 className="text-sm sm:text-lg font-black tracking-wider uppercase text-amber-400 leading-tight truncate">
                 CPN RAJA
               </h1>
-              <p className="text-[9px] sm:text-[11px] text-slate-300 tracking-wider font-medium truncate hidden xs:block">
+              <p className="text-[9px] sm:text-[11px] text-slate-300 tracking-wider font-medium truncate hidden sm:block">
                 {language === 'ta' ? 'நிதி மேலாண்மை அமைப்பு' : 'FINANCE MANAGEMENT SYSTEM'}
               </p>
             </div>
